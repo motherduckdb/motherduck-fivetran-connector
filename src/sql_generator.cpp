@@ -50,7 +50,7 @@ void write_joined(std::ostringstream &sql, std::vector<std::string> strings,
 
 
 // DuckDB querying
-bool schema_exists(Connection &con, const std::string db_name, const std::string schema_name) {
+bool schema_exists(Connection &con, const std::string& db_name, const std::string& schema_name) {
     const auto query = "SELECT schema_name FROM information_schema.schemata WHERE catalog_name="
                        + KeywordHelper::WriteQuoted(db_name, '\'')
                        + " AND schema_name="
