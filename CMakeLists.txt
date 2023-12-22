@@ -1,0 +1,72 @@
+cmake_minimum_required(VERSION 3.8)
+project(MotherDuckFivetranDestination C CXX)
+
+set(TARGET_ROOT ${PROJECT_SOURCE_DIR}/gen)
+include(./proto_helper.cmake)
+
+find_package(Threads REQUIRED)
+
+message(WARNING "DEPENDENCIES DIR: " ${MD_FIVETRAN_DEPENDENCIES_DIR})
+
+# absl and utf8_range is required by protobuf
+find_package(absl CONFIG REQUIRED PATHS ${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
+find_package(utf8_range CONFIG REQUIRED PATHS ${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
+find_package(Protobuf CONFIG REQUIRED PATHS ${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
+find_package(Arrow REQUIRED PATHS ${MD_FIVETRAN_DEPENDENCIES_DIR}/arrow NO_DEFAULT_PATH)
+
+message(STATUS "Using arrow ${ARROW_VERSION}")
+
+
+set(Protobuf_INCLUDE_DIR "${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc/include")
+set(Protobuf_LIBRARIES "${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc/lib")
+set(Openssl_INCLUDE_DIR "${MD_FIVETRAN_DEPENDENCIES_DIR}/openssl/include")
+set(Openssl_LIBRARIES "${MD_FIVETRAN_DEPENDENCIES_DIR}/openssl/lib")
+
+message(STATUS "Using protobuf ${Protobuf_VERSION}")
+
+find_package(gRPC CONFIG REQUIRED PATHS ${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
+message(STATUS "Using gRPC ${gRPC_VERSION}")
+
+set(_GRPC_GRPCPP gRPC::grpc++)
+if(CMAKE_CROSSCOMPILING)
+  find_program(_GRPC_CPP_PLUGIN_EXECUTABLE grpc_cpp_plugin)
+else()
+  set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
+endif()
+
+
+# Proto files
+generate_protos(${CMAKE_CURRENT_SOURCE_DIR}/protos/common.proto)
+generate_protos(${CMAKE_CURRENT_SOURCE_DIR}/protos/destination_sdk.proto)
+
+# DuckDB amalgamation
+set(DuckDB_SOURCE_DIR ./libduckdb-src)
+
+
+add_executable(motherduck_destination
+        "src/motherduck_destination_server.cpp"
+        "src/sql_generator.cpp"
+        ${TARGET_ROOT}/cpp/destination_sdk.pb.cc
+        ${TARGET_ROOT}/cpp/destination_sdk.grpc.pb.cc
+        ${TARGET_ROOT}/cpp/common.pb.cc
+        ${TARGET_ROOT}/cpp/common.grpc.pb.cc
+        ${DuckDB_SOURCE_DIR}/duckdb.cpp
+)
+
+target_include_directories(motherduck_destination PUBLIC
+        ${TARGET_ROOT}/cpp
+        includes
+        ${DuckDB_SOURCE_DIR}
+        ${Openssl_INCLUDE_DIR}/include/openssl
+
+)
+target_include_directories(motherduck_destination SYSTEM PUBLIC ${DUCKDB_INCLUDES})
+
+link_dependencies(motherduck_destination)
+
+target_link_libraries(motherduck_destination
+        ${_REFLECTION}
+        ${_GRPC_GRPCPP}
+        ${_PROTOBUF_LIBPROTOBUF}
+        Arrow::arrow_shared
+)
