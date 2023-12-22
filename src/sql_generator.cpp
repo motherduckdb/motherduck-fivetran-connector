@@ -226,7 +226,7 @@ void upsert(duckdb::Connection &con, std::string db_name, std::string schema_nam
             std::string staging_table_name, const std::vector<std::string> primary_keys,
             std::vector<column_def> columns) {
     std::ostringstream sql;
-    sql << "INSERT INTO " + tablename(db_name, schema_name, table_name)
+    sql << "INSERT INTO " << tablename(db_name, schema_name, table_name)
         << " SELECT * EXCLUDE (_fivetran_deleted, _fivetran_synced) FROM " << staging_table_name;
     if (!primary_keys.empty()) {
         sql << " ON CONFLICT (";
