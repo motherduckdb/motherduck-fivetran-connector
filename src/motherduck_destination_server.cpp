@@ -343,8 +343,7 @@ public:
         duckdb_arrow_stream c_arrow_stream = (duckdb_arrow_stream) &arrow_array_stream;
         duckdb_arrow_scan(c_con, "arrow_view", c_arrow_stream);
 
-        const auto view_name = "localmem.arrow_view";
-        process_view(view_name);
+        process_view("localmem.arrow_view");
 
         arrow_array_stream.release(&arrow_array_stream);
     }
