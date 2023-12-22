@@ -252,7 +252,7 @@ void update_values(duckdb::Connection &con, std::string db_name, std::string sch
                    std::string staging_table_name, const std::vector<std::string> primary_keys,
                    std::vector<column_def> columns) {
     std::ostringstream sql;
-    sql << "UPDATE " + tablename(db_name, schema_name, table_name)
+    sql << "UPDATE " << tablename(db_name, schema_name, table_name)
         << " SET ";
 
     write_joined(sql, columns, [staging_table_name](column_def &col, std::ostringstream &out) {
