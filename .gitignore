@@ -36,3 +36,4 @@ build
 sources
 install
 cmake-build-debug
+gen
