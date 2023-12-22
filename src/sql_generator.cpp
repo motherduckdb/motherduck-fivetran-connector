@@ -176,7 +176,7 @@ void alter_table(duckdb::Connection &con, std::string db_name, std::string schem
     for (const auto &col_name: added_columns) {
         std::ostringstream out;
         out << "ALTER TABLE " + tablename(db_name, schema_name, table_name) << " ADD COLUMN ";
-        auto col = new_column_map.find(col_name)->second;
+        const auto& col = new_column_map[col_name];
 
         out << KeywordHelper::WriteQuoted(col_name, '"') << " " << duckdb::EnumUtil::ToChars(col.type);
         if (col.primary_key) {
