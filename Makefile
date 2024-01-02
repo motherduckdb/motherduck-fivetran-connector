@@ -82,3 +82,17 @@ get_duckdb:
 
 
 build_dependencies: get_duckdb build_openssl_native build_grpc build_arrow
+
+# Repo-wide C++ formatting
+# For local formatter use:
+#   $ make format CLANG_FORMATTER=clang-format
+CLANG_FORMATTER=docker run --rm -v `pwd`:/mnt/code -w /mnt/code --platform=linux/x86_64 --init ghcr.io/jidicula/clang-format:16
+format_params:
+	$(CLANG_FORMATTER) $(FORMAT_OPTS) `find includes -name '*.hpp'`
+	$(CLANG_FORMATTER) $(FORMAT_OPTS) `find src -name '*.cpp'`
+
+format:
+	FORMAT_OPTS='-i --verbose' make format_params
+
+check_format:
+	FORMAT_OPTS='--dry-run --Werror' make format_params
