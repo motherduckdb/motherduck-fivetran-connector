@@ -73,5 +73,11 @@ build_arrow:
 	-DCMAKE_INSTALL_PREFIX=${MD_FIVETRAN_DEPENDENCIES_DIR}/arrow -DARROW_CSV=ON -DARROW_WITH_ZSTD=ON
 	cd ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow && make -j${CORES} && cmake --install .
 
-build_dependencies: build_openssl_native build_grpc build_arrow
+get_duckdb:
+	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
+	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR} && \
+		wget -q -O libduckdb-src.zip https://github.com/duckdb/duckdb/releases/download/v0.9.2/libduckdb-src.zip && \
+		unzip -d ../libduckdb-src libduckdb-src.zip
 
+
+build_dependencies: get_duckdb build_openssl_native build_grpc build_arrow
