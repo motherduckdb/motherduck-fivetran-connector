@@ -13,6 +13,7 @@ INSTALL_DIR="${ROOT_DIR}/install"
 GRPC_VERSION=v1.56.2
 OPENSSL_VERSION=3.1.3
 ARROW_VERSION=14.0.2
+DUCKDB_VERSION=v0.9.2
 
 info:
 	echo "root dir = " ${ROOT_DIR}
@@ -76,7 +77,7 @@ build_arrow:
 get_duckdb:
 	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
 	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR} && \
-		wget -q -O libduckdb-src.zip https://github.com/duckdb/duckdb/releases/download/v0.9.2/libduckdb-src.zip && \
+		wget -q -O libduckdb-src.zip https://github.com/duckdb/duckdb/releases/download/${DUCKDB_VERSION}/libduckdb-src.zip && \
 		unzip -d ../libduckdb-src libduckdb-src.zip
 
 
