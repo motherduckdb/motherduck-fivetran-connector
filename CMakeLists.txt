@@ -42,8 +42,7 @@ generate_protos(${CMAKE_CURRENT_SOURCE_DIR}/protos/destination_sdk.proto)
 # DuckDB amalgamation
 set(DuckDB_SOURCE_DIR ./libduckdb-src)
 
-
-add_executable(motherduck_destination
+add_library(motherduck_destination_sources STATIC
         "src/motherduck_destination_server.cpp"
         "src/sql_generator.cpp"
         ${TARGET_ROOT}/cpp/destination_sdk.pb.cc
@@ -53,22 +52,26 @@ add_executable(motherduck_destination
         ${DuckDB_SOURCE_DIR}/duckdb.cpp
 )
 
-target_include_directories(motherduck_destination PUBLIC
+target_include_directories(motherduck_destination_sources PUBLIC
         ${TARGET_ROOT}/cpp
         includes
         ${DuckDB_SOURCE_DIR}
         ${Openssl_INCLUDE_DIR}/include/openssl
-
+        ${DUCKDB_INCLUDES}
 )
-target_include_directories(motherduck_destination SYSTEM PUBLIC ${DUCKDB_INCLUDES})
 
-link_dependencies(motherduck_destination)
+link_dependencies(motherduck_destination_sources)
 
-target_link_libraries(motherduck_destination
+target_link_libraries(motherduck_destination_sources
         ${_REFLECTION}
         ${_GRPC_GRPCPP}
         ${_PROTOBUF_LIBPROTOBUF}
         Arrow::arrow_shared
+)
+
+add_executable(motherduck_destination "src/motherduck_destination.cpp")
+target_link_libraries(
+        motherduck_destination motherduck_destination_sources
 )
 
 # Testing
@@ -76,4 +79,14 @@ find_package(Catch2 3 REQUIRED PATHS ${MD_FIVETRAN_DEPENDENCIES_DIR}/Catch2 NO_D
 add_executable(integration_tests
         test/integration/test_server.cpp
 )
-target_link_libraries(integration_tests PRIVATE Catch2::Catch2WithMain)
+target_include_directories(integration_tests PUBLIC
+        ${TARGET_ROOT}/cpp
+        includes
+        ${Protobuf_INCLUDE_DIR}
+        ${DUCKDB_INCLUDES}
+
+)
+target_link_libraries(integration_tests PRIVATE
+        Catch2::Catch2WithMain
+        motherduck_destination_sources
+)
