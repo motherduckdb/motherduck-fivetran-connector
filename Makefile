@@ -14,6 +14,7 @@ GRPC_VERSION=v1.56.2
 OPENSSL_VERSION=3.1.3
 ARROW_VERSION=14.0.2
 DUCKDB_VERSION=v0.9.2
+CATCH2_VERSION=v3.5.1
 
 info:
 	echo "root dir = " ${ROOT_DIR}
@@ -96,3 +97,14 @@ format:
 
 check_format:
 	FORMAT_OPTS='--dry-run --Werror' make format_params
+
+
+build_test_dependencies:
+	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
+	rm -rf ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/Catch2
+	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR} && \
+		git clone https://github.com/catchorg/Catch2.git --branch ${CATCH2_VERSION} && \
+		cd Catch2 && \
+		cmake -S ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/Catch2 -B${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/Catch2 \
+			-DCMAKE_INSTALL_PREFIX=${MD_FIVETRAN_DEPENDENCIES_DIR}/Catch2 -DBUILD_TESTING=OFF
+	cd ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/Catch2 && make -j${CORES} && cmake --install .

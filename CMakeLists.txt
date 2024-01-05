@@ -70,3 +70,10 @@ target_link_libraries(motherduck_destination
         ${_PROTOBUF_LIBPROTOBUF}
         Arrow::arrow_shared
 )
+
+# Testing
+find_package(Catch2 3 REQUIRED PATHS ${MD_FIVETRAN_DEPENDENCIES_DIR}/Catch2 NO_DEFAULT_PATH)
+add_executable(integration_tests
+        test/integration/test_server.cpp
+)
+target_link_libraries(integration_tests PRIVATE Catch2::Catch2WithMain)
