@@ -39,6 +39,22 @@ find_property(const google::protobuf::Map<std::string, std::string> &config,
   return token_it->second;
 }
 
+template <typename T> std::string get_schema_name(const T *request) {
+  std::string schema_name = request->schema_name();
+  if (schema_name.empty()) {
+    return "main";
+  }
+  return schema_name;
+}
+
+template <typename T> std::string get_table_name(const T *request) {
+  std::string table_name = request->table_name();
+  if (table_name.empty()) {
+    throw std::invalid_argument("Table name cannot be empty");
+  }
+  return table_name;
+}
+
 Status DestinationSdkImpl::ConfigurationForm(
     ::grpc::ServerContext *context,
     const ::fivetran_sdk::ConfigurationFormRequest *request,
@@ -123,17 +139,17 @@ Status DestinationSdkImpl::DescribeTable(
     std::unique_ptr<Connection> con =
         get_connection(request->configuration(), db_name);
 
-    if (!table_exists(*con, db_name, request->schema_name(),
-                      request->table_name())) {
+    if (!table_exists(*con, db_name, get_schema_name(request),
+                      get_table_name(request))) {
       response->set_not_found(true);
       return ::grpc::Status(::grpc::StatusCode::OK, "");
     }
 
-    auto duckdb_columns = describe_table(*con, db_name, request->schema_name(),
-                                         request->table_name());
+    auto duckdb_columns = describe_table(
+        *con, db_name, get_schema_name(request), get_table_name(request));
 
     fivetran_sdk::Table *table = response->mutable_table();
-    table->set_name(request->table_name());
+    table->set_name(get_table_name(request));
 
     for (auto col : duckdb_columns) {
       fivetran_sdk::Column *ft_col = table->mutable_columns()->Add();
@@ -202,16 +218,18 @@ Status DestinationSdkImpl::CreateTable(
     ::fivetran_sdk::CreateTableResponse *response) {
 
   try {
+    auto schema_name = get_schema_name(request);
+
     std::string db_name =
         find_property(request->configuration(), "motherduck_database");
     std::unique_ptr<Connection> con =
         get_connection(request->configuration(), db_name);
 
-    if (!schema_exists(*con, db_name, request->schema_name())) {
-      create_schema(*con, db_name, request->schema_name());
+    if (!schema_exists(*con, db_name, schema_name)) {
+      create_schema(*con, db_name, schema_name);
     }
 
-    create_table(*con, db_name, request->schema_name(), request->table().name(),
+    create_table(*con, db_name, schema_name, request->table().name(),
                  get_duckdb_columns(request->table().columns()));
     response->set_success(true);
   } catch (const std::exception &e) {
@@ -232,7 +250,8 @@ DestinationSdkImpl::AlterTable(::grpc::ServerContext *context,
     std::unique_ptr<Connection> con =
         get_connection(request->configuration(), db_name);
 
-    alter_table(*con, db_name, request->schema_name(), request->table().name(),
+    alter_table(*con, db_name, get_schema_name(request),
+                request->table().name(),
                 get_duckdb_columns(request->table().columns()));
     response->set_success(true);
   } catch (const std::exception &e) {
@@ -252,7 +271,8 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
   std::unique_ptr<Connection> con =
       get_connection(request->configuration(), db_name);
 
-  truncate_table(*con, db_name, request->schema_name(), request->table_name());
+  truncate_table(*con, db_name, get_schema_name(request),
+                 get_table_name(request));
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
@@ -394,6 +414,8 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
                                ::fivetran_sdk::WriteBatchResponse *response) {
 
   try {
+    auto schema_name = get_schema_name(request);
+
     std::string db_name =
         find_property(request->configuration(), "motherduck_database");
     std::unique_ptr<Connection> con =
@@ -411,19 +433,18 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
 
       auto decryption_key = get_encryption_key(filename, request->keys());
       process_file(*con, filename, decryption_key,
-                   [&con, &db_name, &request, &primary_keys,
-                    &cols](const std::string view_name) {
-                     upsert(*con, db_name, request->schema_name(),
-                            request->table().name(), view_name, primary_keys,
-                            cols);
+                   [&con, &db_name, &request, &primary_keys, &cols,
+                    &schema_name](const std::string view_name) {
+                     upsert(*con, db_name, schema_name, request->table().name(),
+                            view_name, primary_keys, cols);
                    });
     }
     for (auto &filename : request->update_files()) {
       auto decryption_key = get_encryption_key(filename, request->keys());
       process_file(*con, filename, decryption_key,
-                   [&con, &db_name, &request, &primary_keys,
-                    &cols](const std::string view_name) {
-                     update_values(*con, db_name, request->schema_name(),
+                   [&con, &db_name, &request, &primary_keys, &cols,
+                    &schema_name](const std::string view_name) {
+                     update_values(*con, db_name, schema_name,
                                    request->table().name(), view_name,
                                    primary_keys, cols);
                    });
@@ -431,9 +452,9 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
     for (auto &filename : request->delete_files()) {
       auto decryption_key = get_encryption_key(filename, request->keys());
       process_file(*con, filename, decryption_key,
-                   [&con, &db_name, &request,
-                    &primary_keys](const std::string view_name) {
-                     delete_rows(*con, db_name, request->schema_name(),
+                   [&con, &db_name, &request, &primary_keys,
+                    &schema_name](const std::string view_name) {
+                     delete_rows(*con, db_name, schema_name,
                                  request->table().name(), view_name,
                                  primary_keys);
                    });
