@@ -151,6 +151,49 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable", "[integra
         REQUIRE(response.table().columns(0).name() == "id");
         REQUIRE(response.table().columns(0).type() == ::fivetran_sdk::DataType::INT);
     }
-    
+
 }
 
+TEST_CASE("Test fails when database missing", "[integration]") {
+    DestinationSdkImpl service;
+
+    ::fivetran_sdk::TestRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = "12345";
+
+    ::fivetran_sdk::TestResponse response;
+
+    auto status = service.Test(nullptr, &request, &response);
+
+    REQUIRE(!status.ok());
+    REQUIRE(status.error_message() == "Missing property motherduck_database");
+}
+
+TEST_CASE("Test fails when token is missing", "[integration]") {
+    DestinationSdkImpl service;
+
+    ::fivetran_sdk::TestRequest request;
+    (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+
+    ::fivetran_sdk::TestResponse response;
+
+    auto status = service.Test(nullptr, &request, &response);
+
+    REQUIRE(!status.ok());
+    REQUIRE(status.error_message() == "Missing property motherduck_token");
+}
+
+
+TEST_CASE("Test fails when token is bad", "[integration]") {
+    DestinationSdkImpl service;
+
+    ::fivetran_sdk::TestRequest request;
+    (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+    (*request.mutable_configuration())["motherduck_token"] = "12345";
+
+    ::fivetran_sdk::TestResponse response;
+
+    auto status = service.Test(nullptr, &request, &response);
+
+    REQUIRE(!status.ok());
+    CHECK_THAT(status.error_message(), Catch::Matchers::ContainsSubstring("UNAUTHENTICATED"));
+}
