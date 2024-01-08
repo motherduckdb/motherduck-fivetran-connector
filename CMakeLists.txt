@@ -42,6 +42,7 @@ generate_protos(${CMAKE_CURRENT_SOURCE_DIR}/protos/destination_sdk.proto)
 # DuckDB amalgamation
 set(DuckDB_SOURCE_DIR ./libduckdb-src)
 
+
 add_library(motherduck_destination_sources STATIC
         "src/motherduck_destination_server.cpp"
         "src/sql_generator.cpp"
@@ -79,6 +80,10 @@ find_package(Catch2 3 REQUIRED PATHS ${MD_FIVETRAN_DEPENDENCIES_DIR}/Catch2 NO_D
 add_executable(integration_tests
         test/integration/test_server.cpp
 )
+target_compile_definitions(integration_tests PRIVATE
+        TEST_RESOURCES_LOCATION=${CMAKE_CURRENT_LIST_DIR}/test/files/
+)
+
 target_include_directories(integration_tests PUBLIC
         ${TARGET_ROOT}/cpp
         includes

@@ -33,3 +33,10 @@ By default, the server runs on 0.0.0.0:50052.
 ## Upgrading DuckDB
 
 This connector uses DuckDB's amalgamation sources. To upgrade, copy the [amalgamation sources](https://duckdb.org/docs/installation/?version=latest&environment=cplusplus&installer=source) to [libduckdb-src](./libduckdb-src) folder. 
+
+
+
+## TODO
+- support GZIP compression
+- implement truncate-before (utc_delete_before) and synced_column = 4;
+- implement soft delete?

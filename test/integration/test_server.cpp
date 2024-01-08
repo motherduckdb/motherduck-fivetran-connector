@@ -1,6 +1,12 @@
 #include <catch2/catch_all.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <fstream>
 #include "motherduck_destination_server.hpp"
+#include "duckdb.hpp"
+
+#define STRING(x)  #x
+#define XSTRING(s) STRING(s)
+const std::string TEST_RESOURCES_DIR = XSTRING(TEST_RESOURCES_LOCATION);
 
 TEST_CASE("ConfigurationForm", "[integration]") {
     DestinationSdkImpl service;
@@ -64,10 +70,9 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable", "[integra
         (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
         request.set_schema_name(schema_name);
         request.mutable_table()->set_name(table_name);
-        ::fivetran_sdk::Column col1;
-        col1.set_name("id");
-        col1.set_type(::fivetran_sdk::DataType::STRING);
-        request.mutable_table()->add_columns()->CopyFrom(col1);
+        auto col1 = request.mutable_table()->add_columns();
+        col1->set_name("id");
+        col1->set_type(::fivetran_sdk::DataType::STRING);
 
         ::fivetran_sdk::CreateTableResponse response;
         auto status = service.CreateTable(nullptr, &request, &response);
@@ -183,7 +188,7 @@ TEST_CASE("Test fails when token is missing", "[integration]") {
 }
 
 
-TEST_CASE("Test fails when token is bad", "[integration]") {
+TEST_CASE("Test endpoint fails when token is bad", "[integration]") {
     DestinationSdkImpl service;
 
     ::fivetran_sdk::TestRequest request;
@@ -198,4 +203,110 @@ TEST_CASE("Test fails when token is bad", "[integration]") {
     CHECK_THAT(status.error_message(), Catch::Matchers::ContainsSubstring("UNAUTHENTICATED"));
 }
 
-// TBD: Truncate
+template <typename T>
+void define_test_table(T& request, const std::string& table_name) {
+    request.mutable_table()->set_name(table_name);
+    auto col1 = request.mutable_table()->add_columns();
+    col1->set_name("id");
+    col1->set_type(::fivetran_sdk::DataType::INT);
+    col1->set_primary_key(true);
+
+    auto col2 = request.mutable_table()->add_columns();
+    col2->set_name("title");
+    col2->set_type(::fivetran_sdk::DataType::STRING);
+
+    auto col3 = request.mutable_table()->add_columns();
+    col3->set_name("magic_number");
+    col3->set_type(::fivetran_sdk::DataType::INT);
+}
+
+TEST_CASE("WriteBatch with encrypted/compressed file, inserts only", "[integration][current]") {
+    DestinationSdkImpl service;
+
+    // Schema will be main
+    const std::string table_name = "books" + std::to_string(Catch::rngSeed());
+    auto token = std::getenv("motherduck_token");
+    REQUIRE(token);
+
+    {
+        // Create Table
+        ::fivetran_sdk::CreateTableRequest request;
+        (*request.mutable_configuration())["motherduck_token"] = token;
+        (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+        define_test_table(request, table_name);
+
+        ::fivetran_sdk::CreateTableResponse response;
+        auto status = service.CreateTable(nullptr, &request, &response);
+
+        INFO(status.error_message());
+        REQUIRE(status.ok());
+    }
+
+    {
+        // insert rows
+        ::fivetran_sdk::WriteBatchRequest request;
+        (*request.mutable_configuration())["motherduck_token"] = token;
+        (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+        define_test_table(request, table_name);
+        const std::string filename = "books_batch_1_insert.csv.zst.aes";
+        const std::string filepath = TEST_RESOURCES_DIR + filename;
+
+        std::ifstream keyfile(filepath + ".key", std::ios::binary);
+        char key[33];
+        keyfile.read(key, 32);
+        key[32] = 0;
+        (*request.mutable_keys())[filepath] = key;
+
+        request.add_replace_files(filepath);
+
+        ::fivetran_sdk::WriteBatchResponse response;
+        auto status = service.WriteBatch(nullptr, &request, &response);
+
+        INFO(status.error_message());
+        REQUIRE(status.ok());
+    }
+
+    {
+        // check inserted rows
+        std::unordered_map<std::string, std::string> props{
+                {"motherduck_token", token}};
+        duckdb::DBConfig config(props, false);
+        duckdb::DuckDB db("md:fivetran_test", &config);
+        duckdb::Connection con(db);
+        auto res = con.Query("SELECT id, title, magic_number FROM " + table_name + " ORDER BY id");
+        REQUIRE(res->RowCount() == 2);
+        REQUIRE(res->GetValue(0, 0) == 1);
+        REQUIRE(res->GetValue(1, 0) == "The Hitchhiker's Guide to the Galaxy");
+        REQUIRE(res->GetValue(2, 0) == 42);
+
+        REQUIRE(res->GetValue(0, 1) == 2);
+        REQUIRE(res->GetValue(1, 1) == "The Lord of the Rings");
+        REQUIRE(res->GetValue(2, 1) == 1);
+    }
+
+    {
+        // truncate table
+        ::fivetran_sdk::TruncateRequest request;
+        (*request.mutable_configuration())["motherduck_token"] = token;
+        (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+        request.set_table_name(table_name);
+        ::fivetran_sdk::TruncateResponse response;
+        auto status = service.Truncate(nullptr, &request, &response);
+
+        INFO(status.error_message());
+        REQUIRE(status.ok());
+    }
+
+    {
+        // check truncated table
+        std::unordered_map<std::string, std::string> props{
+                {"motherduck_token", token}};
+        duckdb::DBConfig config(props, false);
+        duckdb::DuckDB db("md:fivetran_test", &config);
+        duckdb::Connection con(db);
+        auto res = con.Query("SELECT id, title, magic_number FROM " + table_name + " ORDER BY id");
+        REQUIRE(res->RowCount() == 0);
+    }
+
+}
+
