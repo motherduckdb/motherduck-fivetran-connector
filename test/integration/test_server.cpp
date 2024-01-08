@@ -49,16 +49,17 @@ TEST_CASE("DescribeTable on nonexistent table", "[integration]") {
     REQUIRE(response.not_found());
 }
 
-TEST_CASE("CreateTable", "[integration]") {
+TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable", "[integration]") {
     DestinationSdkImpl service;
 
     const std::string schema_name = "some_schema" + std::to_string(Catch::rngSeed());
     const std::string table_name = "some_table" + std::to_string(Catch::rngSeed());
+    auto token = std::getenv("motherduck_token");
+    REQUIRE(token);
+
     {
         // Create Table
         ::fivetran_sdk::CreateTableRequest request;
-        auto token = std::getenv("motherduck_token");
-        REQUIRE(token);
         (*request.mutable_configuration())["motherduck_token"] = token;
         (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
         request.set_schema_name(schema_name);
@@ -78,8 +79,6 @@ TEST_CASE("CreateTable", "[integration]") {
     {
         // Describe the created table
         ::fivetran_sdk::DescribeTableRequest request;
-        auto token = std::getenv("motherduck_token");
-        REQUIRE(token);
         (*request.mutable_configuration())["motherduck_token"] = token;
         (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
         request.set_table_name(table_name);
@@ -103,6 +102,55 @@ TEST_CASE("CreateTable", "[integration]") {
             INFO(status.error_message());
             REQUIRE(status.ok());
             REQUIRE(!response.not_found());
+
+            REQUIRE(response.table().name() == table_name);
+            REQUIRE(response.table().columns_size() == 1);
+            REQUIRE(response.table().columns(0).name() == "id");
+            REQUIRE(response.table().columns(0).type() == ::fivetran_sdk::DataType::STRING);
         }
     }
+
+    {
+        // Alter Table
+        ::fivetran_sdk::AlterTableRequest request;
+
+        (*request.mutable_configuration())["motherduck_token"] = token;
+        (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+        request.set_schema_name(schema_name);
+        request.mutable_table()->set_name(table_name);
+        ::fivetran_sdk::Column col1;
+        col1.set_name("id");
+        col1.set_type(::fivetran_sdk::DataType::INT);
+        request.mutable_table()->add_columns()->CopyFrom(col1);
+
+        ::fivetran_sdk::AlterTableResponse response;
+        auto status = service.AlterTable(nullptr, &request, &response);
+
+        INFO(status.error_message());
+        REQUIRE(status.ok());
+    }
+
+    {
+        // Describe the altered table
+        ::fivetran_sdk::DescribeTableRequest request;
+        (*request.mutable_configuration())["motherduck_token"] = token;
+        (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+        request.set_table_name(table_name);
+
+        // table found in the correct schema
+        request.set_schema_name(schema_name);
+        ::fivetran_sdk::DescribeTableResponse response;
+        auto status = service.DescribeTable(nullptr, &request, &response);
+
+        INFO(status.error_message());
+        REQUIRE(status.ok());
+        REQUIRE(!response.not_found());
+
+        REQUIRE(response.table().name() == table_name);
+        REQUIRE(response.table().columns_size() == 1);
+        REQUIRE(response.table().columns(0).name() == "id");
+        REQUIRE(response.table().columns(0).type() == ::fivetran_sdk::DataType::INT);
+    }
+    
 }
+
