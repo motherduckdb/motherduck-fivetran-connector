@@ -197,3 +197,5 @@ TEST_CASE("Test fails when token is bad", "[integration]") {
     REQUIRE(!status.ok());
     CHECK_THAT(status.error_message(), Catch::Matchers::ContainsSubstring("UNAUTHENTICATED"));
 }
+
+// TBD: Truncate
