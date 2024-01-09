@@ -42,7 +42,8 @@ void update_values(duckdb::Connection &con, const std::string &db_name,
                    const std::string &table_name,
                    const std::string &staging_table_name,
                    const std::vector<std::string> &primary_keys,
-                   const std::vector<column_def> &columns);
+                   const std::vector<column_def> &columns,
+                   const std::string &unmodified_string);
 
 void truncate_table(duckdb::Connection &con, const std::string &db_name,
                     const std::string &schema_name,

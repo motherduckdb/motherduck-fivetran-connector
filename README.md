@@ -40,3 +40,4 @@ This connector uses DuckDB's amalgamation sources. To upgrade, copy the [amalgam
 - support GZIP compression
 - implement truncate-before (utc_delete_before) and synced_column = 4;
 - implement soft delete?
+- can files be unencrypted but still compressed?

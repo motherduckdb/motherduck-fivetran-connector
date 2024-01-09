@@ -283,8 +283,14 @@ void update_values(duckdb::Connection &con, const std::string &db_name,
                    const std::string &table_name,
                    const std::string &staging_table_name,
                    const std::vector<std::string> &primary_keys,
-                   const std::vector<column_def> &columns) {
+                   const std::vector<column_def> &columns,
+                   const std::string &unmodified_string) {
   std::ostringstream sql;
+  auto absolute_table_name =
+      compute_absolute_table_name(db_name, schema_name, table_name);
+
+  /* old version that ignored the text values. If that worked, there might be a way to make the real update work?
+   * Unless their test case had unmodified placeholders only in text fields
   sql << "UPDATE "
       << compute_absolute_table_name(db_name, schema_name, table_name)
       << " SET ";
@@ -296,6 +302,20 @@ void update_values(duckdb::Connection &con, const std::string &db_name,
             << staging_table_name << "."
             << KeywordHelper::WriteQuoted(col.name, '"');
       });
+      */
+  sql << "UPDATE " << absolute_table_name << " SET ";
+
+  write_joined(sql, columns,
+               [staging_table_name, absolute_table_name, unmodified_string](
+                   const column_def &col, std::ostringstream &out) {
+                 auto colname = KeywordHelper::WriteQuoted(col.name, '"');
+                 out << colname << " = CASE WHEN " << staging_table_name << "."
+                     << colname << " = "
+                     << KeywordHelper::WriteQuoted(unmodified_string, '\'')
+                     << " THEN " << absolute_table_name << "." << colname
+                     << " ELSE " << staging_table_name << "." << colname
+                     << " END";
+               });
 
   sql << " FROM " << staging_table_name << " WHERE ";
   write_joined(sql, primary_keys,

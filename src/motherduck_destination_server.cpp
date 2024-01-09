@@ -179,13 +179,17 @@ std::vector<unsigned char> decrypt_file(const std::string &filename,
   return plaintext;
 }
 
-std::shared_ptr<arrow::Table> ReadCsv(const std::string &filename,
-                                      const std::string &decryption_key) {
+std::shared_ptr<arrow::Table>
+ReadEncryptedCsv(const std::string &filename,
+                 const std::string *decryption_key) {
+
+  auto read_options = arrow::csv::ReadOptions::Defaults();
+  auto parse_options = arrow::csv::ParseOptions::Defaults();
+  auto convert_options = arrow::csv::ConvertOptions::Defaults();
 
   std::vector<unsigned char> plaintext = decrypt_file(
       filename,
-      reinterpret_cast<const unsigned char *>(decryption_key.c_str()));
-
+      reinterpret_cast<const unsigned char *>(decryption_key->c_str()));
   auto buffer = std::make_shared<arrow::Buffer>(
       reinterpret_cast<const uint8_t *>(plaintext.data()), plaintext.size());
   auto buffer_reader = std::make_shared<arrow::io::BufferReader>(buffer);
@@ -206,40 +210,73 @@ std::shared_ptr<arrow::Table> ReadCsv(const std::string &filename,
   }
   auto compressed_input_stream =
       std::move(maybe_compressed_input_stream.ValueOrDie());
-
-  auto read_options = arrow::csv::ReadOptions::Defaults();
-  auto parse_options = arrow::csv::ParseOptions::Defaults();
-  auto convert_options = arrow::csv::ConvertOptions::Defaults();
-
   auto maybe_table_reader = arrow::csv::TableReader::Make(
       arrow::io::default_io_context(), std::move(compressed_input_stream),
       read_options, parse_options, convert_options);
   if (!maybe_table_reader.ok()) {
-    throw std::runtime_error("Could not create table reader: " +
-                             maybe_table_reader.status().message());
+    throw std::runtime_error(
+        "Could not create table reader from decrypted file: " +
+        maybe_table_reader.status().message());
   }
   auto table_reader = std::move(maybe_table_reader.ValueOrDie());
 
   auto maybe_table = table_reader->Read();
   if (!maybe_table.ok()) {
-    throw std::runtime_error("Could not read CSV" +
-                             maybe_table.status().message());
+    throw std::runtime_error("Could not read CSV <" + filename +
+                             ">: " + maybe_table.status().message());
   }
   auto table = std::move(maybe_table.ValueOrDie());
 
   return table;
 }
 
-const std::string get_encryption_key(
-    const std::string &filename,
-    const google::protobuf::Map<std::string, std::string> &keys) {
+std::shared_ptr<arrow::Table> ReadUnencryptedCsv(const std::string &filename) {
+
+  auto read_options = arrow::csv::ReadOptions::Defaults();
+  auto parse_options = arrow::csv::ParseOptions::Defaults();
+  auto convert_options = arrow::csv::ConvertOptions::Defaults();
+
+  auto maybe_file =
+      arrow::io::ReadableFile::Open(filename, arrow::default_memory_pool());
+  if (!maybe_file.ok()) {
+    throw std::runtime_error("Could not open uncompressed file <" + filename +
+                             ">: " + maybe_file.status().message());
+  }
+  auto plaintext_input_stream = std::move(maybe_file.ValueOrDie());
+  auto maybe_table_reader = arrow::csv::TableReader::Make(
+      arrow::io::default_io_context(), std::move(plaintext_input_stream),
+      read_options, parse_options, convert_options);
+  if (!maybe_table_reader.ok()) {
+    throw std::runtime_error(
+        "Could not create table reader from plaintext file: " +
+        maybe_table_reader.status().message());
+  }
+  auto table_reader = std::move(maybe_table_reader.ValueOrDie());
+
+  auto maybe_table = table_reader->Read();
+  if (!maybe_table.ok()) {
+    throw std::runtime_error("Could not read CSV <" + filename +
+                             ">: " + maybe_table.status().message());
+  }
+  auto table = std::move(maybe_table.ValueOrDie());
+
+  return table;
+}
+
+const std::string *
+get_encryption_key(const std::string &filename,
+                   const google::protobuf::Map<std::string, std::string> &keys,
+                   ::fivetran_sdk::Encryption encryption) {
+  if (encryption == ::fivetran_sdk::Encryption::NONE) {
+    return nullptr;
+  }
   auto encryption_key_it = keys.find(filename);
 
   if (encryption_key_it == keys.end()) {
     throw std::invalid_argument("Missing encryption key for " + filename);
   }
 
-  return encryption_key_it->second;
+  return &encryption_key_it->second;
 }
 
 std::vector<std::string> get_primary_keys(
@@ -255,9 +292,11 @@ std::vector<std::string> get_primary_keys(
 
 void process_file(
     Connection &con, const std::string &filename,
-    const std::string &decryption_key,
+    const std::string *decryption_key,
     const std::function<void(std::string view_name)> &process_view) {
-  auto table = ReadCsv(filename, decryption_key);
+  auto table = decryption_key == nullptr
+                   ? ReadUnencryptedCsv(filename)
+                   : ReadEncryptedCsv(filename, decryption_key);
 
   auto batch_reader = std::make_shared<arrow::TableBatchReader>(*table);
   ArrowArrayStream arrow_array_stream;
@@ -430,8 +469,8 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
     const auto cols = get_duckdb_columns(request->table().columns());
 
     for (auto &filename : request->replace_files()) {
-
-      auto decryption_key = get_encryption_key(filename, request->keys());
+      auto decryption_key = get_encryption_key(filename, request->keys(),
+                                               request->csv().encryption());
       process_file(*con, filename, decryption_key,
                    [&con, &db_name, &request, &primary_keys, &cols,
                     &schema_name](const std::string view_name) {
@@ -440,17 +479,20 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
                    });
     }
     for (auto &filename : request->update_files()) {
-      auto decryption_key = get_encryption_key(filename, request->keys());
+      auto decryption_key = get_encryption_key(filename, request->keys(),
+                                               request->csv().encryption());
       process_file(*con, filename, decryption_key,
                    [&con, &db_name, &request, &primary_keys, &cols,
                     &schema_name](const std::string view_name) {
                      update_values(*con, db_name, schema_name,
                                    request->table().name(), view_name,
-                                   primary_keys, cols);
+                                   primary_keys, cols,
+                                   request->csv().unmodified_string());
                    });
     }
     for (auto &filename : request->delete_files()) {
-      auto decryption_key = get_encryption_key(filename, request->keys());
+      auto decryption_key = get_encryption_key(filename, request->keys(),
+                                               request->csv().encryption());
       process_file(*con, filename, decryption_key,
                    [&con, &db_name, &request, &primary_keys,
                     &schema_name](const std::string view_name) {

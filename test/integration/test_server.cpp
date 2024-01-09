@@ -220,7 +220,7 @@ void define_test_table(T& request, const std::string& table_name) {
     col3->set_type(::fivetran_sdk::DataType::INT);
 }
 
-TEST_CASE("WriteBatch with encrypted/compressed file, inserts only", "[integration][current]") {
+TEST_CASE("WriteBatch", "[integration][current]") {
     DestinationSdkImpl service;
 
     // Schema will be main
@@ -243,10 +243,12 @@ TEST_CASE("WriteBatch with encrypted/compressed file, inserts only", "[integrati
     }
 
     {
-        // insert rows
+        // insert rows from encrypted / compressed file
         ::fivetran_sdk::WriteBatchRequest request;
         (*request.mutable_configuration())["motherduck_token"] = token;
         (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+        request.mutable_csv()->set_encryption(::fivetran_sdk::Encryption::AES);
+        request.mutable_csv()->set_compression(::fivetran_sdk::Compression::ZSTD);
         define_test_table(request, table_name);
         const std::string filename = "books_batch_1_insert.csv.zst.aes";
         const std::string filepath = TEST_RESOURCES_DIR + filename;
@@ -273,6 +275,7 @@ TEST_CASE("WriteBatch with encrypted/compressed file, inserts only", "[integrati
         duckdb::DBConfig config(props, false);
         duckdb::DuckDB db("md:fivetran_test", &config);
         duckdb::Connection con(db);
+
         auto res = con.Query("SELECT id, title, magic_number FROM " + table_name + " ORDER BY id");
         REQUIRE(res->RowCount() == 2);
         REQUIRE(res->GetValue(0, 0) == 1);
@@ -285,6 +288,129 @@ TEST_CASE("WriteBatch with encrypted/compressed file, inserts only", "[integrati
     }
 
     {
+        // upsert
+        ::fivetran_sdk::WriteBatchRequest request;
+        (*request.mutable_configuration())["motherduck_token"] = token;
+        (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+        define_test_table(request, table_name);
+        const std::string filename = "books_upsert.csv";
+        const std::string filepath = TEST_RESOURCES_DIR + filename;
+
+        request.add_replace_files(filepath);
+
+        ::fivetran_sdk::WriteBatchResponse response;
+        auto status = service.WriteBatch(nullptr, &request, &response);
+
+        INFO(status.error_message());
+        REQUIRE(status.ok());
+    }
+
+    {
+        // check after upsert
+        std::unordered_map<std::string, std::string> props{
+                {"motherduck_token", token}};
+        duckdb::DBConfig config(props, false);
+        duckdb::DuckDB db("md:fivetran_test", &config);
+        duckdb::Connection con(db);
+
+        auto res = con.Query("SELECT id, title, magic_number FROM " + table_name + " ORDER BY id");
+        REQUIRE(res->RowCount() == 3);
+        REQUIRE(res->GetValue(0, 0) == 1);
+        REQUIRE(res->GetValue(1, 0) == "The Hitchhiker's Guide to the Galaxy");
+        REQUIRE(res->GetValue(2, 0) == 42);
+
+        REQUIRE(res->GetValue(0, 1) == 2);
+        REQUIRE(res->GetValue(1, 1) == "The Two Towers");   // updated value
+        REQUIRE(res->GetValue(2, 1) == 1);
+
+        // new row
+        REQUIRE(res->GetValue(0, 2) == 3);
+        REQUIRE(res->GetValue(1, 2) == "The Hobbit");
+        REQUIRE(res->GetValue(2, 2) == 14);
+    }
+
+    {
+        // delete
+        ::fivetran_sdk::WriteBatchRequest request;
+        (*request.mutable_configuration())["motherduck_token"] = token;
+        (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+        define_test_table(request, table_name);
+        const std::string filename = "books_delete.csv";
+        const std::string filepath = TEST_RESOURCES_DIR + filename;
+
+        request.add_delete_files(filepath);
+
+        ::fivetran_sdk::WriteBatchResponse response;
+        auto status = service.WriteBatch(nullptr, &request, &response);
+
+        INFO(status.error_message());
+        REQUIRE(status.ok());
+    }
+
+    {
+        // check after delete
+        std::unordered_map<std::string, std::string> props{
+                {"motherduck_token", token}};
+        duckdb::DBConfig config(props, false);
+        duckdb::DuckDB db("md:fivetran_test", &config);
+        duckdb::Connection con(db);
+
+        auto res = con.Query("SELECT id, title, magic_number FROM " + table_name + " ORDER BY id");
+        REQUIRE(res->RowCount() == 2);
+
+        // row 1 got deleted
+        REQUIRE(res->GetValue(0, 0) == 2);
+        REQUIRE(res->GetValue(1, 0) == "The Two Towers");
+        REQUIRE(res->GetValue(2, 0) == 1);
+
+        REQUIRE(res->GetValue(0, 1) == 3);
+        REQUIRE(res->GetValue(1, 1) == "The Hobbit");
+        REQUIRE(res->GetValue(2, 1) == 14);
+    }
+
+    // TBD: update does not work, and it's not clear how it can. Fivetran puts a string into integer fields to indicate that a field did not change
+    // This might have to be done one pre-processed line at a time, which... will not be fast :(
+
+  /*  {
+        // update
+        ::fivetran_sdk::WriteBatchRequest request;
+        (*request.mutable_configuration())["motherduck_token"] = token;
+        (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+        define_test_table(request, table_name);
+        const std::string filename = "books_update.csv";
+        const std::string filepath = TEST_RESOURCES_DIR + filename;
+
+        request.add_update_files(filepath);
+
+        ::fivetran_sdk::WriteBatchResponse response;
+        auto status = service.WriteBatch(nullptr, &request, &response);
+
+        INFO(status.error_message());
+        REQUIRE(status.ok());
+    }
+
+    {
+        // check after update
+        std::unordered_map<std::string, std::string> props{
+                {"motherduck_token", token}};
+        duckdb::DBConfig config(props, false);
+        duckdb::DuckDB db("md:fivetran_test", &config);
+        duckdb::Connection con(db);
+
+        auto res = con.Query("SELECT id, title, magic_number FROM " + table_name + " ORDER BY id");
+        REQUIRE(res->RowCount() == 2);
+
+        REQUIRE(res->GetValue(0, 0) == 2);
+        REQUIRE(res->GetValue(1, 0) == "The Two Towers");
+        REQUIRE(res->GetValue(2, 0) == 1);
+
+        REQUIRE(res->GetValue(0, 1) == 3);
+        REQUIRE(res->GetValue(1, 1) == "The Hobbit");
+        REQUIRE(res->GetValue(2, 1) == 15); // updated value
+    }
+    */
+
+   {
         // truncate table
         ::fivetran_sdk::TruncateRequest request;
         (*request.mutable_configuration())["motherduck_token"] = token;
