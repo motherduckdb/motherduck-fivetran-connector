@@ -370,11 +370,6 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     REQUIRE(res->GetValue(2, 1) == 14);
   }
 
-  // TBD: update does not work, and it's not clear how it can. Fivetran puts a
-  // string into integer fields to indicate that a field did not change This
-  // might have to be done one pre-processed line at a time, which... will not
-  // be fast :(
-
   {
     // update
     ::fivetran_sdk::WriteBatchRequest request;
