@@ -91,6 +91,7 @@ CLANG_FORMATTER=docker run --rm -v `pwd`:/mnt/code -w /mnt/code --platform=linux
 format_params:
 	$(CLANG_FORMATTER) $(FORMAT_OPTS) `find includes -name '*.hpp'`
 	$(CLANG_FORMATTER) $(FORMAT_OPTS) `find src -name '*.cpp'`
+	$(CLANG_FORMATTER) $(FORMAT_OPTS) `find test -name '*.cpp'`
 
 format:
 	FORMAT_OPTS='-i --verbose' make format_params
