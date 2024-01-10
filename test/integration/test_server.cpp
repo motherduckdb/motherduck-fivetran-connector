@@ -256,6 +256,8 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     REQUIRE(status.ok());
   }
 
+  // test connection needs to be created after table creation to avoid stale catalog
+  auto con = get_test_connection(token);
   {
     // insert rows from encrypted / compressed file
     ::fivetran_sdk::WriteBatchRequest request;
@@ -284,9 +286,10 @@ TEST_CASE("WriteBatch", "[integration][current]") {
 
   {
     // check inserted rows
-    auto con = get_test_connection(token);
     auto res = con->Query("SELECT id, title, magic_number FROM " + table_name +
                           " ORDER BY id");
+    INFO(res->GetError());
+    REQUIRE(!res->HasError());
     REQUIRE(res->RowCount() == 2);
     REQUIRE(res->GetValue(0, 0) == 1);
     REQUIRE(res->GetValue(1, 0) == "The Hitchhiker's Guide to the Galaxy");
@@ -317,9 +320,11 @@ TEST_CASE("WriteBatch", "[integration][current]") {
 
   {
     // check after upsert
-    auto con = get_test_connection(token);
     auto res = con->Query("SELECT id, title, magic_number FROM " + table_name +
                           " ORDER BY id");
+    INFO(res->GetError());
+    REQUIRE(!res->HasError());
+
     REQUIRE(res->RowCount() == 3);
     REQUIRE(res->GetValue(0, 0) == 1);
     REQUIRE(res->GetValue(1, 0) == "The Hitchhiker's Guide to the Galaxy");
@@ -355,9 +360,10 @@ TEST_CASE("WriteBatch", "[integration][current]") {
 
   {
     // check after delete
-    auto con = get_test_connection(token);
     auto res = con->Query("SELECT id, title, magic_number FROM " + table_name +
                           " ORDER BY id");
+    INFO(res->GetError());
+    REQUIRE(!res->HasError());
     REQUIRE(res->RowCount() == 2);
 
     // row 1 got deleted
@@ -391,9 +397,10 @@ TEST_CASE("WriteBatch", "[integration][current]") {
   }
 
   {
-    auto con = get_test_connection(token);
     auto res = con->Query("SELECT id, title, magic_number FROM " + table_name +
                           " ORDER BY id");
+    INFO(res->GetError());
+    REQUIRE(!res->HasError());
     REQUIRE(res->RowCount() == 2);
 
     REQUIRE(res->GetValue(0, 0) == 2);
@@ -420,9 +427,10 @@ TEST_CASE("WriteBatch", "[integration][current]") {
 
   {
     // check truncated table
-    auto con = get_test_connection(token);
     auto res = con->Query("SELECT id, title, magic_number FROM " + table_name +
                           " ORDER BY id");
+    INFO(res->GetError());
+    REQUIRE(!res->HasError());
     REQUIRE(res->RowCount() == 0);
   }
 }
