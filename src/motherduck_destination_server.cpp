@@ -180,12 +180,11 @@ std::vector<unsigned char> decrypt_file(const std::string &filename,
 }
 
 std::shared_ptr<arrow::Table>
-ReadEncryptedCsv(const std::string &filename,
-                 const std::string *decryption_key) {
+ReadEncryptedCsv(const std::string &filename, const std::string *decryption_key,
+                 arrow::csv::ConvertOptions &convert_options) {
 
   auto read_options = arrow::csv::ReadOptions::Defaults();
   auto parse_options = arrow::csv::ParseOptions::Defaults();
-  auto convert_options = arrow::csv::ConvertOptions::Defaults();
 
   std::vector<unsigned char> plaintext = decrypt_file(
       filename,
@@ -230,11 +229,12 @@ ReadEncryptedCsv(const std::string &filename,
   return table;
 }
 
-std::shared_ptr<arrow::Table> ReadUnencryptedCsv(const std::string &filename) {
+std::shared_ptr<arrow::Table>
+ReadUnencryptedCsv(const std::string &filename,
+                   arrow::csv::ConvertOptions &convert_options) {
 
   auto read_options = arrow::csv::ReadOptions::Defaults();
   auto parse_options = arrow::csv::ParseOptions::Defaults();
-  auto convert_options = arrow::csv::ConvertOptions::Defaults();
 
   auto maybe_file =
       arrow::io::ReadableFile::Open(filename, arrow::default_memory_pool());
@@ -293,10 +293,13 @@ std::vector<std::string> get_primary_keys(
 void process_file(
     Connection &con, const std::string &filename,
     const std::string *decryption_key,
+    arrow::csv::ConvertOptions &convert_options,
     const std::function<void(std::string view_name)> &process_view) {
-  auto table = decryption_key == nullptr
-                   ? ReadUnencryptedCsv(filename)
-                   : ReadEncryptedCsv(filename, decryption_key);
+
+  auto table =
+      decryption_key == nullptr
+          ? ReadUnencryptedCsv(filename, convert_options)
+          : ReadEncryptedCsv(filename, decryption_key, convert_options);
 
   auto batch_reader = std::make_shared<arrow::TableBatchReader>(*table);
   ArrowArrayStream arrow_array_stream;
@@ -471,7 +474,8 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
     for (auto &filename : request->replace_files()) {
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
-      process_file(*con, filename, decryption_key,
+      auto convert_options = arrow::csv::ConvertOptions::Defaults();
+      process_file(*con, filename, decryption_key, convert_options,
                    [&con, &db_name, &request, &primary_keys, &cols,
                     &schema_name](const std::string view_name) {
                      upsert(*con, db_name, schema_name, request->table().name(),
@@ -479,9 +483,18 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
                    });
     }
     for (auto &filename : request->update_files()) {
+      auto convert_options = arrow::csv::ConvertOptions::Defaults();
+      // read all update-file CSV columns as text to accommodate
+      // unmodified_string values
+      std::vector<std::shared_ptr<arrow::DataType>> column_types(cols.size(),
+                                                                 arrow::utf8());
+      for (auto &col : cols) {
+        convert_options.column_types.insert({col.name, arrow::utf8()});
+      }
+
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
-      process_file(*con, filename, decryption_key,
+      process_file(*con, filename, decryption_key, convert_options,
                    [&con, &db_name, &request, &primary_keys, &cols,
                     &schema_name](const std::string view_name) {
                      update_values(*con, db_name, schema_name,
@@ -491,9 +504,10 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
                    });
     }
     for (auto &filename : request->delete_files()) {
+      auto convert_options = arrow::csv::ConvertOptions::Defaults();
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
-      process_file(*con, filename, decryption_key,
+      process_file(*con, filename, decryption_key, convert_options,
                    [&con, &db_name, &request, &primary_keys,
                     &schema_name](const std::string view_name) {
                      delete_rows(*con, db_name, schema_name,

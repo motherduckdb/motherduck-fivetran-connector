@@ -285,24 +285,11 @@ void update_values(duckdb::Connection &con, const std::string &db_name,
                    const std::vector<std::string> &primary_keys,
                    const std::vector<column_def> &columns,
                    const std::string &unmodified_string) {
+
   std::ostringstream sql;
   auto absolute_table_name =
       compute_absolute_table_name(db_name, schema_name, table_name);
 
-  /* old version that ignored the text values. If that worked, there might be a way to make the real update work?
-   * Unless their test case had unmodified placeholders only in text fields
-  sql << "UPDATE "
-      << compute_absolute_table_name(db_name, schema_name, table_name)
-      << " SET ";
-
-  write_joined(
-      sql, columns,
-      [staging_table_name](const column_def &col, std::ostringstream &out) {
-        out << KeywordHelper::WriteQuoted(col.name, '"') << " = "
-            << staging_table_name << "."
-            << KeywordHelper::WriteQuoted(col.name, '"');
-      });
-      */
   sql << "UPDATE " << absolute_table_name << " SET ";
 
   write_joined(sql, columns,
@@ -327,6 +314,7 @@ void update_values(duckdb::Connection &con, const std::string &db_name,
                });
 
   auto query = sql.str();
+  mdlog::info("update: " + query);
   auto result = con.Query(query);
   if (result->HasError()) {
     throw std::runtime_error(result->GetError());

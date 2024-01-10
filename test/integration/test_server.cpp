@@ -371,11 +371,12 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     // TBD: update does not work, and it's not clear how it can. Fivetran puts a string into integer fields to indicate that a field did not change
     // This might have to be done one pre-processed line at a time, which... will not be fast :(
 
-  /*  {
+    {
         // update
         ::fivetran_sdk::WriteBatchRequest request;
         (*request.mutable_configuration())["motherduck_token"] = token;
         (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+        request.mutable_csv()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
         define_test_table(request, table_name);
         const std::string filename = "books_update.csv";
         const std::string filepath = TEST_RESOURCES_DIR + filename;
@@ -401,14 +402,14 @@ TEST_CASE("WriteBatch", "[integration][current]") {
         REQUIRE(res->RowCount() == 2);
 
         REQUIRE(res->GetValue(0, 0) == 2);
-        REQUIRE(res->GetValue(1, 0) == "The Two Towers");
+        REQUIRE(res->GetValue(1, 0) == "The empire strikes back");
         REQUIRE(res->GetValue(2, 0) == 1);
 
         REQUIRE(res->GetValue(0, 1) == 3);
         REQUIRE(res->GetValue(1, 1) == "The Hobbit");
         REQUIRE(res->GetValue(2, 1) == 15); // updated value
     }
-    */
+
 
    {
         // truncate table
