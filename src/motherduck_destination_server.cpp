@@ -140,7 +140,7 @@ std::unique_ptr<Connection> get_connection(
   std::string token = find_property(request_config, "motherduck_token");
 
   std::unordered_map<std::string, std::string> props{
-      {"motherduck_token", token}};
+      {"motherduck_token", token}, {"custom_user_agent", "fivetran"}};
   DBConfig config(props, false);
   DuckDB db("md:" + db_name, &config);
   return std::make_unique<Connection>(db);

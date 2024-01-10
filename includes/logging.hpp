@@ -3,7 +3,7 @@
 
 namespace mdlog {
 
-std::string escape_char(const std::string& str, const char& c) {
+std::string escape_char(const std::string &str, const char &c) {
   std::string result = str;
   int start_pos = 0;
   std::string escaped = std::string("\\") + c;

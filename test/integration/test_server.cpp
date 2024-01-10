@@ -220,13 +220,23 @@ void define_test_table(T& request, const std::string& table_name) {
     col3->set_type(::fivetran_sdk::DataType::INT);
 }
 
-TEST_CASE("WriteBatch", "[integration][current]") {
-    DestinationSdkImpl service;
+std::unique_ptr<duckdb::Connection> get_test_connection(char* token) {
+  std::unordered_map<std::string, std::string> props{
+      {"motherduck_token", token},
+      {"custom_user_agent", "fivetran-integration-test"}};
+  duckdb::DBConfig config(props, false);
+  duckdb::DuckDB db("md:fivetran_test", &config);
+  return std::make_unique<duckdb::Connection>(db);
+}
 
-    // Schema will be main
-    const std::string table_name = "books" + std::to_string(Catch::rngSeed());
-    auto token = std::getenv("motherduck_token");
-    REQUIRE(token);
+TEST_CASE("WriteBatch", "[integration][current]") {
+  DestinationSdkImpl service;
+
+  // Schema will be main
+  const std::string table_name = "books" + std::to_string(Catch::rngSeed());
+
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
 
     {
         // Create Table
@@ -270,13 +280,8 @@ TEST_CASE("WriteBatch", "[integration][current]") {
 
     {
         // check inserted rows
-        std::unordered_map<std::string, std::string> props{
-                {"motherduck_token", token}};
-        duckdb::DBConfig config(props, false);
-        duckdb::DuckDB db("md:fivetran_test", &config);
-        duckdb::Connection con(db);
-
-        auto res = con.Query("SELECT id, title, magic_number FROM " + table_name + " ORDER BY id");
+      auto con = get_test_connection(token);
+        auto res = con->Query("SELECT id, title, magic_number FROM " + table_name + " ORDER BY id");
         REQUIRE(res->RowCount() == 2);
         REQUIRE(res->GetValue(0, 0) == 1);
         REQUIRE(res->GetValue(1, 0) == "The Hitchhiker's Guide to the Galaxy");
@@ -307,13 +312,8 @@ TEST_CASE("WriteBatch", "[integration][current]") {
 
     {
         // check after upsert
-        std::unordered_map<std::string, std::string> props{
-                {"motherduck_token", token}};
-        duckdb::DBConfig config(props, false);
-        duckdb::DuckDB db("md:fivetran_test", &config);
-        duckdb::Connection con(db);
-
-        auto res = con.Query("SELECT id, title, magic_number FROM " + table_name + " ORDER BY id");
+      auto con = get_test_connection(token);
+        auto res = con->Query("SELECT id, title, magic_number FROM " + table_name + " ORDER BY id");
         REQUIRE(res->RowCount() == 3);
         REQUIRE(res->GetValue(0, 0) == 1);
         REQUIRE(res->GetValue(1, 0) == "The Hitchhiker's Guide to the Galaxy");
@@ -349,13 +349,8 @@ TEST_CASE("WriteBatch", "[integration][current]") {
 
     {
         // check after delete
-        std::unordered_map<std::string, std::string> props{
-                {"motherduck_token", token}};
-        duckdb::DBConfig config(props, false);
-        duckdb::DuckDB db("md:fivetran_test", &config);
-        duckdb::Connection con(db);
-
-        auto res = con.Query("SELECT id, title, magic_number FROM " + table_name + " ORDER BY id");
+      auto con = get_test_connection(token);
+        auto res = con->Query("SELECT id, title, magic_number FROM " + table_name + " ORDER BY id");
         REQUIRE(res->RowCount() == 2);
 
         // row 1 got deleted
@@ -391,14 +386,8 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     }
 
     {
-        // check after update
-        std::unordered_map<std::string, std::string> props{
-                {"motherduck_token", token}};
-        duckdb::DBConfig config(props, false);
-        duckdb::DuckDB db("md:fivetran_test", &config);
-        duckdb::Connection con(db);
-
-        auto res = con.Query("SELECT id, title, magic_number FROM " + table_name + " ORDER BY id");
+      auto con = get_test_connection(token);
+        auto res = con->Query("SELECT id, title, magic_number FROM " + table_name + " ORDER BY id");
         REQUIRE(res->RowCount() == 2);
 
         REQUIRE(res->GetValue(0, 0) == 2);
@@ -426,12 +415,8 @@ TEST_CASE("WriteBatch", "[integration][current]") {
 
     {
         // check truncated table
-        std::unordered_map<std::string, std::string> props{
-                {"motherduck_token", token}};
-        duckdb::DBConfig config(props, false);
-        duckdb::DuckDB db("md:fivetran_test", &config);
-        duckdb::Connection con(db);
-        auto res = con.Query("SELECT id, title, magic_number FROM " + table_name + " ORDER BY id");
+      auto con = get_test_connection(token);
+        auto res = con->Query("SELECT id, title, magic_number FROM " + table_name + " ORDER BY id");
         REQUIRE(res->RowCount() == 0);
     }
 
