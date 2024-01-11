@@ -16,32 +16,16 @@ std::string compute_absolute_table_name(const table_def &table) {
 }
 
 void write_joined(
-    std::ostringstream &sql, const std::vector<column_def> &columns,
-    std::function<void(const column_def &, std::ostringstream &)> print_col) {
-  bool first = true;
-  for (const auto &col : columns) {
-    if (!col.primary_key) {
-      if (first) {
-        first = false;
-      } else {
-        sql << ", ";
-      }
-      print_col(col, sql);
-    }
-  }
-}
-
-void write_joined(
-    std::ostringstream &sql, const std::vector<std::string> &strings,
+    std::ostringstream &sql, const std::vector<const column_def *> columns,
     std::function<void(const std::string &, std::ostringstream &)> print_str) {
   bool first = true;
-  for (const auto &str : strings) {
+  for (const auto &col : columns) {
     if (first) {
       first = false;
     } else {
       sql << ", ";
     }
-    print_str(str, sql);
+    print_str(col->name, sql);
   }
 }
 
@@ -230,24 +214,24 @@ void alter_table(duckdb::Connection &con, const table_def &table,
 
 void upsert(duckdb::Connection &con, const table_def &table,
             const std::string &staging_table_name,
-            const std::vector<std::string> &primary_keys,
-            const std::vector<column_def> &columns) {
+            std::vector<const column_def *> columns_pk,
+            std::vector<const column_def *> columns_regular) {
   std::ostringstream sql;
   sql << "INSERT INTO " << compute_absolute_table_name(table)
       << " SELECT * EXCLUDE (_fivetran_deleted, _fivetran_synced) FROM "
       << staging_table_name;
-  if (!primary_keys.empty()) {
+  if (!columns_pk.empty()) {
     sql << " ON CONFLICT (";
     write_joined(
-        sql, primary_keys,
-        [](const std::string &str, std::ostringstream &out) { out << str; });
+        sql, columns_pk,
+        [](const std::string &name, std::ostringstream &out) { out << name; });
     sql << " ) DO UPDATE SET ";
 
-    write_joined(
-        sql, columns, [](const column_def &col, std::ostringstream &out) {
-          out << KeywordHelper::WriteQuoted(col.name, '"') << " = "
-              << "excluded." << KeywordHelper::WriteQuoted(col.name, '"');
-        });
+    write_joined(sql, columns_regular,
+                 [](const std::string &name, std::ostringstream &out) {
+                   out << KeywordHelper::WriteQuoted(name, '"') << " = "
+                       << "excluded." << KeywordHelper::WriteQuoted(name, '"');
+                 });
   }
 
   auto query = sql.str();
@@ -260,8 +244,8 @@ void upsert(duckdb::Connection &con, const table_def &table,
 
 void update_values(duckdb::Connection &con, const table_def &table,
                    const std::string &staging_table_name,
-                   const std::vector<std::string> &primary_keys,
-                   const std::vector<column_def> &columns,
+                   std::vector<const column_def *> columns_pk,
+                   std::vector<const column_def *> columns_regular,
                    const std::string &unmodified_string) {
 
   std::ostringstream sql;
@@ -269,10 +253,10 @@ void update_values(duckdb::Connection &con, const table_def &table,
 
   sql << "UPDATE " << absolute_table_name << " SET ";
 
-  write_joined(sql, columns,
+  write_joined(sql, columns_regular,
                [staging_table_name, absolute_table_name, unmodified_string](
-                   const column_def &col, std::ostringstream &out) {
-                 auto colname = KeywordHelper::WriteQuoted(col.name, '"');
+                   const std::string name, std::ostringstream &out) {
+                 auto colname = KeywordHelper::WriteQuoted(name, '"');
                  out << colname << " = CASE WHEN " << staging_table_name << "."
                      << colname << " = "
                      << KeywordHelper::WriteQuoted(unmodified_string, '\'')
@@ -283,7 +267,7 @@ void update_values(duckdb::Connection &con, const table_def &table,
 
   sql << " FROM " << staging_table_name << " WHERE ";
   write_joined(
-      sql, primary_keys, [&](const std::string &pk, std::ostringstream &out) {
+      sql, columns_pk, [&](const std::string &pk, std::ostringstream &out) {
         out << table.table_name << "." << KeywordHelper::WriteQuoted(pk, '"')
             << " = " << staging_table_name << "."
             << KeywordHelper::WriteQuoted(pk, '"');
@@ -299,13 +283,13 @@ void update_values(duckdb::Connection &con, const table_def &table,
 
 void delete_rows(duckdb::Connection &con, const table_def &table,
                  const std::string &staging_table_name,
-                 const std::vector<std::string> &primary_keys) {
+                 std::vector<const column_def *> columns_pk) {
   std::ostringstream sql;
   sql << "DELETE FROM " + compute_absolute_table_name(table) << " USING "
       << staging_table_name << " WHERE ";
 
   write_joined(
-      sql, primary_keys, [&](const std::string &pk, std::ostringstream &out) {
+      sql, columns_pk, [&](const std::string &pk, std::ostringstream &out) {
         out << table.table_name << "." << KeywordHelper::WriteQuoted(pk, '"')
             << " = " << staging_table_name << "."
             << KeywordHelper::WriteQuoted(pk, '"');

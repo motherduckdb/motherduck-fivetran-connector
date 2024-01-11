@@ -5,12 +5,11 @@
 #include <arrow/c/bridge.h>
 #include <grpcpp/grpcpp.h>
 
+#include <csv_arrow_ingest.hpp>
 #include <destination_sdk.grpc.pb.h>
+#include <fivetran_duckdb_interop.hpp>
 #include <motherduck_destination_server.hpp>
 #include <sql_generator.hpp>
-
-#include <csv_arrow_ingest.hpp>
-#include <fivetran_duckdb_interop.hpp>
 
 std::string
 find_property(const google::protobuf::Map<std::string, std::string> &config,
@@ -77,17 +76,6 @@ get_encryption_key(const std::string &filename,
   }
 
   return &encryption_key_it->second;
-}
-
-std::vector<std::string> get_primary_keys(
-    const google::protobuf::RepeatedPtrField<fivetran_sdk::Column> &columns) {
-  std::vector<std::string> primary_keys;
-  for (auto &col : columns) {
-    if (col.primary_key()) {
-      primary_keys.push_back(col.name());
-    }
-  }
-  return primary_keys;
 }
 
 void process_file(
@@ -271,15 +259,24 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
     con->Query("ATTACH ':memory:' as localmem");
     con->Query("USE localmem");
 
-    const auto primary_keys = get_primary_keys(request->table().columns());
     const auto cols = get_duckdb_columns(request->table().columns());
+    std::vector<const column_def *> columns_pk;
+    std::vector<const column_def *> columns_regular;
+    for (auto &col : cols) {
+      if (col.primary_key) {
+        columns_pk.push_back(&col);
+      } else {
+        columns_regular.push_back(&col);
+      }
+    }
 
     for (auto &filename : request->replace_files()) {
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
       process_file(*con, filename, decryption_key, nullptr,
                    [&](const std::string view_name) {
-                     upsert(*con, table_name, view_name, primary_keys, cols);
+                     upsert(*con, table_name, view_name, columns_pk,
+                            columns_regular);
                    });
     }
     for (auto &filename : request->update_files()) {
@@ -294,8 +291,9 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
 
       process_file(*con, filename, decryption_key, &column_names,
                    [&](const std::string view_name) {
-                     update_values(*con, table_name, view_name, primary_keys,
-                                   cols, request->csv().unmodified_string());
+                     update_values(*con, table_name, view_name, columns_pk,
+                                   columns_regular,
+                                   request->csv().unmodified_string());
                    });
     }
     for (auto &filename : request->delete_files()) {
@@ -303,7 +301,7 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
                                                request->csv().encryption());
       process_file(*con, filename, decryption_key, nullptr,
                    [&](const std::string view_name) {
-                     delete_rows(*con, table_name, view_name, primary_keys);
+                     delete_rows(*con, table_name, view_name, columns_pk);
                    });
     }
 
