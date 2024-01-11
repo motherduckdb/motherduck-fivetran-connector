@@ -4,13 +4,7 @@
 
 #include "../includes/sql_generator.hpp"
 
-using duckdb::Connection;
-using duckdb::DBConfig;
-using duckdb::DuckDB;
 using duckdb::KeywordHelper;
-using duckdb::MaterializedQueryResult;
-using duckdb::PreparedStatement;
-using duckdb::QueryResult;
 
 // Utility
 std::string compute_absolute_table_name(const std::string &db_name,
@@ -54,7 +48,7 @@ void write_joined(
 }
 
 // DuckDB querying
-bool schema_exists(Connection &con, const std::string &db_name,
+bool schema_exists(duckdb::Connection &con, const std::string &db_name,
                    const std::string &schema_name) {
   std::ostringstream out;
   out << "SELECT schema_name FROM information_schema.schemata WHERE "
@@ -64,7 +58,7 @@ bool schema_exists(Connection &con, const std::string &db_name,
 
   auto query = out.str();
   mdlog::info("schema_exists: " + query);
-  std::unique_ptr<MaterializedQueryResult> result = con.Query(query);
+  auto result = con.Query(query);
 
   if (result->HasError()) {
     throw std::runtime_error("Could not find whether schema exists: " +
@@ -84,7 +78,7 @@ bool table_exists(duckdb::Connection &con, const std::string &db_name,
 
   auto query = out.str();
   mdlog::info("table_exists: " + query);
-  std::unique_ptr<MaterializedQueryResult> result = con.Query(query);
+  auto result = con.Query(query);
 
   if (result->HasError()) {
     throw std::runtime_error("Could not find whether table exists: " +
@@ -94,7 +88,7 @@ bool table_exists(duckdb::Connection &con, const std::string &db_name,
   return result->RowCount() > 0;
 }
 
-void create_schema(Connection &con, const std::string &db_name,
+void create_schema(duckdb::Connection &con, const std::string &db_name,
                    const std::string &schema_name) {
   auto query = "CREATE schema " + KeywordHelper::WriteQuoted(schema_name, '\'');
   mdlog::info("create_schema: " + query);
