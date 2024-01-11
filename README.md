@@ -29,6 +29,18 @@ OR
 
 By default, the server runs on 0.0.0.0:50052.
 
+## Local testing
+
+One-time setup:
+```shell
+make build_test_dependencies
+```
+
+To run integration tests (which will create a database named `fivetran_test` in your production MotherDuck account):
+```shell
+make build_connector_debug
+./build/Debug/integration_tests
+```
 
 ## Upgrading DuckDB
 
