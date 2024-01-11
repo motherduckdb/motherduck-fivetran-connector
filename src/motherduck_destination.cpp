@@ -1,7 +1,5 @@
 #include "motherduck_destination_server.hpp"
 #include <grpcpp/grpcpp.h>
-#include <iostream>
-#include <memory>
 #include <string>
 
 void RunServer(std::string port) {

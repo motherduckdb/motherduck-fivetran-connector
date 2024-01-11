@@ -46,6 +46,9 @@ set(DuckDB_SOURCE_DIR ./libduckdb-src)
 add_library(motherduck_destination_sources STATIC
         "src/motherduck_destination_server.cpp"
         "src/sql_generator.cpp"
+        "src/decryption.cpp"
+        "src/csv_arrow_ingest.cpp"
+        "src/fivetran_duckdb_interop.cpp"
         ${TARGET_ROOT}/cpp/destination_sdk.pb.cc
         ${TARGET_ROOT}/cpp/destination_sdk.grpc.pb.cc
         ${TARGET_ROOT}/cpp/common.pb.cc

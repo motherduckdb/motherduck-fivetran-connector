@@ -2,18 +2,15 @@
 #include <memory>
 #include <string>
 
-#include <arrow/buffer.h>
 #include <arrow/c/bridge.h>
-#include <arrow/csv/api.h>
-#include <arrow/io/api.h>
-#include <arrow/util/compression.h>
-#include <fstream>
 #include <grpcpp/grpcpp.h>
-#include <openssl/evp.h>
 
-#include "../includes/sql_generator.hpp"
-#include "destination_sdk.grpc.pb.h"
-#include "motherduck_destination_server.hpp"
+#include <sql_generator.hpp>
+#include <destination_sdk.grpc.pb.h>
+#include <motherduck_destination_server.hpp>
+
+#include <fivetran_duckdb_interop.hpp>
+#include <csv_arrow_ingest.hpp>
 
 using duckdb::Connection;
 using duckdb::DBConfig;
@@ -55,71 +52,6 @@ template <typename T> std::string get_table_name(const T *request) {
   return table_name;
 }
 
-fivetran_sdk::DataType get_fivetran_type(const LogicalTypeId &duckdb_type) {
-  switch (duckdb_type) {
-  case LogicalTypeId::BOOLEAN:
-    return fivetran_sdk::BOOLEAN;
-  case LogicalTypeId::SMALLINT:
-    return fivetran_sdk::SHORT;
-  case LogicalTypeId::INTEGER:
-    return fivetran_sdk::INT;
-  case LogicalTypeId::BIGINT:
-    return fivetran_sdk::LONG;
-  case LogicalTypeId::FLOAT:
-    return fivetran_sdk::FLOAT;
-  case LogicalTypeId::DOUBLE:
-    return fivetran_sdk::DOUBLE;
-  case LogicalTypeId::DATE:
-    return fivetran_sdk::NAIVE_DATE;
-  case LogicalTypeId::TIMESTAMP:
-    return fivetran_sdk::UTC_DATETIME; // TBD: this is pretty definitely
-                                       // wrong, and should naive time be
-                                       // returned for any reason?
-  case LogicalTypeId::DECIMAL:
-    return fivetran_sdk::DECIMAL;
-  case LogicalTypeId::BIT:
-    return fivetran_sdk::BINARY; // TBD: double check if correct
-  case LogicalTypeId::VARCHAR:
-    return fivetran_sdk::STRING;
-  case LogicalTypeId::STRUCT:
-    return fivetran_sdk::JSON;
-  default:
-    return fivetran_sdk::UNSPECIFIED;
-  }
-}
-
-LogicalTypeId get_duckdb_type(const fivetran_sdk::DataType &fivetranType) {
-  switch (fivetranType) {
-  case fivetran_sdk::BOOLEAN:
-    return LogicalTypeId::BOOLEAN;
-  case fivetran_sdk::SHORT:
-    return LogicalTypeId::SMALLINT;
-  case fivetran_sdk::INT:
-    return LogicalTypeId::INTEGER;
-  case fivetran_sdk::LONG:
-    return LogicalTypeId::BIGINT;
-  case fivetran_sdk::FLOAT:
-    return LogicalTypeId::FLOAT;
-  case fivetran_sdk::DOUBLE:
-    return LogicalTypeId::DOUBLE;
-  case fivetran_sdk::NAIVE_DATE:
-    return LogicalTypeId::DATE;
-  case fivetran_sdk::NAIVE_DATETIME: // TBD: what kind is this?
-    return LogicalTypeId::TIMESTAMP; // TBD: this is pretty definitely wrong
-  case fivetran_sdk::UTC_DATETIME:
-    return LogicalTypeId::TIMESTAMP; // TBD: this is pretty definitely wrong
-  case fivetran_sdk::DECIMAL:
-    return LogicalTypeId::DECIMAL;
-  case fivetran_sdk::BINARY:
-    return LogicalTypeId::BIT; // TBD: double check if correct
-  case fivetran_sdk::STRING:
-    return LogicalTypeId::VARCHAR;
-  case fivetran_sdk::JSON:
-    return LogicalTypeId::STRUCT;
-  default:
-    return LogicalTypeId::INVALID;
-  }
-}
 
 std::vector<column_def> get_duckdb_columns(
     const google::protobuf::RepeatedPtrField<fivetran_sdk::Column>
@@ -146,122 +78,6 @@ std::unique_ptr<Connection> get_connection(
   return std::make_unique<Connection>(db);
 }
 
-std::vector<unsigned char> decrypt_file(const std::string &filename,
-                                        const unsigned char *decryption_key) {
-
-  std::ifstream file(filename, std::ios::binary);
-  std::vector<unsigned char> iv(16);
-  file.read(reinterpret_cast<char *>(iv.data()), iv.size());
-
-  std::vector<unsigned char> encrypted_data(
-      std::istreambuf_iterator<char>{file}, {});
-
-  EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-  if (!ctx) {
-    throw std::runtime_error("Could not initialize decryption context");
-  }
-  if (1 != EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, decryption_key,
-                              iv.data()))
-    throw std::runtime_error("Could not decrypt file " + filename);
-  int len;
-  std::vector<unsigned char> plaintext(encrypted_data.size());
-  if (1 != EVP_DecryptUpdate(ctx, plaintext.data(), &len, encrypted_data.data(),
-                             encrypted_data.size()))
-    throw std::runtime_error("Could not decrypt UPDATE file " + filename);
-  int plaintext_len = len;
-  if (1 != EVP_DecryptFinal_ex(ctx, plaintext.data() + len, &len))
-    throw std::runtime_error("Could not decrypt FINAL file " + filename);
-  plaintext_len += len;
-  EVP_CIPHER_CTX_free(ctx);
-
-  plaintext.resize(plaintext_len);
-
-  return plaintext;
-}
-
-std::shared_ptr<arrow::Table>
-ReadEncryptedCsv(const std::string &filename, const std::string *decryption_key,
-                 arrow::csv::ConvertOptions &convert_options) {
-
-  auto read_options = arrow::csv::ReadOptions::Defaults();
-  auto parse_options = arrow::csv::ParseOptions::Defaults();
-
-  std::vector<unsigned char> plaintext = decrypt_file(
-      filename,
-      reinterpret_cast<const unsigned char *>(decryption_key->c_str()));
-  auto buffer = std::make_shared<arrow::Buffer>(
-      reinterpret_cast<const uint8_t *>(plaintext.data()), plaintext.size());
-  auto buffer_reader = std::make_shared<arrow::io::BufferReader>(buffer);
-
-  arrow::Compression::type compression_type = arrow::Compression::ZSTD;
-  auto maybe_codec = arrow::util::Codec::Create(compression_type);
-  if (!maybe_codec.ok()) {
-    throw std::runtime_error(
-        "Could not create codec from ZSTD compression type: " +
-        maybe_codec.status().message());
-  }
-  auto codec = std::move(maybe_codec.ValueOrDie());
-  auto maybe_compressed_input_stream =
-      arrow::io::CompressedInputStream::Make(codec.get(), buffer_reader);
-  if (!maybe_compressed_input_stream.ok()) {
-    throw std::runtime_error("Could not input stream from compressed buffer: " +
-                             maybe_compressed_input_stream.status().message());
-  }
-  auto compressed_input_stream =
-      std::move(maybe_compressed_input_stream.ValueOrDie());
-  auto maybe_table_reader = arrow::csv::TableReader::Make(
-      arrow::io::default_io_context(), std::move(compressed_input_stream),
-      read_options, parse_options, convert_options);
-  if (!maybe_table_reader.ok()) {
-    throw std::runtime_error(
-        "Could not create table reader from decrypted file: " +
-        maybe_table_reader.status().message());
-  }
-  auto table_reader = std::move(maybe_table_reader.ValueOrDie());
-
-  auto maybe_table = table_reader->Read();
-  if (!maybe_table.ok()) {
-    throw std::runtime_error("Could not read CSV <" + filename +
-                             ">: " + maybe_table.status().message());
-  }
-  auto table = std::move(maybe_table.ValueOrDie());
-
-  return table;
-}
-
-std::shared_ptr<arrow::Table>
-ReadUnencryptedCsv(const std::string &filename,
-                   arrow::csv::ConvertOptions &convert_options) {
-
-  auto read_options = arrow::csv::ReadOptions::Defaults();
-  auto parse_options = arrow::csv::ParseOptions::Defaults();
-
-  auto maybe_file =
-      arrow::io::ReadableFile::Open(filename, arrow::default_memory_pool());
-  if (!maybe_file.ok()) {
-    throw std::runtime_error("Could not open uncompressed file <" + filename +
-                             ">: " + maybe_file.status().message());
-  }
-  auto plaintext_input_stream = std::move(maybe_file.ValueOrDie());
-  auto maybe_table_reader = arrow::csv::TableReader::Make(
-      arrow::io::default_io_context(), std::move(plaintext_input_stream),
-      read_options, parse_options, convert_options);
-  if (!maybe_table_reader.ok()) {
-    throw std::runtime_error(
-        "Could not create table reader from plaintext file: " +
-        maybe_table_reader.status().message());
-  }
-  auto table_reader = std::move(maybe_table_reader.ValueOrDie());
-
-  auto maybe_table = table_reader->Read();
-  if (!maybe_table.ok()) {
-    throw std::runtime_error("Could not read CSV <" + filename +
-                             ">: " + maybe_table.status().message());
-  }
-  auto table = std::move(maybe_table.ValueOrDie());
-
-  return table;
-}
 
 const std::string *
 get_encryption_key(const std::string &filename,
@@ -293,13 +109,13 @@ std::vector<std::string> get_primary_keys(
 void process_file(
     Connection &con, const std::string &filename,
     const std::string *decryption_key,
-    arrow::csv::ConvertOptions &convert_options,
+    std::vector<std::string>* utf8_columns,
     const std::function<void(std::string view_name)> &process_view) {
 
   auto table =
       decryption_key == nullptr
-          ? ReadUnencryptedCsv(filename, convert_options)
-          : ReadEncryptedCsv(filename, decryption_key, convert_options);
+          ? ReadUnencryptedCsv(filename, utf8_columns)
+          : ReadEncryptedCsv(filename, decryption_key, utf8_columns);
 
   auto batch_reader = std::make_shared<arrow::TableBatchReader>(*table);
   ArrowArrayStream arrow_array_stream;
@@ -470,12 +286,13 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
 
     const auto primary_keys = get_primary_keys(request->table().columns());
     const auto cols = get_duckdb_columns(request->table().columns());
+    std::vector<std::string> column_names(cols.size());
+    std::transform(cols.begin(), cols.end(), column_names.begin(), [](const column_def& col) { return col.name; });
 
     for (auto &filename : request->replace_files()) {
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
-      auto convert_options = arrow::csv::ConvertOptions::Defaults();
-      process_file(*con, filename, decryption_key, convert_options,
+      process_file(*con, filename, decryption_key, nullptr,
                    [&con, &db_name, &request, &primary_keys, &cols,
                     &schema_name](const std::string view_name) {
                      upsert(*con, db_name, schema_name, request->table().name(),
@@ -483,18 +300,10 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
                    });
     }
     for (auto &filename : request->update_files()) {
-      auto convert_options = arrow::csv::ConvertOptions::Defaults();
-      // read all update-file CSV columns as text to accommodate
-      // unmodified_string values
-      std::vector<std::shared_ptr<arrow::DataType>> column_types(cols.size(),
-                                                                 arrow::utf8());
-      for (auto &col : cols) {
-        convert_options.column_types.insert({col.name, arrow::utf8()});
-      }
 
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
-      process_file(*con, filename, decryption_key, convert_options,
+      process_file(*con, filename, decryption_key, &column_names,
                    [&con, &db_name, &request, &primary_keys, &cols,
                     &schema_name](const std::string view_name) {
                      update_values(*con, db_name, schema_name,
@@ -504,10 +313,9 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
                    });
     }
     for (auto &filename : request->delete_files()) {
-      auto convert_options = arrow::csv::ConvertOptions::Defaults();
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
-      process_file(*con, filename, decryption_key, convert_options,
+      process_file(*con, filename, decryption_key, nullptr,
                    [&con, &db_name, &request, &primary_keys,
                     &schema_name](const std::string view_name) {
                      delete_rows(*con, db_name, schema_name,
