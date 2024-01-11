@@ -33,19 +33,19 @@ void alter_table(duckdb::Connection &con, const table_def &table,
 
 void upsert(duckdb::Connection &con, const table_def &table,
             const std::string &staging_table_name,
-            std::vector<const column_def *> columns_pk,
-            std::vector<const column_def *> columns_regular);
+            std::vector<const column_def *> &columns_pk,
+            std::vector<const column_def *> &columns_regular);
 
 void update_values(duckdb::Connection &con, const table_def &table,
                    const std::string &staging_table_name,
-                   std::vector<const column_def *> columns_pk,
-                   std::vector<const column_def *> columns_regular,
+                   std::vector<const column_def *> &columns_pk,
+                   std::vector<const column_def *> &columns_regular,
                    const std::string &unmodified_string);
 
 void truncate_table(duckdb::Connection &con, const table_def &table);
 
 void delete_rows(duckdb::Connection &con, const table_def &table,
                  const std::string &staging_table_name,
-                 std::vector<const column_def *> columns_pk);
+                 std::vector<const column_def *> &columns_pk);
 
 void check_connection(duckdb::Connection &con);

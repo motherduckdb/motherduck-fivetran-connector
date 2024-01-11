@@ -225,8 +225,8 @@ void alter_table(duckdb::Connection &con, const table_def &table,
 
 void upsert(duckdb::Connection &con, const table_def &table,
             const std::string &staging_table_name,
-            std::vector<const column_def *> columns_pk,
-            std::vector<const column_def *> columns_regular) {
+            std::vector<const column_def *> &columns_pk,
+            std::vector<const column_def *> &columns_regular) {
   const std::string absolute_table_name = compute_absolute_table_name(table);
   std::ostringstream sql;
   sql << "INSERT INTO " << absolute_table_name
@@ -257,8 +257,8 @@ void upsert(duckdb::Connection &con, const table_def &table,
 
 void update_values(duckdb::Connection &con, const table_def &table,
                    const std::string &staging_table_name,
-                   std::vector<const column_def *> columns_pk,
-                   std::vector<const column_def *> columns_regular,
+                   std::vector<const column_def *> &columns_pk,
+                   std::vector<const column_def *> &columns_regular,
                    const std::string &unmodified_string) {
 
   std::ostringstream sql;
@@ -297,7 +297,7 @@ void update_values(duckdb::Connection &con, const table_def &table,
 
 void delete_rows(duckdb::Connection &con, const table_def &table,
                  const std::string &staging_table_name,
-                 std::vector<const column_def *> columns_pk) {
+                 std::vector<const column_def *> &columns_pk) {
 
   const std::string absolute_table_name = compute_absolute_table_name(table);
   std::ostringstream sql;
