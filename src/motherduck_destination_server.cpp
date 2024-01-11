@@ -256,7 +256,7 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
   try {
     auto schema_name = get_schema_name(request);
 
-    std::string db_name =
+    const std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
@@ -276,8 +276,7 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
       process_file(*con, filename, decryption_key, nullptr,
-                   [&con, &db_name, &request, &primary_keys, &cols,
-                    &schema_name](const std::string view_name) {
+                   [&](const std::string view_name) {
                      upsert(*con, db_name, schema_name, request->table().name(),
                             view_name, primary_keys, cols);
                    });
@@ -287,8 +286,7 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
       process_file(*con, filename, decryption_key, &column_names,
-                   [&con, &db_name, &request, &primary_keys, &cols,
-                    &schema_name](const std::string view_name) {
+                   [&](const std::string view_name) {
                      update_values(*con, db_name, schema_name,
                                    request->table().name(), view_name,
                                    primary_keys, cols,
@@ -299,8 +297,7 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
       process_file(*con, filename, decryption_key, nullptr,
-                   [&con, &db_name, &request, &primary_keys,
-                    &schema_name](const std::string view_name) {
+                   [&](const std::string view_name) {
                      delete_rows(*con, db_name, schema_name,
                                  request->table().name(), view_name,
                                  primary_keys);
