@@ -43,8 +43,9 @@ bool schema_exists(duckdb::Connection &con, const std::string &db_name,
   auto result = con.Query(query);
 
   if (result->HasError()) {
-    throw std::runtime_error("Could not find whether schema exists: " +
-                             result->GetError());
+    throw std::runtime_error("Could not find whether schema <" + schema_name +
+                             "> exists in database <" + db_name +
+                             ">: " + result->GetError());
   }
   return result->RowCount() > 0;
 }
@@ -62,8 +63,9 @@ bool table_exists(duckdb::Connection &con, const table_def &table) {
   auto result = con.Query(query);
 
   if (result->HasError()) {
-    throw std::runtime_error("Could not find whether table exists: " +
-                             result->GetError());
+    throw std::runtime_error("Could not find whether table <" +
+                             compute_absolute_table_name(table) +
+                             "> exists: " + result->GetError());
   }
 
   return result->RowCount() > 0;
@@ -78,9 +80,9 @@ void create_schema(duckdb::Connection &con, const std::string &db_name,
 
 void create_table(duckdb::Connection &con, const table_def &table,
                   const std::vector<column_def> &columns) {
+  const std::string absolute_table_name = compute_absolute_table_name(table);
   std::ostringstream ddl;
-  ddl << "CREATE OR REPLACE TABLE " << compute_absolute_table_name(table)
-      << " (";
+  ddl << "CREATE OR REPLACE TABLE " << absolute_table_name << " (";
 
   for (const auto &col : columns) {
     ddl << KeywordHelper::WriteQuoted(col.name, '"') << " "
@@ -98,7 +100,8 @@ void create_table(duckdb::Connection &con, const table_def &table,
 
   auto result = con.Query(query);
   if (result->HasError()) {
-    throw std::runtime_error(result->GetError());
+    throw std::runtime_error("Could not create table <" + absolute_table_name +
+                             ">" + result->GetError());
   }
 }
 
@@ -121,7 +124,9 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
   mdlog::info("describe_table: " + query);
   auto result = con.Query(query);
   if (result->HasError()) {
-    throw std::runtime_error(result->GetError());
+    throw std::runtime_error("Could not describe table <" +
+                             compute_absolute_table_name(table) +
+                             ">:" + result->GetError());
   }
 
   for (const auto &row : result->Collection().GetRows()) {
@@ -175,10 +180,11 @@ void alter_table(duckdb::Connection &con, const table_def &table,
     }
     auto query = out.str();
     mdlog::info("alter_table: " + query);
-
     auto result = con.Query(query);
     if (result->HasError()) {
-      throw std::runtime_error(result->GetError());
+      throw std::runtime_error("Could not add column <" + col_name +
+                               "> to table <" + absolute_table_name +
+                               ">:" + result->GetError());
     }
   }
 
@@ -192,7 +198,9 @@ void alter_table(duckdb::Connection &con, const table_def &table,
     mdlog::info("alter_table: " + query);
     auto result = con.Query(query);
     if (result->HasError()) {
-      throw std::runtime_error(result->GetError());
+      throw std::runtime_error("Could not drop column <" + col_name +
+                               "> from table <" + absolute_table_name +
+                               ">:" + result->GetError());
     }
   }
 
@@ -205,9 +213,12 @@ void alter_table(duckdb::Connection &con, const table_def &table,
         << duckdb::EnumUtil::ToChars(col.type);
 
     auto query = out.str();
+    mdlog::info("alter table: " + query);
     auto result = con.Query(query);
     if (result->HasError()) {
-      throw std::runtime_error(result->GetError());
+      throw std::runtime_error("Could not alter type for column <" + col_name +
+                               "> in table <" + absolute_table_name +
+                               ">:" + result->GetError());
     }
   }
 }
@@ -216,8 +227,9 @@ void upsert(duckdb::Connection &con, const table_def &table,
             const std::string &staging_table_name,
             std::vector<const column_def *> columns_pk,
             std::vector<const column_def *> columns_regular) {
+  const std::string absolute_table_name = compute_absolute_table_name(table);
   std::ostringstream sql;
-  sql << "INSERT INTO " << compute_absolute_table_name(table)
+  sql << "INSERT INTO " << absolute_table_name
       << " SELECT * EXCLUDE (_fivetran_deleted, _fivetran_synced) FROM "
       << staging_table_name;
   if (!columns_pk.empty()) {
@@ -238,7 +250,8 @@ void upsert(duckdb::Connection &con, const table_def &table,
   mdlog::info("upsert: " + query);
   auto result = con.Query(query);
   if (result->HasError()) {
-    throw std::runtime_error(result->GetError());
+    throw std::runtime_error("Could not upsert table <" + absolute_table_name +
+                             ">" + result->GetError());
   }
 }
 
@@ -277,16 +290,19 @@ void update_values(duckdb::Connection &con, const table_def &table,
   mdlog::info("update: " + query);
   auto result = con.Query(query);
   if (result->HasError()) {
-    throw std::runtime_error(result->GetError());
+    throw std::runtime_error("Could not update table <" + absolute_table_name +
+                             ">:" + result->GetError());
   }
 }
 
 void delete_rows(duckdb::Connection &con, const table_def &table,
                  const std::string &staging_table_name,
                  std::vector<const column_def *> columns_pk) {
+
+  const std::string absolute_table_name = compute_absolute_table_name(table);
   std::ostringstream sql;
-  sql << "DELETE FROM " + compute_absolute_table_name(table) << " USING "
-      << staging_table_name << " WHERE ";
+  sql << "DELETE FROM " + absolute_table_name << " USING " << staging_table_name
+      << " WHERE ";
 
   write_joined(
       sql, columns_pk, [&](const std::string &pk, std::ostringstream &out) {
@@ -299,24 +315,28 @@ void delete_rows(duckdb::Connection &con, const table_def &table,
   mdlog::info("delete_rows: " + query);
   auto result = con.Query(query);
   if (result->HasError()) {
-    throw std::runtime_error(result->GetError());
+    throw std::runtime_error("Error deleting rows from table <" +
+                             absolute_table_name + ">:" + result->GetError());
   }
 }
 
 void truncate_table(duckdb::Connection &con, const table_def &table) {
+  const std::string absolute_table_name = compute_absolute_table_name(table);
   std::ostringstream sql;
-  sql << "DELETE FROM " + compute_absolute_table_name(table);
+  sql << "DELETE FROM " + absolute_table_name;
   auto query = sql.str();
   mdlog::info("truncate_table: " + query);
   auto result = con.Query(query);
   if (result->HasError()) {
-    throw std::runtime_error(result->GetError());
+    throw std::runtime_error("Error truncating table <" + absolute_table_name +
+                             ">:" + result->GetError());
   }
 }
 
 void check_connection(duckdb::Connection &con) {
   auto result = con.Query("SELECT 1");
   if (result->HasError()) {
-    throw std::runtime_error(result->GetError());
+    throw std::runtime_error("Error checking connection: " +
+                             result->GetError());
   }
 }

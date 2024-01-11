@@ -93,8 +93,8 @@ void process_file(
       arrow::ExportRecordBatchReader(batch_reader, &arrow_array_stream);
   if (!status.ok()) {
     throw std::runtime_error(
-        "Could not convert Arrow batch reader to an array stream: " +
-        status.message());
+        "Could not convert Arrow batch reader to an array stream for file <" +
+        filename + ">: " + status.message());
   }
 
   duckdb_connection c_con = (duckdb_connection)&con;
