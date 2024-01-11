@@ -8,49 +8,43 @@ struct column_def {
   unsigned int scale;
 };
 
+struct table_def {
+  std::string db_name;
+  std::string schema_name;
+  std::string table_name;
+};
+
 bool schema_exists(duckdb::Connection &con, const std::string &db_name,
                    const std::string &schema_name);
 
 void create_schema(duckdb::Connection &con, const std::string &db_name,
                    const std::string &schema_name);
 
-bool table_exists(duckdb::Connection &con, const std::string &db_name,
-                  const std::string &schema_name,
-                  const std::string &table_name);
+bool table_exists(duckdb::Connection &con, const table_def &table);
 
-void create_table(duckdb::Connection &con, const std::string &db_name,
-                  const std::string &schema_name, const std::string &table_name,
+void create_table(duckdb::Connection &con, const table_def &table,
                   const std::vector<column_def> &columns);
 
 std::vector<column_def> describe_table(duckdb::Connection &con,
-                                       const std::string &db_name,
-                                       const std::string &schema_name,
-                                       const std::string &table_name);
+                                       const table_def &table);
 
-void alter_table(duckdb::Connection &con, const std::string &db_name,
-                 const std::string &schema_name, const std::string &table_name,
+void alter_table(duckdb::Connection &con, const table_def &table,
                  const std::vector<column_def> &columns);
 
-void upsert(duckdb::Connection &con, const std::string &db_name,
-            const std::string &schema_name, const std::string &table_name,
+void upsert(duckdb::Connection &con, const table_def &table,
             const std::string &staging_table_name,
             const std::vector<std::string> &primary_keys,
             const std::vector<column_def> &columns);
 
-void update_values(duckdb::Connection &con, const std::string &db_name,
-                   const std::string &schema_name,
-                   const std::string &table_name,
+void update_values(duckdb::Connection &con, const table_def &table,
                    const std::string &staging_table_name,
                    const std::vector<std::string> &primary_keys,
                    const std::vector<column_def> &columns,
                    const std::string &unmodified_string);
 
-void truncate_table(duckdb::Connection &con, const std::string &db_name,
-                    const std::string &schema_name,
-                    const std::string &table_name);
+void truncate_table(duckdb::Connection &con, const table_def &table);
 
-void delete_rows(duckdb::Connection &con, const std::string &db_name,
-                 const std::string &schema_name, const std::string &table_name,
+void delete_rows(duckdb::Connection &con, const table_def &table,
                  const std::string &staging_table_name,
                  const std::vector<std::string> &primary_keys);
 

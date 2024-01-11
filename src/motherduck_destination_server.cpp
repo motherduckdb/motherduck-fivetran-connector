@@ -156,15 +156,15 @@ grpc::Status DestinationSdkImpl::DescribeTable(
         find_property(request->configuration(), MD_PROP_DATABASE);
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
+    table_def table_name{db_name, get_schema_name(request),
+                         get_table_name(request)};
 
-    if (!table_exists(*con, db_name, get_schema_name(request),
-                      get_table_name(request))) {
+    if (!table_exists(*con, table_name)) {
       response->set_not_found(true);
       return ::grpc::Status(::grpc::StatusCode::OK, "");
     }
 
-    auto duckdb_columns = describe_table(
-        *con, db_name, get_schema_name(request), get_table_name(request));
+    auto duckdb_columns = describe_table(*con, table_name);
 
     fivetran_sdk::Table *table = response->mutable_table();
     table->set_name(get_table_name(request));
@@ -196,13 +196,13 @@ grpc::Status DestinationSdkImpl::CreateTable(
         find_property(request->configuration(), MD_PROP_DATABASE);
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
+    const table_def table{db_name, schema_name, request->table().name()};
 
     if (!schema_exists(*con, db_name, schema_name)) {
       create_schema(*con, db_name, schema_name);
     }
 
-    create_table(*con, db_name, schema_name, request->table().name(),
-                 get_duckdb_columns(request->table().columns()));
+    create_table(*con, table, get_duckdb_columns(request->table().columns()));
     response->set_success(true);
   } catch (const std::exception &e) {
     response->set_failure(e.what());
@@ -219,11 +219,13 @@ DestinationSdkImpl::AlterTable(::grpc::ServerContext *context,
   try {
     std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
+    table_def table_name{db_name, get_schema_name(request),
+                         request->table().name()};
+
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
 
-    alter_table(*con, db_name, get_schema_name(request),
-                request->table().name(),
+    alter_table(*con, table_name,
                 get_duckdb_columns(request->table().columns()));
     response->set_success(true);
   } catch (const std::exception &e) {
@@ -240,11 +242,12 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
                              ::fivetran_sdk::TruncateResponse *response) {
   std::string db_name =
       find_property(request->configuration(), MD_PROP_DATABASE);
+  table_def table_name{db_name, get_schema_name(request),
+                       get_table_name(request)};
   std::unique_ptr<duckdb::Connection> con =
       get_connection(request->configuration(), db_name);
 
-  truncate_table(*con, db_name, get_schema_name(request),
-                 get_table_name(request));
+  truncate_table(*con, table_name);
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
@@ -258,6 +261,8 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
 
     const std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
+    table_def table_name{db_name, get_schema_name(request),
+                         request->table().name()};
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
 
@@ -268,29 +273,29 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
 
     const auto primary_keys = get_primary_keys(request->table().columns());
     const auto cols = get_duckdb_columns(request->table().columns());
-    std::vector<std::string> column_names(cols.size());
-    std::transform(cols.begin(), cols.end(), column_names.begin(),
-                   [](const column_def &col) { return col.name; });
 
     for (auto &filename : request->replace_files()) {
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
       process_file(*con, filename, decryption_key, nullptr,
                    [&](const std::string view_name) {
-                     upsert(*con, db_name, schema_name, request->table().name(),
-                            view_name, primary_keys, cols);
+                     upsert(*con, table_name, view_name, primary_keys, cols);
                    });
     }
     for (auto &filename : request->update_files()) {
 
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
+      // update file fields have to be read in as strings to allow
+      // "unmodified_string" processing
+      std::vector<std::string> column_names(cols.size());
+      std::transform(cols.begin(), cols.end(), column_names.begin(),
+                     [](const column_def &col) { return col.name; });
+
       process_file(*con, filename, decryption_key, &column_names,
                    [&](const std::string view_name) {
-                     update_values(*con, db_name, schema_name,
-                                   request->table().name(), view_name,
-                                   primary_keys, cols,
-                                   request->csv().unmodified_string());
+                     update_values(*con, table_name, view_name, primary_keys,
+                                   cols, request->csv().unmodified_string());
                    });
     }
     for (auto &filename : request->delete_files()) {
@@ -298,9 +303,7 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
                                                request->csv().encryption());
       process_file(*con, filename, decryption_key, nullptr,
                    [&](const std::string view_name) {
-                     delete_rows(*con, db_name, schema_name,
-                                 request->table().name(), view_name,
-                                 primary_keys);
+                     delete_rows(*con, table_name, view_name, primary_keys);
                    });
     }
 

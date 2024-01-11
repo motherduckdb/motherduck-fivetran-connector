@@ -7,13 +7,11 @@
 using duckdb::KeywordHelper;
 
 // Utility
-std::string compute_absolute_table_name(const std::string &db_name,
-                                        const std::string &schema_name,
-                                        const std::string &table_name) {
+std::string compute_absolute_table_name(const table_def &table) {
   std::ostringstream out;
-  out << KeywordHelper::WriteQuoted(db_name, '"') << "."
-      << KeywordHelper::WriteQuoted(schema_name, '"') << "."
-      << KeywordHelper::WriteQuoted(table_name, '"');
+  out << KeywordHelper::WriteQuoted(table.db_name, '"') << "."
+      << KeywordHelper::WriteQuoted(table.schema_name, '"') << "."
+      << KeywordHelper::WriteQuoted(table.table_name, '"');
   return out.str();
 }
 
@@ -67,14 +65,13 @@ bool schema_exists(duckdb::Connection &con, const std::string &db_name,
   return result->RowCount() > 0;
 }
 
-bool table_exists(duckdb::Connection &con, const std::string &db_name,
-                  const std::string &schema_name,
-                  const std::string &table_name) {
+bool table_exists(duckdb::Connection &con, const table_def &table) {
   std::ostringstream out;
   out << "SELECT table_name FROM information_schema.tables WHERE table_catalog="
-      << KeywordHelper::WriteQuoted(db_name, '\'')
-      << " AND table_schema=" << KeywordHelper::WriteQuoted(schema_name, '\'')
-      << " AND table_name=" << KeywordHelper::WriteQuoted(table_name, '\'');
+      << KeywordHelper::WriteQuoted(table.db_name, '\'') << " AND table_schema="
+      << KeywordHelper::WriteQuoted(table.schema_name, '\'')
+      << " AND table_name="
+      << KeywordHelper::WriteQuoted(table.table_name, '\'');
 
   auto query = out.str();
   mdlog::info("table_exists: " + query);
@@ -95,12 +92,11 @@ void create_schema(duckdb::Connection &con, const std::string &db_name,
   con.Query(query);
 }
 
-void create_table(duckdb::Connection &con, const std::string &db_name,
-                  const std::string &schema_name, const std::string &table_name,
+void create_table(duckdb::Connection &con, const table_def &table,
                   const std::vector<column_def> &columns) {
   std::ostringstream ddl;
-  ddl << "CREATE OR REPLACE TABLE "
-      << compute_absolute_table_name(db_name, schema_name, table_name) << " (";
+  ddl << "CREATE OR REPLACE TABLE " << compute_absolute_table_name(table)
+      << " (";
 
   for (const auto &col : columns) {
     ddl << KeywordHelper::WriteQuoted(col.name, '"') << " "
@@ -123,17 +119,16 @@ void create_table(duckdb::Connection &con, const std::string &db_name,
 }
 
 std::vector<column_def> describe_table(duckdb::Connection &con,
-                                       const std::string &db_name,
-                                       const std::string &schema_name,
-                                       const std::string &table_name) {
+                                       const table_def &table) {
   // TBD is_identity is never set, used is_nullable=no temporarily but really
   // should use duckdb_constraints table.
   std::ostringstream sql;
   sql << "SELECT column_name, data_type, is_nullable == 'NO' FROM "
          "information_schema.columns WHERE table_catalog="
-      << KeywordHelper::WriteQuoted(db_name, '\'')
-      << " AND table_schema=" << KeywordHelper::WriteQuoted(schema_name, '\'')
-      << " AND table_name=" << KeywordHelper::WriteQuoted(table_name, '\'');
+      << KeywordHelper::WriteQuoted(table.db_name, '\'') << " AND table_schema="
+      << KeywordHelper::WriteQuoted(table.schema_name, '\'')
+      << " AND table_name="
+      << KeywordHelper::WriteQuoted(table.table_name, '\'');
 
   // TBD scale/precision
   std::vector<column_def> columns;
@@ -155,16 +150,15 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
   return columns;
 }
 
-void alter_table(duckdb::Connection &con, const std::string &db_name,
-                 const std::string &schema_name, const std::string &table_name,
+void alter_table(duckdb::Connection &con, const table_def &table,
                  const std::vector<column_def> &columns) {
 
+  auto absolute_table_name = compute_absolute_table_name(table);
   std::set<std::string> alter_types;
   std::set<std::string> added_columns;
   std::set<std::string> deleted_columns;
 
-  const auto &existing_columns =
-      describe_table(con, db_name, schema_name, table_name);
+  const auto &existing_columns = describe_table(con, table);
   std::map<std::string, column_def> new_column_map;
 
   for (const auto &col : columns) {
@@ -187,9 +181,7 @@ void alter_table(duckdb::Connection &con, const std::string &db_name,
 
   for (const auto &col_name : added_columns) {
     std::ostringstream out;
-    out << "ALTER TABLE " +
-               compute_absolute_table_name(db_name, schema_name, table_name)
-        << " ADD COLUMN ";
+    out << "ALTER TABLE " << absolute_table_name << " ADD COLUMN ";
     const auto &col = new_column_map[col_name];
 
     out << KeywordHelper::WriteQuoted(col_name, '"') << " "
@@ -208,9 +200,7 @@ void alter_table(duckdb::Connection &con, const std::string &db_name,
 
   for (const auto &col_name : deleted_columns) {
     std::ostringstream out;
-    out << "ALTER TABLE "
-        << compute_absolute_table_name(db_name, schema_name, table_name)
-        << " DROP COLUMN ";
+    out << "ALTER TABLE " << absolute_table_name << " DROP COLUMN ";
 
     out << KeywordHelper::WriteQuoted(col_name, '"');
 
@@ -224,9 +214,7 @@ void alter_table(duckdb::Connection &con, const std::string &db_name,
 
   for (const auto &col_name : alter_types) {
     std::ostringstream out;
-    out << "ALTER TABLE "
-        << compute_absolute_table_name(db_name, schema_name, table_name)
-        << " ALTER ";
+    out << "ALTER TABLE " << absolute_table_name << " ALTER ";
     const auto &col = new_column_map[col_name];
 
     out << KeywordHelper::WriteQuoted(col_name, '"') << " TYPE "
@@ -240,14 +228,12 @@ void alter_table(duckdb::Connection &con, const std::string &db_name,
   }
 }
 
-void upsert(duckdb::Connection &con, const std::string &db_name,
-            const std::string &schema_name, const std::string &table_name,
+void upsert(duckdb::Connection &con, const table_def &table,
             const std::string &staging_table_name,
             const std::vector<std::string> &primary_keys,
             const std::vector<column_def> &columns) {
   std::ostringstream sql;
-  sql << "INSERT INTO "
-      << compute_absolute_table_name(db_name, schema_name, table_name)
+  sql << "INSERT INTO " << compute_absolute_table_name(table)
       << " SELECT * EXCLUDE (_fivetran_deleted, _fivetran_synced) FROM "
       << staging_table_name;
   if (!primary_keys.empty()) {
@@ -272,17 +258,14 @@ void upsert(duckdb::Connection &con, const std::string &db_name,
   }
 }
 
-void update_values(duckdb::Connection &con, const std::string &db_name,
-                   const std::string &schema_name,
-                   const std::string &table_name,
+void update_values(duckdb::Connection &con, const table_def &table,
                    const std::string &staging_table_name,
                    const std::vector<std::string> &primary_keys,
                    const std::vector<column_def> &columns,
                    const std::string &unmodified_string) {
 
   std::ostringstream sql;
-  auto absolute_table_name =
-      compute_absolute_table_name(db_name, schema_name, table_name);
+  auto absolute_table_name = compute_absolute_table_name(table);
 
   sql << "UPDATE " << absolute_table_name << " SET ";
 
@@ -299,13 +282,12 @@ void update_values(duckdb::Connection &con, const std::string &db_name,
                });
 
   sql << " FROM " << staging_table_name << " WHERE ";
-  write_joined(sql, primary_keys,
-               [table_name, staging_table_name](const std::string &pk,
-                                                std::ostringstream &out) {
-                 out << table_name << "." << KeywordHelper::WriteQuoted(pk, '"')
-                     << " = " << staging_table_name << "."
-                     << KeywordHelper::WriteQuoted(pk, '"');
-               });
+  write_joined(
+      sql, primary_keys, [&](const std::string &pk, std::ostringstream &out) {
+        out << table.table_name << "." << KeywordHelper::WriteQuoted(pk, '"')
+            << " = " << staging_table_name << "."
+            << KeywordHelper::WriteQuoted(pk, '"');
+      });
 
   auto query = sql.str();
   mdlog::info("update: " + query);
@@ -315,22 +297,19 @@ void update_values(duckdb::Connection &con, const std::string &db_name,
   }
 }
 
-void delete_rows(duckdb::Connection &con, const std::string &db_name,
-                 const std::string &schema_name, const std::string &table_name,
+void delete_rows(duckdb::Connection &con, const table_def &table,
                  const std::string &staging_table_name,
                  const std::vector<std::string> &primary_keys) {
   std::ostringstream sql;
-  sql << "DELETE FROM " +
-             compute_absolute_table_name(db_name, schema_name, table_name)
-      << " USING " << staging_table_name << " WHERE ";
+  sql << "DELETE FROM " + compute_absolute_table_name(table) << " USING "
+      << staging_table_name << " WHERE ";
 
-  write_joined(sql, primary_keys,
-               [table_name, staging_table_name](const std::string &pk,
-                                                std::ostringstream &out) {
-                 out << table_name << "." << KeywordHelper::WriteQuoted(pk, '"')
-                     << " = " << staging_table_name << "."
-                     << KeywordHelper::WriteQuoted(pk, '"');
-               });
+  write_joined(
+      sql, primary_keys, [&](const std::string &pk, std::ostringstream &out) {
+        out << table.table_name << "." << KeywordHelper::WriteQuoted(pk, '"')
+            << " = " << staging_table_name << "."
+            << KeywordHelper::WriteQuoted(pk, '"');
+      });
 
   auto query = sql.str();
   mdlog::info("delete_rows: " + query);
@@ -340,12 +319,9 @@ void delete_rows(duckdb::Connection &con, const std::string &db_name,
   }
 }
 
-void truncate_table(duckdb::Connection &con, const std::string &db_name,
-                    const std::string &schema_name,
-                    const std::string &table_name) {
+void truncate_table(duckdb::Connection &con, const table_def &table) {
   std::ostringstream sql;
-  sql << "DELETE FROM " +
-             compute_absolute_table_name(db_name, schema_name, table_name);
+  sql << "DELETE FROM " + compute_absolute_table_name(table);
   auto query = sql.str();
   mdlog::info("truncate_table: " + query);
   auto result = con.Query(query);
