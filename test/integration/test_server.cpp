@@ -256,7 +256,8 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     REQUIRE(status.ok());
   }
 
-  // test connection needs to be created after table creation to avoid stale catalog
+  // test connection needs to be created after table creation to avoid stale
+  // catalog
   auto con = get_test_connection(token);
   {
     // insert rows from encrypted / compressed file

@@ -5,12 +5,12 @@
 #include <arrow/c/bridge.h>
 #include <grpcpp/grpcpp.h>
 
-#include <sql_generator.hpp>
 #include <destination_sdk.grpc.pb.h>
 #include <motherduck_destination_server.hpp>
+#include <sql_generator.hpp>
 
-#include <fivetran_duckdb_interop.hpp>
 #include <csv_arrow_ingest.hpp>
+#include <fivetran_duckdb_interop.hpp>
 
 std::string
 find_property(const google::protobuf::Map<std::string, std::string> &config,
@@ -38,7 +38,6 @@ template <typename T> std::string get_table_name(const T *request) {
   return table_name;
 }
 
-
 std::vector<column_def> get_duckdb_columns(
     const google::protobuf::RepeatedPtrField<fivetran_sdk::Column>
         &fivetran_columns) {
@@ -63,7 +62,6 @@ std::unique_ptr<duckdb::Connection> get_connection(
   duckdb::DuckDB db("md:" + db_name, &config);
   return std::make_unique<duckdb::Connection>(db);
 }
-
 
 const std::string *
 get_encryption_key(const std::string &filename,
@@ -94,14 +92,12 @@ std::vector<std::string> get_primary_keys(
 
 void process_file(
     duckdb::Connection &con, const std::string &filename,
-    const std::string *decryption_key,
-    std::vector<std::string>* utf8_columns,
+    const std::string *decryption_key, std::vector<std::string> *utf8_columns,
     const std::function<void(std::string view_name)> &process_view) {
 
-  auto table =
-      decryption_key == nullptr
-          ? ReadUnencryptedCsv(filename, utf8_columns)
-          : ReadEncryptedCsv(filename, decryption_key, utf8_columns);
+  auto table = decryption_key == nullptr
+                   ? ReadUnencryptedCsv(filename, utf8_columns)
+                   : ReadEncryptedCsv(filename, decryption_key, utf8_columns);
 
   auto batch_reader = std::make_shared<arrow::TableBatchReader>(*table);
   ArrowArrayStream arrow_array_stream;
@@ -273,7 +269,8 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
     const auto primary_keys = get_primary_keys(request->table().columns());
     const auto cols = get_duckdb_columns(request->table().columns());
     std::vector<std::string> column_names(cols.size());
-    std::transform(cols.begin(), cols.end(), column_names.begin(), [](const column_def& col) { return col.name; });
+    std::transform(cols.begin(), cols.end(), column_names.begin(),
+                   [](const column_def &col) { return col.name; });
 
     for (auto &filename : request->replace_files()) {
       auto decryption_key = get_encryption_key(filename, request->keys(),
@@ -318,9 +315,10 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
-grpc::Status DestinationSdkImpl::Test(::grpc::ServerContext *context,
-                                const ::fivetran_sdk::TestRequest *request,
-                                ::fivetran_sdk::TestResponse *response) {
+grpc::Status
+DestinationSdkImpl::Test(::grpc::ServerContext *context,
+                         const ::fivetran_sdk::TestRequest *request,
+                         ::fivetran_sdk::TestResponse *response) {
 
   try {
     std::string db_name =

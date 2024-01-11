@@ -1,11 +1,11 @@
+#include <arrow/buffer.h>
+#include <arrow/io/api.h>
+#include <arrow/util/compression.h>
 #include <csv_arrow_ingest.hpp>
 #include <decryption.hpp>
-#include <arrow/util/compression.h>
-#include <arrow/io/api.h>
-#include <arrow/buffer.h>
 
-
-arrow::csv::ConvertOptions get_arrow_convert_options(std::vector<std::string>* utf8_columns) {
+arrow::csv::ConvertOptions
+get_arrow_convert_options(std::vector<std::string> *utf8_columns) {
   auto convert_options = arrow::csv::ConvertOptions::Defaults();
   if (utf8_columns != nullptr) {
     // read all update-file CSV columns as text to accommodate
@@ -18,7 +18,8 @@ arrow::csv::ConvertOptions get_arrow_convert_options(std::vector<std::string>* u
 }
 
 std::shared_ptr<arrow::Table>
-ReadEncryptedCsv(const std::string &filename, const std::string *decryption_key, std::vector<std::string>* utf8_columns) {
+ReadEncryptedCsv(const std::string &filename, const std::string *decryption_key,
+                 std::vector<std::string> *utf8_columns) {
 
   auto read_options = arrow::csv::ReadOptions::Defaults();
   auto parse_options = arrow::csv::ParseOptions::Defaults();
@@ -68,7 +69,8 @@ ReadEncryptedCsv(const std::string &filename, const std::string *decryption_key,
 }
 
 std::shared_ptr<arrow::Table>
-ReadUnencryptedCsv(const std::string &filename, std::vector<std::string>* utf8_columns) {
+ReadUnencryptedCsv(const std::string &filename,
+                   std::vector<std::string> *utf8_columns) {
 
   auto read_options = arrow::csv::ReadOptions::Defaults();
   auto parse_options = arrow::csv::ParseOptions::Defaults();
