@@ -1,5 +1,9 @@
 #include "destination_sdk.grpc.pb.h"
 
+static constexpr const char *const MD_PROP_DATABASE = "motherduck_database";
+
+static constexpr const char *const MD_PROP_TOKEN = "motherduck_token";
+
 class DestinationSdkImpl final : public fivetran_sdk::Destination::Service {
 public:
   DestinationSdkImpl() = default;

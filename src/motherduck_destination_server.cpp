@@ -54,10 +54,10 @@ std::vector<column_def> get_duckdb_columns(
 std::unique_ptr<duckdb::Connection> get_connection(
     const google::protobuf::Map<std::string, std::string> &request_config,
     const std::string &db_name) {
-  std::string token = find_property(request_config, "motherduck_token");
+  std::string token = find_property(request_config, MD_PROP_TOKEN);
 
   std::unordered_map<std::string, std::string> props{
-      {"motherduck_token", token}, {"custom_user_agent", "fivetran"}};
+      {MD_PROP_TOKEN, token}, {"custom_user_agent", "fivetran"}};
   duckdb::DBConfig config(props, false);
   duckdb::DuckDB db("md:" + db_name, &config);
   return std::make_unique<duckdb::Connection>(db);
@@ -127,7 +127,7 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
   response->set_table_selection_supported(true);
 
   fivetran_sdk::FormField token_field;
-  token_field.set_name("motherduck_token");
+  token_field.set_name(MD_PROP_TOKEN);
   token_field.set_label("Authentication Token");
   token_field.set_description(
       "Please get your authentication token from app.motherduck.com");
@@ -135,7 +135,7 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
   token_field.set_required(true);
 
   fivetran_sdk::FormField db_field;
-  db_field.set_name("motherduck_database");
+  db_field.set_name(MD_PROP_DATABASE);
   db_field.set_label("Database Name");
   db_field.set_description("The database to work in");
   db_field.set_text_field(fivetran_sdk::PlainText);
@@ -153,7 +153,7 @@ grpc::Status DestinationSdkImpl::DescribeTable(
   try {
 
     std::string db_name =
-        find_property(request->configuration(), "motherduck_database");
+        find_property(request->configuration(), MD_PROP_DATABASE);
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
 
@@ -193,7 +193,7 @@ grpc::Status DestinationSdkImpl::CreateTable(
     auto schema_name = get_schema_name(request);
 
     std::string db_name =
-        find_property(request->configuration(), "motherduck_database");
+        find_property(request->configuration(), MD_PROP_DATABASE);
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
 
@@ -218,7 +218,7 @@ DestinationSdkImpl::AlterTable(::grpc::ServerContext *context,
                                ::fivetran_sdk::AlterTableResponse *response) {
   try {
     std::string db_name =
-        find_property(request->configuration(), "motherduck_database");
+        find_property(request->configuration(), MD_PROP_DATABASE);
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
 
@@ -239,7 +239,7 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
                              const ::fivetran_sdk::TruncateRequest *request,
                              ::fivetran_sdk::TruncateResponse *response) {
   std::string db_name =
-      find_property(request->configuration(), "motherduck_database");
+      find_property(request->configuration(), MD_PROP_DATABASE);
   std::unique_ptr<duckdb::Connection> con =
       get_connection(request->configuration(), db_name);
 
@@ -257,7 +257,7 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
     auto schema_name = get_schema_name(request);
 
     std::string db_name =
-        find_property(request->configuration(), "motherduck_database");
+        find_property(request->configuration(), MD_PROP_DATABASE);
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
 
@@ -322,7 +322,7 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
 
   try {
     std::string db_name =
-        find_property(request->configuration(), "motherduck_database");
+        find_property(request->configuration(), MD_PROP_DATABASE);
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
     check_connection(*con);
