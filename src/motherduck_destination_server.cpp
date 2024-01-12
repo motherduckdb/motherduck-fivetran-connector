@@ -62,12 +62,12 @@ std::unique_ptr<duckdb::Connection> get_connection(
   return std::make_unique<duckdb::Connection>(db);
 }
 
-const std::string *
+const std::string
 get_encryption_key(const std::string &filename,
                    const google::protobuf::Map<std::string, std::string> &keys,
                    ::fivetran_sdk::Encryption encryption) {
   if (encryption == ::fivetran_sdk::Encryption::NONE) {
-    return nullptr;
+    return "";
   }
   auto encryption_key_it = keys.find(filename);
 
@@ -75,15 +75,15 @@ get_encryption_key(const std::string &filename,
     throw std::invalid_argument("Missing encryption key for " + filename);
   }
 
-  return &encryption_key_it->second;
+  return encryption_key_it->second;
 }
 
 void process_file(
     duckdb::Connection &con, const std::string &filename,
-    const std::string *decryption_key, std::vector<std::string> *utf8_columns,
+    const std::string &decryption_key, std::vector<std::string> &utf8_columns,
     const std::function<void(std::string view_name)> &process_view) {
 
-  auto table = decryption_key == nullptr
+  auto table = decryption_key.empty()
                    ? read_unencrypted_csv(filename, utf8_columns)
                    : read_encrypted_csv(filename, decryption_key, utf8_columns);
 
@@ -270,10 +270,12 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
       }
     }
 
+    std::vector<std::string> empty;
     for (auto &filename : request->replace_files()) {
-      auto decryption_key = get_encryption_key(filename, request->keys(),
+      const auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
-      process_file(*con, filename, decryption_key, nullptr,
+
+      process_file(*con, filename, decryption_key, empty,
                    [&](const std::string view_name) {
                      upsert(*con, table_name, view_name, columns_pk,
                             columns_regular);
@@ -289,7 +291,7 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
       std::transform(cols.begin(), cols.end(), column_names.begin(),
                      [](const column_def &col) { return col.name; });
 
-      process_file(*con, filename, decryption_key, &column_names,
+      process_file(*con, filename, decryption_key, column_names,
                    [&](const std::string view_name) {
                      update_values(*con, table_name, view_name, columns_pk,
                                    columns_regular,
@@ -299,7 +301,7 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
     for (auto &filename : request->delete_files()) {
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
-      process_file(*con, filename, decryption_key, nullptr,
+      process_file(*con, filename, decryption_key, empty,
                    [&](const std::string view_name) {
                      delete_rows(*con, table_name, view_name, columns_pk);
                    });

@@ -5,12 +5,12 @@
 #include <decryption.hpp>
 
 arrow::csv::ConvertOptions
-get_arrow_convert_options(std::vector<std::string> *utf8_columns) {
+get_arrow_convert_options(std::vector<std::string> &utf8_columns) {
   auto convert_options = arrow::csv::ConvertOptions::Defaults();
-  if (utf8_columns != nullptr) {
+  if (!utf8_columns.empty()) {
     // read all update-file CSV columns as text to accommodate
     // unmodified_string values
-    for (auto &col_name : *utf8_columns) {
+    for (auto &col_name : utf8_columns) {
       convert_options.column_types.insert({col_name, arrow::utf8()});
     }
   }
@@ -18,8 +18,8 @@ get_arrow_convert_options(std::vector<std::string> *utf8_columns) {
 }
 
 std::shared_ptr<arrow::Table>
-read_encrypted_csv(const std::string &filename, const std::string *decryption_key,
-                   std::vector<std::string> *utf8_columns) {
+read_encrypted_csv(const std::string &filename, const std::string &decryption_key,
+                   std::vector<std::string> &utf8_columns) {
 
   auto read_options = arrow::csv::ReadOptions::Defaults();
   auto parse_options = arrow::csv::ParseOptions::Defaults();
@@ -27,7 +27,7 @@ read_encrypted_csv(const std::string &filename, const std::string *decryption_ke
 
   std::vector<unsigned char> plaintext = decrypt_file(
       filename,
-      reinterpret_cast<const unsigned char *>(decryption_key->c_str()));
+      reinterpret_cast<const unsigned char *>(decryption_key.c_str()));
   auto buffer = std::make_shared<arrow::Buffer>(
       reinterpret_cast<const uint8_t *>(plaintext.data()), plaintext.size());
   auto buffer_reader = std::make_shared<arrow::io::BufferReader>(buffer);
@@ -70,7 +70,7 @@ read_encrypted_csv(const std::string &filename, const std::string *decryption_ke
 
 std::shared_ptr<arrow::Table>
 read_unencrypted_csv(const std::string &filename,
-                     std::vector<std::string> *utf8_columns) {
+                     std::vector<std::string> &utf8_columns) {
 
   auto read_options = arrow::csv::ReadOptions::Defaults();
   auto parse_options = arrow::csv::ParseOptions::Defaults();
