@@ -30,45 +30,36 @@ void write_joined(
 }
 
 // DuckDB querying
+// TODO: add test for schema or remove the logic if it's unused
 bool schema_exists(duckdb::Connection &con, const std::string &db_name,
                    const std::string &schema_name) {
-  std::ostringstream out;
-  out << "SELECT schema_name FROM information_schema.schemata WHERE "
-         "catalog_name="
-      << KeywordHelper::WriteQuoted(db_name, '\'')
-      << " AND schema_name=" << KeywordHelper::WriteQuoted(schema_name, '\'');
-
-  auto query = out.str();
-  mdlog::info("schema_exists: " + query);
-  auto result = con.Query(query);
-
+  std::string query = "SELECT schema_name FROM information_schema.schemata WHERE catalog_name=? AND schema_name=?";
+  auto statement = con.Prepare(query);
+  duckdb::vector<duckdb::Value> params = {duckdb::Value(db_name), duckdb::Value(schema_name)};
+  auto result = statement->Execute(params, false);
   if (result->HasError()) {
     throw std::runtime_error("Could not find whether schema <" + schema_name +
                              "> exists in database <" + db_name +
                              ">: " + result->GetError());
   }
-  return result->RowCount() > 0;
+  auto materialized_result = duckdb::unique_ptr_cast<duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
+
+  return materialized_result->RowCount() > 0;
 }
 
 bool table_exists(duckdb::Connection &con, const table_def &table) {
-  std::ostringstream out;
-  out << "SELECT table_name FROM information_schema.tables WHERE table_catalog="
-      << KeywordHelper::WriteQuoted(table.db_name, '\'') << " AND table_schema="
-      << KeywordHelper::WriteQuoted(table.schema_name, '\'')
-      << " AND table_name="
-      << KeywordHelper::WriteQuoted(table.table_name, '\'');
-
-  auto query = out.str();
-  mdlog::info("table_exists: " + query);
-  auto result = con.Query(query);
+  std::string query = "SELECT table_name FROM information_schema.tables WHERE table_catalog=? AND table_schema=? AND table_name=?";
+  auto statement = con.Prepare(query);
+  duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name), duckdb::Value(table.schema_name), duckdb::Value(table.table_name)};
+  auto result = statement->Execute(params, false);
 
   if (result->HasError()) {
     throw std::runtime_error("Could not find whether table <" +
                              compute_absolute_table_name(table) +
                              "> exists: " + result->GetError());
   }
-
-  return result->RowCount() > 0;
+  auto materialized_result = duckdb::unique_ptr_cast<duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
+  return materialized_result->RowCount() > 0;
 }
 
 void create_schema(duckdb::Connection &con, const std::string &db_name,
@@ -109,27 +100,24 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
                                        const table_def &table) {
   // TBD is_identity is never set, used is_nullable=no temporarily but really
   // should use duckdb_constraints table.
-  std::ostringstream sql;
-  sql << "SELECT column_name, data_type, is_nullable == 'NO' FROM "
-         "information_schema.columns WHERE table_catalog="
-      << KeywordHelper::WriteQuoted(table.db_name, '\'') << " AND table_schema="
-      << KeywordHelper::WriteQuoted(table.schema_name, '\'')
-      << " AND table_name="
-      << KeywordHelper::WriteQuoted(table.table_name, '\'');
 
   // TBD scale/precision
   std::vector<column_def> columns;
 
-  auto query = sql.str();
-  mdlog::info("describe_table: " + query);
-  auto result = con.Query(query);
+  auto query = "SELECT column_name, data_type, is_nullable == 'NO' FROM "
+               "information_schema.columns WHERE table_catalog=? AND table_schema=? AND table_name=?";
+  auto statement = con.Prepare(query);
+  duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name), duckdb::Value(table.schema_name), duckdb::Value(table.table_name)};
+  auto result = statement->Execute(params, false);
+
   if (result->HasError()) {
     throw std::runtime_error("Could not describe table <" +
                              compute_absolute_table_name(table) +
                              ">:" + result->GetError());
   }
+  auto materialized_result = duckdb::unique_ptr_cast<duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
 
-  for (const auto &row : result->Collection().GetRows()) {
+  for (const auto &row : materialized_result->Collection().GetRows()) {
     columns.push_back(
         column_def{row.GetValue(0).GetValue<duckdb::string>(),
                    duckdb::EnumUtil::FromString<duckdb::LogicalTypeId>(
