@@ -322,7 +322,7 @@ void truncate_table(duckdb::Connection &con, const table_def &table) {
 }
 
 void check_connection(duckdb::Connection &con) {
-  auto result = con.Query("SELECT 1");
+  auto result = con.Query("PRAGMA MD_VERSION");
   if (result->HasError()) {
     throw std::runtime_error("Error checking connection: " +
                              result->GetError());
