@@ -104,7 +104,7 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
   // TBD scale/precision
   std::vector<column_def> columns;
 
-  auto query = "SELECT column_name, data_type, is_nullable == 'NO' FROM "
+  auto query = "SELECT column_name, data_type, is_nullable = 'NO' FROM "
                "information_schema.columns WHERE table_catalog=? AND table_schema=? AND table_name=?";
   auto statement = con.Prepare(query);
   duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name), duckdb::Value(table.schema_name), duckdb::Value(table.table_name)};
