@@ -84,8 +84,8 @@ void process_file(
     const std::function<void(std::string view_name)> &process_view) {
 
   auto table = decryption_key == nullptr
-                   ? ReadUnencryptedCsv(filename, utf8_columns)
-                   : ReadEncryptedCsv(filename, decryption_key, utf8_columns);
+                   ? read_unencrypted_csv(filename, utf8_columns)
+                   : read_encrypted_csv(filename, decryption_key, utf8_columns);
 
   auto batch_reader = std::make_shared<arrow::TableBatchReader>(*table);
   ArrowArrayStream arrow_array_stream;
