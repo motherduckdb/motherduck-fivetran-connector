@@ -33,24 +33,30 @@ void write_joined(
 // TODO: add test for schema or remove the logic if it's unused
 bool schema_exists(duckdb::Connection &con, const std::string &db_name,
                    const std::string &schema_name) {
-  std::string query = "SELECT schema_name FROM information_schema.schemata WHERE catalog_name=? AND schema_name=?";
+  std::string query = "SELECT schema_name FROM information_schema.schemata "
+                      "WHERE catalog_name=? AND schema_name=?";
   auto statement = con.Prepare(query);
-  duckdb::vector<duckdb::Value> params = {duckdb::Value(db_name), duckdb::Value(schema_name)};
+  duckdb::vector<duckdb::Value> params = {duckdb::Value(db_name),
+                                          duckdb::Value(schema_name)};
   auto result = statement->Execute(params, false);
   if (result->HasError()) {
     throw std::runtime_error("Could not find whether schema <" + schema_name +
                              "> exists in database <" + db_name +
                              ">: " + result->GetError());
   }
-  auto materialized_result = duckdb::unique_ptr_cast<duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
+  auto materialized_result = duckdb::unique_ptr_cast<
+      duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
 
   return materialized_result->RowCount() > 0;
 }
 
 bool table_exists(duckdb::Connection &con, const table_def &table) {
-  std::string query = "SELECT table_name FROM information_schema.tables WHERE table_catalog=? AND table_schema=? AND table_name=?";
+  std::string query = "SELECT table_name FROM information_schema.tables WHERE "
+                      "table_catalog=? AND table_schema=? AND table_name=?";
   auto statement = con.Prepare(query);
-  duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name), duckdb::Value(table.schema_name), duckdb::Value(table.table_name)};
+  duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name),
+                                          duckdb::Value(table.schema_name),
+                                          duckdb::Value(table.table_name)};
   auto result = statement->Execute(params, false);
 
   if (result->HasError()) {
@@ -58,7 +64,8 @@ bool table_exists(duckdb::Connection &con, const table_def &table) {
                              compute_absolute_table_name(table) +
                              "> exists: " + result->GetError());
   }
-  auto materialized_result = duckdb::unique_ptr_cast<duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
+  auto materialized_result = duckdb::unique_ptr_cast<
+      duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
   return materialized_result->RowCount() > 0;
 }
 
@@ -105,9 +112,12 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
   std::vector<column_def> columns;
 
   auto query = "SELECT column_name, data_type, is_nullable = 'NO' FROM "
-               "information_schema.columns WHERE table_catalog=? AND table_schema=? AND table_name=?";
+               "information_schema.columns WHERE table_catalog=? AND "
+               "table_schema=? AND table_name=?";
   auto statement = con.Prepare(query);
-  duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name), duckdb::Value(table.schema_name), duckdb::Value(table.table_name)};
+  duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name),
+                                          duckdb::Value(table.schema_name),
+                                          duckdb::Value(table.table_name)};
   auto result = statement->Execute(params, false);
 
   if (result->HasError()) {
@@ -115,7 +125,8 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
                              compute_absolute_table_name(table) +
                              ">:" + result->GetError());
   }
-  auto materialized_result = duckdb::unique_ptr_cast<duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
+  auto materialized_result = duckdb::unique_ptr_cast<
+      duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
 
   for (const auto &row : materialized_result->Collection().GetRows()) {
     columns.push_back(

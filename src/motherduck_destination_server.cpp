@@ -41,7 +41,7 @@ std::vector<column_def> get_duckdb_columns(
     const google::protobuf::RepeatedPtrField<fivetran_sdk::Column>
         &fivetran_columns) {
   std::vector<column_def> duckdb_columns;
-  for (auto& col : fivetran_columns) {
+  for (auto &col : fivetran_columns) {
     // todo: if not decimal? (hasDecimal())
     duckdb_columns.push_back(
         column_def{col.name(), get_duckdb_type(col.type()), col.primary_key(),
@@ -157,7 +157,7 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     fivetran_sdk::Table *table = response->mutable_table();
     table->set_name(get_table_name(request));
 
-    for (auto& col : duckdb_columns) {
+    for (auto &col : duckdb_columns) {
       fivetran_sdk::Column *ft_col = table->mutable_columns()->Add();
       ft_col->set_name(col.name);
       ft_col->set_type(get_fivetran_type(col.type));
@@ -272,8 +272,8 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
 
     std::vector<std::string> empty;
     for (auto &filename : request->replace_files()) {
-      const auto decryption_key = get_encryption_key(filename, request->keys(),
-                                               request->csv().encryption());
+      const auto decryption_key = get_encryption_key(
+          filename, request->keys(), request->csv().encryption());
 
       process_file(*con, filename, decryption_key, empty,
                    [&](const std::string view_name) {

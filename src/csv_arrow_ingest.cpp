@@ -19,15 +19,17 @@ get_arrow_convert_options(std::vector<std::string> &utf8_columns) {
 
 template <typename T>
 std::shared_ptr<arrow::Table>
-read_csv_stream_to_arrow_table(T& input_stream, std::vector<std::string> &utf8_columns, const std::string &filename) {
+read_csv_stream_to_arrow_table(T &input_stream,
+                               std::vector<std::string> &utf8_columns,
+                               const std::string &filename) {
 
   auto read_options = arrow::csv::ReadOptions::Defaults();
   auto parse_options = arrow::csv::ParseOptions::Defaults();
   auto convert_options = get_arrow_convert_options(utf8_columns);
 
   auto maybe_table_reader = arrow::csv::TableReader::Make(
-      arrow::io::default_io_context(), std::move(input_stream),
-      read_options, parse_options, convert_options);
+      arrow::io::default_io_context(), std::move(input_stream), read_options,
+      parse_options, convert_options);
 
   if (!maybe_table_reader.ok()) {
     throw std::runtime_error(
@@ -43,12 +45,12 @@ read_csv_stream_to_arrow_table(T& input_stream, std::vector<std::string> &utf8_c
   }
   auto table = std::move(maybe_table.ValueOrDie());
 
-
   return table;
 }
 
 std::shared_ptr<arrow::Table>
-read_encrypted_csv(const std::string &filename, const std::string &decryption_key,
+read_encrypted_csv(const std::string &filename,
+                   const std::string &decryption_key,
                    std::vector<std::string> &utf8_columns) {
 
   std::vector<unsigned char> plaintext = decrypt_file(
@@ -75,7 +77,8 @@ read_encrypted_csv(const std::string &filename, const std::string &decryption_ke
   auto compressed_input_stream =
       std::move(maybe_compressed_input_stream.ValueOrDie());
 
-  return read_csv_stream_to_arrow_table(compressed_input_stream, utf8_columns, filename);
+  return read_csv_stream_to_arrow_table(compressed_input_stream, utf8_columns,
+                                        filename);
 }
 
 std::shared_ptr<arrow::Table>
@@ -90,5 +93,6 @@ read_unencrypted_csv(const std::string &filename,
   }
   auto plaintext_input_stream = std::move(maybe_file.ValueOrDie());
 
-  return read_csv_stream_to_arrow_table(plaintext_input_stream, utf8_columns, filename);
+  return read_csv_stream_to_arrow_table(plaintext_input_stream, utf8_columns,
+                                        filename);
 }
