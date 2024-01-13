@@ -44,8 +44,8 @@ make build_connector_debug
 
 ## Upgrading DuckDB
 
-This connector uses DuckDB's amalgamation sources. To upgrade, copy the [amalgamation sources](https://duckdb.org/docs/installation/?version=latest&environment=cplusplus&installer=source) to [libduckdb-src](./libduckdb-src) folder. 
-
+This connector uses DuckDB's amalgamation sources.
+To upgrade, change `DUCKDB_VERSION` in [Makefile](Makefile) and re-run `make get_duckdb`.
 
 
 ## TODO
