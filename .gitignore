@@ -31,6 +31,7 @@
 *.out
 *.app
 
+# Generated files
 .idea
 build
 sources
@@ -38,3 +39,4 @@ install
 cmake-build-debug
 gen
 libduckdb-src
+protos

@@ -82,7 +82,12 @@ get_duckdb:
 		unzip -d ../libduckdb-src libduckdb-src.zip
 
 
-build_dependencies: get_duckdb build_openssl_native build_grpc build_arrow
+get_fivetran_protos:
+	mkdir -p protos
+	curl -o protos/destination_sdk.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/main/destination_sdk.proto
+	curl -o protos/common.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/main/common.proto
+
+build_dependencies: get_fivetran_protos get_duckdb build_openssl_native build_grpc build_arrow build_test_dependencies
 
 # Repo-wide C++ formatting
 # For local formatter use:
@@ -109,3 +114,4 @@ build_test_dependencies:
 		cmake -S ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/Catch2 -B${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/Catch2 \
 			-DCMAKE_INSTALL_PREFIX=${MD_FIVETRAN_DEPENDENCIES_DIR}/Catch2 -DBUILD_TESTING=OFF
 	cd ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/Catch2 && make -j${CORES} && cmake --install .
+
