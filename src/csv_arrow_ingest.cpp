@@ -18,6 +18,25 @@ get_arrow_convert_options(std::vector<std::string> &utf8_columns) {
 }
 
 std::shared_ptr<arrow::Table>
+doarrowstuff(arrow::Result<std::shared_ptr<arrow::csv::TableReader>> &maybe_table_reader, const std::string &filename) {
+  if (!maybe_table_reader.ok()) {
+    throw std::runtime_error(
+        "Could not create table reader from decrypted file: " +
+        maybe_table_reader.status().message());
+  }
+  auto table_reader = std::move(maybe_table_reader.ValueOrDie());
+
+  auto maybe_table = table_reader->Read();
+  if (!maybe_table.ok()) {
+    throw std::runtime_error("Could not read CSV <" + filename +
+                             ">: " + maybe_table.status().message());
+  }
+  auto table = std::move(maybe_table.ValueOrDie());
+
+  return table;
+}
+
+std::shared_ptr<arrow::Table>
 read_encrypted_csv(const std::string &filename, const std::string &decryption_key,
                    std::vector<std::string> &utf8_columns) {
 
@@ -51,21 +70,7 @@ read_encrypted_csv(const std::string &filename, const std::string &decryption_ke
   auto maybe_table_reader = arrow::csv::TableReader::Make(
       arrow::io::default_io_context(), std::move(compressed_input_stream),
       read_options, parse_options, convert_options);
-  if (!maybe_table_reader.ok()) {
-    throw std::runtime_error(
-        "Could not create table reader from decrypted file: " +
-        maybe_table_reader.status().message());
-  }
-  auto table_reader = std::move(maybe_table_reader.ValueOrDie());
-
-  auto maybe_table = table_reader->Read();
-  if (!maybe_table.ok()) {
-    throw std::runtime_error("Could not read CSV <" + filename +
-                             ">: " + maybe_table.status().message());
-  }
-  auto table = std::move(maybe_table.ValueOrDie());
-
-  return table;
+  return doarrowstuff(maybe_table_reader, filename);
 }
 
 std::shared_ptr<arrow::Table>
@@ -86,19 +91,5 @@ read_unencrypted_csv(const std::string &filename,
   auto maybe_table_reader = arrow::csv::TableReader::Make(
       arrow::io::default_io_context(), std::move(plaintext_input_stream),
       read_options, parse_options, convert_options);
-  if (!maybe_table_reader.ok()) {
-    throw std::runtime_error(
-        "Could not create table reader from plaintext file: " +
-        maybe_table_reader.status().message());
-  }
-  auto table_reader = std::move(maybe_table_reader.ValueOrDie());
-
-  auto maybe_table = table_reader->Read();
-  if (!maybe_table.ok()) {
-    throw std::runtime_error("Could not read CSV <" + filename +
-                             ">: " + maybe_table.status().message());
-  }
-  auto table = std::move(maybe_table.ValueOrDie());
-
-  return table;
+  return doarrowstuff(maybe_table_reader, filename);
 }
