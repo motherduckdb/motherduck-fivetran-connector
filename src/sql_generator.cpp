@@ -1,5 +1,5 @@
 #include <iostream>
-#include <logging.hpp>
+#include <md_logging.hpp>
 #include <string>
 
 #include "../includes/sql_generator.hpp"
@@ -7,11 +7,12 @@
 using duckdb::KeywordHelper;
 
 // Utility
-std::string compute_absolute_table_name(const table_def &table) {
+
+std::string table_def::to_string() const {
   std::ostringstream out;
-  out << KeywordHelper::WriteQuoted(table.db_name, '"') << "."
-      << KeywordHelper::WriteQuoted(table.schema_name, '"') << "."
-      << KeywordHelper::WriteQuoted(table.table_name, '"');
+  out << KeywordHelper::WriteQuoted(db_name, '"') << "."
+      << KeywordHelper::WriteQuoted(schema_name, '"') << "."
+      << KeywordHelper::WriteQuoted(table_name, '"');
   return out.str();
 }
 
@@ -61,7 +62,7 @@ bool table_exists(duckdb::Connection &con, const table_def &table) {
 
   if (result->HasError()) {
     throw std::runtime_error("Could not find whether table <" +
-                             compute_absolute_table_name(table) +
+                             table.to_string() +
                              "> exists: " + result->GetError());
   }
   auto materialized_result = duckdb::unique_ptr_cast<
@@ -78,7 +79,7 @@ void create_schema(duckdb::Connection &con, const std::string &db_name,
 
 void create_table(duckdb::Connection &con, const table_def &table,
                   const std::vector<column_def> &columns) {
-  const std::string absolute_table_name = compute_absolute_table_name(table);
+  const std::string absolute_table_name = table.to_string();
   std::ostringstream ddl;
   ddl << "CREATE OR REPLACE TABLE " << absolute_table_name << " (";
 
@@ -122,7 +123,7 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
 
   if (result->HasError()) {
     throw std::runtime_error("Could not describe table <" +
-                             compute_absolute_table_name(table) +
+                                 table.to_string() +
                              ">:" + result->GetError());
   }
   auto materialized_result = duckdb::unique_ptr_cast<
@@ -141,7 +142,7 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
 void alter_table(duckdb::Connection &con, const table_def &table,
                  const std::vector<column_def> &columns) {
 
-  auto absolute_table_name = compute_absolute_table_name(table);
+  auto absolute_table_name = table.to_string();
   std::set<std::string> alter_types;
   std::set<std::string> added_columns;
   std::set<std::string> deleted_columns;
@@ -226,7 +227,7 @@ void upsert(duckdb::Connection &con, const table_def &table,
             const std::string &staging_table_name,
             std::vector<const column_def *> &columns_pk,
             std::vector<const column_def *> &columns_regular) {
-  const std::string absolute_table_name = compute_absolute_table_name(table);
+  const std::string absolute_table_name = table.to_string();
   std::ostringstream sql;
   sql << "INSERT INTO " << absolute_table_name
       << " SELECT * EXCLUDE (_fivetran_deleted, _fivetran_synced) FROM "
@@ -261,7 +262,7 @@ void update_values(duckdb::Connection &con, const table_def &table,
                    const std::string &unmodified_string) {
 
   std::ostringstream sql;
-  auto absolute_table_name = compute_absolute_table_name(table);
+  auto absolute_table_name = table.to_string();
 
   sql << "UPDATE " << absolute_table_name << " SET ";
 
@@ -298,7 +299,7 @@ void delete_rows(duckdb::Connection &con, const table_def &table,
                  const std::string &staging_table_name,
                  std::vector<const column_def *> &columns_pk) {
 
-  const std::string absolute_table_name = compute_absolute_table_name(table);
+  const std::string absolute_table_name = table.to_string();
   std::ostringstream sql;
   sql << "DELETE FROM " + absolute_table_name << " USING " << staging_table_name
       << " WHERE ";
@@ -320,7 +321,7 @@ void delete_rows(duckdb::Connection &con, const table_def &table,
 }
 
 void truncate_table(duckdb::Connection &con, const table_def &table) {
-  const std::string absolute_table_name = compute_absolute_table_name(table);
+  const std::string absolute_table_name = table.to_string();
   std::ostringstream sql;
   sql << "DELETE FROM " + absolute_table_name;
   auto query = sql.str();

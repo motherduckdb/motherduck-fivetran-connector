@@ -1,3 +1,5 @@
+#pragma once
+
 #include "destination_sdk.grpc.pb.h"
 
 static constexpr const char *const MD_PROP_DATABASE = "motherduck_database";

@@ -10,6 +10,7 @@
 #include <fivetran_duckdb_interop.hpp>
 #include <motherduck_destination_server.hpp>
 #include <sql_generator.hpp>
+#include <md_logging.hpp>
 
 std::string
 find_property(const google::protobuf::Map<std::string, std::string> &config,
@@ -43,8 +44,13 @@ std::vector<column_def> get_duckdb_columns(
   std::vector<column_def> duckdb_columns;
   for (auto &col : fivetran_columns) {
     // todo: if not decimal? (hasDecimal())
+    const auto ddbtype = get_duckdb_type(col.type());
+    if (ddbtype == duckdb::LogicalTypeId::INVALID) {
+      throw std::invalid_argument("Cannot convert Fivetran type <" + DataType_Name(col.type())
+      + "> for column <" + col.name() + "> to a DuckDB type");
+    }
     duckdb_columns.push_back(
-        column_def{col.name(), get_duckdb_type(col.type()), col.primary_key(),
+        column_def{col.name(), ddbtype, col.primary_key(),
                    col.decimal().precision(), col.decimal().scale()});
   }
   return duckdb_columns;
@@ -165,6 +171,8 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     }
 
   } catch (const std::exception &e) {
+    mdlog::severe("DescribeTable endpoint failed for schema <" + request->schema_name() +
+                  ">, table <" + request->table_name() + ">:" + std::string(e.what()));
     response->set_failure(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
@@ -193,6 +201,8 @@ grpc::Status DestinationSdkImpl::CreateTable(
     create_table(*con, table, get_duckdb_columns(request->table().columns()));
     response->set_success(true);
   } catch (const std::exception &e) {
+    mdlog::severe("CreateTable endpoint failed for schema <" + request->schema_name() +
+                  ">, table <" + request->table().name() + ">:" + std::string(e.what()));
     response->set_failure(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
@@ -217,6 +227,8 @@ DestinationSdkImpl::AlterTable(::grpc::ServerContext *context,
                 get_duckdb_columns(request->table().columns()));
     response->set_success(true);
   } catch (const std::exception &e) {
+    mdlog::severe("AlterTable endpoint failed for schema <" + request->schema_name() +
+                  ">, table <" + request->table().name() + ">:" + std::string(e.what()));
     response->set_failure(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
@@ -228,14 +240,21 @@ grpc::Status
 DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
                              const ::fivetran_sdk::TruncateRequest *request,
                              ::fivetran_sdk::TruncateResponse *response) {
-  std::string db_name =
-      find_property(request->configuration(), MD_PROP_DATABASE);
-  table_def table_name{db_name, get_schema_name(request),
-                       get_table_name(request)};
-  std::unique_ptr<duckdb::Connection> con =
-      get_connection(request->configuration(), db_name);
+  try {
+    std::string db_name =
+        find_property(request->configuration(), MD_PROP_DATABASE);
+    table_def table_name{db_name, get_schema_name(request),
+                         get_table_name(request)};
+    std::unique_ptr<duckdb::Connection> con =
+        get_connection(request->configuration(), db_name);
 
-  truncate_table(*con, table_name);
+    truncate_table(*con, table_name);
+  } catch (const std::exception &e) {
+    mdlog::severe("Truncate endpoint failed for schema <" + request->schema_name() +
+                  ">, table <" + request->table_name() + ">:" + std::string(e.what()));
+    response->set_failure(e.what());
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  }
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
@@ -308,6 +327,9 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
     }
 
   } catch (const std::exception &e) {
+
+    mdlog::severe("WriteBatch endpoint failed for schema <" + request->schema_name() +
+      ">, table <" + request->table().name() + ">:" + std::string(e.what()));
     response->set_failure(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
@@ -327,6 +349,7 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
         get_connection(request->configuration(), db_name);
     check_connection(*con);
   } catch (const std::exception &e) {
+    mdlog::severe("Test endpoint failed: " + std::string(e.what()));
     response->set_failure(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }

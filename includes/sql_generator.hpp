@@ -1,3 +1,5 @@
+#pragma once
+
 #include "duckdb.hpp"
 
 struct column_def {
@@ -12,6 +14,8 @@ struct table_def {
   std::string db_name;
   std::string schema_name;
   std::string table_name;
+
+  std::string to_string() const;
 };
 
 bool schema_exists(duckdb::Connection &con, const std::string &db_name,
