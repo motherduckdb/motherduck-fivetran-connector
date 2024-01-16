@@ -222,6 +222,14 @@ void define_test_table(T &request, const std::string &table_name) {
   auto col3 = request.mutable_table()->add_columns();
   col3->set_name("magic_number");
   col3->set_type(::fivetran_sdk::DataType::INT);
+
+  auto col4 = request.mutable_table()->add_columns();
+  col4->set_name("_fivetran_deleted");
+  col4->set_type(::fivetran_sdk::DataType::BOOLEAN);
+
+  auto col5 = request.mutable_table()->add_columns();
+  col5->set_name("_fivetran_synced");
+  col5->set_type(::fivetran_sdk::DataType::UTC_DATETIME);
 }
 
 std::unique_ptr<duckdb::Connection> get_test_connection(char *token) {

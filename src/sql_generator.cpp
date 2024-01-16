@@ -230,7 +230,7 @@ void upsert(duckdb::Connection &con, const table_def &table,
   const std::string absolute_table_name = table.to_string();
   std::ostringstream sql;
   sql << "INSERT INTO " << absolute_table_name
-      << " SELECT * EXCLUDE (_fivetran_deleted, _fivetran_synced) FROM "
+      << " SELECT * FROM "
       << staging_table_name;
   if (!columns_pk.empty()) {
     sql << " ON CONFLICT (";

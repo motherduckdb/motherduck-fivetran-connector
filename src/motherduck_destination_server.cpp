@@ -288,6 +288,9 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
         columns_regular.push_back(&col);
       }
     }
+    if (columns_pk.empty()) {
+      throw std::invalid_argument("No primary keys found");
+    }
 
     std::vector<std::string> empty;
     for (auto &filename : request->replace_files()) {
@@ -328,10 +331,11 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
 
   } catch (const std::exception &e) {
 
-    mdlog::severe("WriteBatch endpoint failed for schema <" + request->schema_name() +
-      ">, table <" + request->table().name() + ">:" + std::string(e.what()));
-    response->set_failure(e.what());
-    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+    auto const msg = "WriteBatch endpoint failed for schema <" + request->schema_name() +
+                     ">, table <" + request->table().name() + ">:" + std::string(e.what());
+    mdlog::severe(msg);
+    response->set_failure(msg);
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL, msg);
   }
 
   return ::grpc::Status(::grpc::StatusCode::OK, "");
