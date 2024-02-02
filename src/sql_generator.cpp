@@ -34,7 +34,7 @@ void write_joined(
 // TODO: add test for schema or remove the logic if it's unused
 bool schema_exists(duckdb::Connection &con, const std::string &db_name,
                    const std::string &schema_name) {
-  std::string query = "SELECT schema_name FROM information_schema.schemata "
+  const std::string query = "SELECT schema_name FROM information_schema.schemata "
                       "WHERE catalog_name=? AND schema_name=?";
   auto statement = con.Prepare(query);
   duckdb::vector<duckdb::Value> params = {duckdb::Value(db_name),
@@ -52,7 +52,7 @@ bool schema_exists(duckdb::Connection &con, const std::string &db_name,
 }
 
 bool table_exists(duckdb::Connection &con, const table_def &table) {
-  std::string query = "SELECT table_name FROM information_schema.tables WHERE "
+  const std::string query = "SELECT table_name FROM information_schema.tables WHERE "
                       "table_catalog=? AND table_schema=? AND table_name=?";
   auto statement = con.Prepare(query);
   duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name),
