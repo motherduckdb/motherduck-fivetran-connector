@@ -8,9 +8,9 @@
 #include <csv_arrow_ingest.hpp>
 #include <destination_sdk.grpc.pb.h>
 #include <fivetran_duckdb_interop.hpp>
+#include <md_logging.hpp>
 #include <motherduck_destination_server.hpp>
 #include <sql_generator.hpp>
-#include <md_logging.hpp>
 
 std::string
 find_property(const google::protobuf::Map<std::string, std::string> &config,
@@ -46,12 +46,13 @@ std::vector<column_def> get_duckdb_columns(
     // todo: if not decimal? (hasDecimal())
     const auto ddbtype = get_duckdb_type(col.type());
     if (ddbtype == duckdb::LogicalTypeId::INVALID) {
-      throw std::invalid_argument("Cannot convert Fivetran type <" + DataType_Name(col.type())
-      + "> for column <" + col.name() + "> to a DuckDB type");
+      throw std::invalid_argument("Cannot convert Fivetran type <" +
+                                  DataType_Name(col.type()) + "> for column <" +
+                                  col.name() + "> to a DuckDB type");
     }
-    duckdb_columns.push_back(
-        column_def{col.name(), ddbtype, col.primary_key(),
-                   col.decimal().precision(), col.decimal().scale()});
+    duckdb_columns.push_back(column_def{col.name(), ddbtype, col.primary_key(),
+                                        col.decimal().precision(),
+                                        col.decimal().scale()});
   }
   return duckdb_columns;
 }
@@ -171,8 +172,9 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     }
 
   } catch (const std::exception &e) {
-    mdlog::severe("DescribeTable endpoint failed for schema <" + request->schema_name() +
-                  ">, table <" + request->table_name() + ">:" + std::string(e.what()));
+    mdlog::severe("DescribeTable endpoint failed for schema <" +
+                  request->schema_name() + ">, table <" +
+                  request->table_name() + ">:" + std::string(e.what()));
     response->set_failure(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
@@ -201,8 +203,9 @@ grpc::Status DestinationSdkImpl::CreateTable(
     create_table(*con, table, get_duckdb_columns(request->table().columns()));
     response->set_success(true);
   } catch (const std::exception &e) {
-    mdlog::severe("CreateTable endpoint failed for schema <" + request->schema_name() +
-                  ">, table <" + request->table().name() + ">:" + std::string(e.what()));
+    mdlog::severe("CreateTable endpoint failed for schema <" +
+                  request->schema_name() + ">, table <" +
+                  request->table().name() + ">:" + std::string(e.what()));
     response->set_failure(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
@@ -227,8 +230,9 @@ DestinationSdkImpl::AlterTable(::grpc::ServerContext *context,
                 get_duckdb_columns(request->table().columns()));
     response->set_success(true);
   } catch (const std::exception &e) {
-    mdlog::severe("AlterTable endpoint failed for schema <" + request->schema_name() +
-                  ">, table <" + request->table().name() + ">:" + std::string(e.what()));
+    mdlog::severe("AlterTable endpoint failed for schema <" +
+                  request->schema_name() + ">, table <" +
+                  request->table().name() + ">:" + std::string(e.what()));
     response->set_failure(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
@@ -250,8 +254,9 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
 
     truncate_table(*con, table_name);
   } catch (const std::exception &e) {
-    mdlog::severe("Truncate endpoint failed for schema <" + request->schema_name() +
-                  ">, table <" + request->table_name() + ">:" + std::string(e.what()));
+    mdlog::severe("Truncate endpoint failed for schema <" +
+                  request->schema_name() + ">, table <" +
+                  request->table_name() + ">:" + std::string(e.what()));
     response->set_failure(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
@@ -331,8 +336,9 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
 
   } catch (const std::exception &e) {
 
-    auto const msg = "WriteBatch endpoint failed for schema <" + request->schema_name() +
-                     ">, table <" + request->table().name() + ">:" + std::string(e.what());
+    auto const msg = "WriteBatch endpoint failed for schema <" +
+                     request->schema_name() + ">, table <" +
+                     request->table().name() + ">:" + std::string(e.what());
     mdlog::severe(msg);
     response->set_failure(msg);
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, msg);

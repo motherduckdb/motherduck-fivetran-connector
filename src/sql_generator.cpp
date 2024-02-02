@@ -122,8 +122,7 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
   auto result = statement->Execute(params, false);
 
   if (result->HasError()) {
-    throw std::runtime_error("Could not describe table <" +
-                                 table.to_string() +
+    throw std::runtime_error("Could not describe table <" + table.to_string() +
                              ">:" + result->GetError());
   }
   auto materialized_result = duckdb::unique_ptr_cast<
@@ -229,8 +228,7 @@ void upsert(duckdb::Connection &con, const table_def &table,
             std::vector<const column_def *> &columns_regular) {
   const std::string absolute_table_name = table.to_string();
   std::ostringstream sql;
-  sql << "INSERT INTO " << absolute_table_name
-      << " SELECT * FROM "
+  sql << "INSERT INTO " << absolute_table_name << " SELECT * FROM "
       << staging_table_name;
   if (!columns_pk.empty()) {
     sql << " ON CONFLICT (";
