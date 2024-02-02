@@ -7,12 +7,10 @@
 arrow::csv::ConvertOptions
 get_arrow_convert_options(std::vector<std::string> &utf8_columns) {
   auto convert_options = arrow::csv::ConvertOptions::Defaults();
-  if (!utf8_columns.empty()) {
-    // read all update-file CSV columns as text to accommodate
-    // unmodified_string values
-    for (auto &col_name : utf8_columns) {
-      convert_options.column_types.insert({col_name, arrow::utf8()});
-    }
+  // read all update-file CSV columns as text to accommodate
+  // unmodified_string values
+  for (auto &col_name : utf8_columns) {
+    convert_options.column_types.insert({col_name, arrow::utf8()});
   }
   return convert_options;
 }
