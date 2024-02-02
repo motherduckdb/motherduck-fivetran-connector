@@ -71,7 +71,7 @@ target_link_libraries(motherduck_destination_sources
         ${_REFLECTION}
         ${_GRPC_GRPCPP}
         ${_PROTOBUF_LIBPROTOBUF}
-        Arrow::arrow_shared
+        Arrow::arrow_static
 )
 
 add_executable(motherduck_destination "src/motherduck_destination.cpp")
