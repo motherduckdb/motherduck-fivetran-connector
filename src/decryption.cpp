@@ -19,7 +19,7 @@ std::vector<unsigned char> decrypt_file(const std::string &filename,
                               iv.data())) {
     throw std::runtime_error("Could not decrypt file " + filename);
   }
-  int len;
+  int len = 0;
   std::vector<unsigned char> plaintext(encrypted_data.size());
   if (1 != EVP_DecryptUpdate(ctx, plaintext.data(), &len, encrypted_data.data(),
                              encrypted_data.size())) {
