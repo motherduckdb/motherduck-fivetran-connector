@@ -29,6 +29,7 @@ check_dependencies:
   	fi
 
 build_connector: check_dependencies
+	echo "dependencies: ${MD_FIVETRAN_DEPENDENCIES_DIR}"
 	cmake -S ${SOURCE_DIR} -B ${BUILD_DIR}/Release \
     		-DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}/Release \
     		-DMD_FIVETRAN_DEPENDENCIES_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR}
@@ -48,7 +49,8 @@ build_openssl_native:
 	cd ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR} && \
 	  wget -q -O openssl-${OPENSSL_VERSION}.tar.gz https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz && \
 	  tar -xf openssl-${OPENSSL_VERSION}.tar.gz && \
-	  cd openssl-${OPENSSL_VERSION} && \
+	  mv openssl-${OPENSSL_VERSION} openssl && \
+	  cd openssl && \
 	  ./config --prefix=${MD_FIVETRAN_DEPENDENCIES_DIR}/openssl --openssldir=${MD_FIVETRAN_DEPENDENCIES_DIR}/openssl --libdir=lib no-shared zlib-dynamic no-tests && \
 	  make -j${CORES} && \
 	  make install_sw
@@ -79,7 +81,7 @@ get_duckdb:
 	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
 	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR} && \
 		wget -q -O libduckdb-src.zip https://github.com/duckdb/duckdb/releases/download/${DUCKDB_VERSION}/libduckdb-src.zip && \
-		unzip -d ../libduckdb-src libduckdb-src.zip
+		unzip -o -d ../libduckdb-src libduckdb-src.zip
 
 
 get_fivetran_protos:
