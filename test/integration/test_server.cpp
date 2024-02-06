@@ -443,3 +443,24 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     REQUIRE(res->RowCount() == 0);
   }
 }
+
+TEST_CASE("Truncate nonexistent table should succeed", "[integration]") {
+  DestinationSdkImpl service;
+
+  const std::string bad_table_name =
+      "nonexistent" + std::to_string(Catch::rngSeed());
+
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+
+  ::fivetran_sdk::TruncateRequest request;
+  (*request.mutable_configuration())["motherduck_token"] = token;
+  (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+  request.set_schema_name("some_schema");
+  request.set_table_name(bad_table_name);
+  ::fivetran_sdk::TruncateResponse response;
+  auto status = service.Truncate(nullptr, &request, &response);
+
+  INFO(status.error_message());
+  REQUIRE(status.ok());
+}
