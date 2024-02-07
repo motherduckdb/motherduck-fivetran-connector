@@ -2,6 +2,7 @@
 #include "motherduck_destination_server.hpp"
 #include <catch2/catch_all.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <fstream>
 
 #define STRING(x) #x
@@ -447,8 +448,7 @@ TEST_CASE("WriteBatch", "[integration][current]") {
 TEST_CASE("Truncate nonexistent table should succeed", "[integration]") {
   DestinationSdkImpl service;
 
-  const std::string bad_table_name =
-      "nonexistent" + std::to_string(Catch::rngSeed());
+  const std::string bad_table_name = "nonexistent";
 
   auto token = std::getenv("motherduck_token");
   REQUIRE(token);
@@ -459,8 +459,15 @@ TEST_CASE("Truncate nonexistent table should succeed", "[integration]") {
   request.set_schema_name("some_schema");
   request.set_table_name(bad_table_name);
   ::fivetran_sdk::TruncateResponse response;
+
+  std::stringstream buffer;
+  std::streambuf *real_cout = std::cout.rdbuf(buffer.rdbuf());
   auto status = service.Truncate(nullptr, &request, &response);
+  std::cout.rdbuf(real_cout);
 
   INFO(status.error_message());
   REQUIRE(status.ok());
+  REQUIRE_THAT(buffer.str(), Catch::Matchers::ContainsSubstring(
+                                 "Table <nonexistent> not found in schema "
+                                 "<some_schema>; not truncated"));
 }
