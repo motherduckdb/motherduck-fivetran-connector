@@ -252,7 +252,14 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
 
-    truncate_table(*con, table_name);
+    if (table_exists(*con, table_name)) {
+      truncate_table(*con, table_name);
+    } else {
+      mdlog::warning("Table <" + request->table_name() +
+                     "> not found in schema <" + request->schema_name() +
+                     ">; not truncated");
+    }
+
   } catch (const std::exception &e) {
     mdlog::severe("Truncate endpoint failed for schema <" +
                   request->schema_name() + ">, table <" +
