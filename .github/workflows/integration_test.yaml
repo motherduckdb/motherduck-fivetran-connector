@@ -5,7 +5,6 @@ on:
   push:
     branches: [main]
 
-
 jobs:
   build_and_test:
     name: Build and test the connector
@@ -13,9 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: whatever
-        run: |
-          echo "***** cmakelists hash =  ${{ hashFiles('./CMakeLists.txt') }} "
       - uses: actions/cache@v3
         id: cache-deps
         with:
