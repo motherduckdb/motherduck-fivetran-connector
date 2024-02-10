@@ -15,16 +15,17 @@ jobs:
       - uses: actions/cache@v3
         id: cache-deps
         with:
-          key: fivetran-deps-${{ hashFiles('./CMakeLists.txt') }}
+          key: fivetran-deps-${{ hashFiles('./Makefile') }}
           path: ./install
 
       - name: build the dependencies
         if: ${{ steps.cache-deps.outputs.cache-hit != 'true' }}
         run: |
-          make build_dependencies
+          make build_openssl_native build_grpc build_arrow build_test_dependencies
 
       - name: build the connector
         run: |
+          make get_fivetran_protos get_duckdb
           make build_connector
 
       - name: run tests
