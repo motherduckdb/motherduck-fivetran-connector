@@ -1,0 +1,11 @@
+name: Integration Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+
+jobs:
+  build_and_test:
+    make build_connector # no mr bond I expect you to error out
