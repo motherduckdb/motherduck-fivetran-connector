@@ -13,8 +13,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: build the dependencies
+        run: |
+          make build_dependencies
+
       - name: build the connector
         run: |
-          pwd
-          ls
           make build_connector
+
+      - name: run tests
+        run: |
+          ./build/Release/integration_tests
