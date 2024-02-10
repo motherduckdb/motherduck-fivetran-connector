@@ -17,7 +17,7 @@ std::string table_def::to_string() const {
 }
 
 void write_joined(
-    std::ostringstream &sql, const std::vector<const column_def *> columns,
+    std::ostringstream &sql, const std::vector<const column_def *> &columns,
     std::function<void(const std::string &, std::ostringstream &)> print_str) {
   bool first = true;
   for (const auto &col : columns) {
@@ -34,8 +34,9 @@ void write_joined(
 // TODO: add test for schema or remove the logic if it's unused
 bool schema_exists(duckdb::Connection &con, const std::string &db_name,
                    const std::string &schema_name) {
-  const std::string query = "SELECT schema_name FROM information_schema.schemata "
-                      "WHERE catalog_name=? AND schema_name=?";
+  const std::string query =
+      "SELECT schema_name FROM information_schema.schemata "
+      "WHERE catalog_name=? AND schema_name=?";
   auto statement = con.Prepare(query);
   duckdb::vector<duckdb::Value> params = {duckdb::Value(db_name),
                                           duckdb::Value(schema_name)};
@@ -52,8 +53,9 @@ bool schema_exists(duckdb::Connection &con, const std::string &db_name,
 }
 
 bool table_exists(duckdb::Connection &con, const table_def &table) {
-  const std::string query = "SELECT table_name FROM information_schema.tables WHERE "
-                      "table_catalog=? AND table_schema=? AND table_name=?";
+  const std::string query =
+      "SELECT table_name FROM information_schema.tables WHERE "
+      "table_catalog=? AND table_schema=? AND table_name=?";
   auto statement = con.Prepare(query);
   duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name),
                                           duckdb::Value(table.schema_name),
@@ -78,18 +80,24 @@ void create_schema(duckdb::Connection &con, const std::string &db_name,
 }
 
 void create_table(duckdb::Connection &con, const table_def &table,
-                  const std::vector<column_def> &columns) {
+                  const std::vector<const column_def *> &columns_pk,
+                  const std::vector<column_def> &all_columns) {
   const std::string absolute_table_name = table.to_string();
   std::ostringstream ddl;
   ddl << "CREATE OR REPLACE TABLE " << absolute_table_name << " (";
 
-  for (const auto &col : columns) {
+  for (const auto &col : all_columns) {
     ddl << KeywordHelper::WriteQuoted(col.name, '"') << " "
         << duckdb::EnumUtil::ToChars(col.type);
-    if (col.primary_key) {
-      ddl << " PRIMARY KEY";
-    }
     ddl << ", "; // DuckDB allows trailing commas
+  }
+
+  if (!columns_pk.empty()) {
+    ddl << "PRIMARY KEY (";
+    write_joined(
+        ddl, columns_pk,
+        [](const std::string &name, std::ostringstream &out) { out << name; });
+    ddl << ")";
   }
 
   ddl << ")";
