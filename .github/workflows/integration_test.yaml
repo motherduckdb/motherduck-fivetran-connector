@@ -13,7 +13,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: whatever
+        run: |
+          echo "***** cmakelists hash = " ${{ hashFiles('./CMakeLists.txt')
+      - uses: actions/cache@v3
+        id: cache-deps
+        with:
+          key: fivetran-deps-${{ hashFiles('./CMakeLists.txt') }}
+          path: ./install
+
       - name: build the dependencies
+        if: ${{ steps.cache-deps.outputs.cache-hit != 'true' }}
         run: |
           make build_dependencies
 
@@ -22,5 +32,7 @@ jobs:
           make build_connector
 
       - name: run tests
+        env:
+          motherduck_token: ${{ secrets.CI_TESTING_TOKEN }}
         run: |
           ./build/Release/integration_tests
