@@ -52,4 +52,3 @@ To upgrade, change `DUCKDB_VERSION` in [Makefile](Makefile) and re-run `make get
 - support GZIP compression
 - implement truncate-before (utc_delete_before) and synced_column = 4;
 - implement soft delete?
-- can files be unencrypted but still compressed?

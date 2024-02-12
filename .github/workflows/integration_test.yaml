@@ -1,0 +1,35 @@
+name: Integration Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build_and_test:
+    name: Build and test the connector
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v3
+        id: cache-deps
+        with:
+          key: fivetran-deps-${{ hashFiles('./Makefile') }}
+          path: ./install
+
+      - name: build the dependencies
+        if: ${{ steps.cache-deps.outputs.cache-hit != 'true' }}
+        run: |
+          make build_openssl_native build_grpc build_arrow build_test_dependencies
+
+      - name: build the connector
+        run: |
+          make get_fivetran_protos get_duckdb
+          make build_connector
+
+      - name: run tests
+        env:
+          motherduck_token: ${{ secrets.CI_TESTING_TOKEN }}
+        run: |
+          ./build/Release/integration_tests
