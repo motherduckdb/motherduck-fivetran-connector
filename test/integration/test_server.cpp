@@ -22,6 +22,9 @@ TEST_CASE("ConfigurationForm", "[integration]") {
   REQUIRE(response->fields_size() == 2);
   REQUIRE(response->fields(0).name() == "motherduck_token");
   REQUIRE(response->fields(1).name() == "motherduck_database");
+  REQUIRE(response->tests_size() == 1);
+  REQUIRE(response->tests(0).name() == CONFIG_TEST_NAME_AUTHENTICATE);
+  REQUIRE(response->tests(0).label() == "Test Authentication");
 }
 
 TEST_CASE("DescribeTable fails when database missing", "[integration]") {
@@ -206,6 +209,25 @@ TEST_CASE("Test endpoint fails when token is bad", "[integration]") {
   REQUIRE(!status.ok());
   CHECK_THAT(status.error_message(),
              Catch::Matchers::ContainsSubstring("UNAUTHENTICATED"));
+}
+
+TEST_CASE("Test endpoint succeeds when everything is in order",
+          "[integration]") {
+  DestinationSdkImpl service;
+
+  ::fivetran_sdk::TestRequest request;
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+  request.set_name(CONFIG_TEST_NAME_AUTHENTICATE);
+  (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+  (*request.mutable_configuration())["motherduck_token"] = token;
+
+  ::fivetran_sdk::TestResponse response;
+
+  auto status = service.Test(nullptr, &request, &response);
+
+  INFO(status.error_message());
+  REQUIRE(status.ok());
 }
 
 template <typename T>
