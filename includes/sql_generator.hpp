@@ -46,7 +46,9 @@ void update_values(duckdb::Connection &con, const table_def &table,
                    std::vector<const column_def *> &columns_regular,
                    const std::string &unmodified_string);
 
-void truncate_table(duckdb::Connection &con, const table_def &table);
+void truncate_table(duckdb::Connection &con, const table_def &table,
+                    const std::string synced_column,
+                    std::chrono::nanoseconds combined_duration);
 
 void delete_rows(duckdb::Connection &con, const table_def &table,
                  const std::string &staging_table_name,

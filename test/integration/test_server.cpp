@@ -423,11 +423,16 @@ TEST_CASE("WriteBatch", "[integration][current]") {
   }
 
   {
-    // truncate table
+    // truncate data before Jan 9 2024
     ::fivetran_sdk::TruncateRequest request;
     (*request.mutable_configuration())["motherduck_token"] = token;
     (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
     request.set_table_name(table_name);
+    request.set_synced_column("_fivetran_synced");
+
+    const auto cutoff_datetime = 1707436800; // 2024-02-09 0:0:0 GMT, trust me
+    request.mutable_utc_delete_before()->set_seconds(cutoff_datetime);
+    request.mutable_utc_delete_before()->set_nanos(0);
     ::fivetran_sdk::TruncateResponse response;
     auto status = service.Truncate(nullptr, &request, &response);
 
@@ -437,11 +442,40 @@ TEST_CASE("WriteBatch", "[integration][current]") {
 
   {
     // check truncated table
-    auto res = con->Query("SELECT id, title, magic_number FROM " + table_name +
+    auto res = con->Query("SELECT title, id, magic_number FROM " + table_name +
                           " ORDER BY id");
     INFO(res->GetError());
     REQUIRE(!res->HasError());
-    REQUIRE(res->RowCount() == 0);
+    // the 1st row from books_update.csv that had 2024-02-08T23:59:59.999999999Z
+    // timestamp got deleted
+    REQUIRE(res->RowCount() == 1);
+    REQUIRE(res->GetValue(0, 0) == "The empire strikes back");
+    REQUIRE(res->GetValue(1, 0) == 2);
+    REQUIRE(res->GetValue(2, 0) == 1);
+  }
+
+  {
+    // truncate table does nothing if there is no utc_delete_before field set
+    ::fivetran_sdk::TruncateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+    request.set_table_name(table_name);
+    request.set_synced_column("_fivetran_synced");
+
+    ::fivetran_sdk::TruncateResponse response;
+    auto status = service.Truncate(nullptr, &request, &response);
+
+    INFO(status.error_message());
+    REQUIRE(status.ok());
+  }
+
+  {
+    // check truncated table is the same as before
+    auto res = con->Query("SELECT title FROM " + table_name + " ORDER BY id");
+    INFO(res->GetError());
+    REQUIRE(!res->HasError());
+    REQUIRE(res->RowCount() == 1);
+    REQUIRE(res->GetValue(0, 0) == "The empire strikes back");
   }
 }
 

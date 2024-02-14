@@ -253,7 +253,11 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
         get_connection(request->configuration(), db_name);
 
     if (table_exists(*con, table_name)) {
-      truncate_table(*con, table_name);
+      std::chrono::nanoseconds delete_before_ts =
+          std::chrono::seconds(request->utc_delete_before().seconds()) +
+          std::chrono::nanoseconds(request->utc_delete_before().nanos());
+      truncate_table(*con, table_name, request->synced_column(),
+                     delete_before_ts);
     } else {
       mdlog::warning("Table <" + request->table_name() +
                      "> not found in schema <" + request->schema_name() +

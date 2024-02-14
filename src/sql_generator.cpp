@@ -34,8 +34,9 @@ void write_joined(
 // TODO: add test for schema or remove the logic if it's unused
 bool schema_exists(duckdb::Connection &con, const std::string &db_name,
                    const std::string &schema_name) {
-  const std::string query = "SELECT schema_name FROM information_schema.schemata "
-                      "WHERE catalog_name=? AND schema_name=?";
+  const std::string query =
+      "SELECT schema_name FROM information_schema.schemata "
+      "WHERE catalog_name=? AND schema_name=?";
   auto statement = con.Prepare(query);
   duckdb::vector<duckdb::Value> params = {duckdb::Value(db_name),
                                           duckdb::Value(schema_name)};
@@ -52,8 +53,9 @@ bool schema_exists(duckdb::Connection &con, const std::string &db_name,
 }
 
 bool table_exists(duckdb::Connection &con, const table_def &table) {
-  const std::string query = "SELECT table_name FROM information_schema.tables WHERE "
-                      "table_catalog=? AND table_schema=? AND table_name=?";
+  const std::string query =
+      "SELECT table_name FROM information_schema.tables WHERE "
+      "table_catalog=? AND table_schema=? AND table_name=?";
   auto statement = con.Prepare(query);
   duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name),
                                           duckdb::Value(table.schema_name),
@@ -318,13 +320,25 @@ void delete_rows(duckdb::Connection &con, const table_def &table,
   }
 }
 
-void truncate_table(duckdb::Connection &con, const table_def &table) {
+void truncate_table(duckdb::Connection &con, const table_def &table,
+                    const std::string synced_column,
+                    std::chrono::nanoseconds cutoff_ns) {
   const std::string absolute_table_name = table.to_string();
   std::ostringstream sql;
-  sql << "DELETE FROM " + absolute_table_name;
+
+  sql << "DELETE FROM " << absolute_table_name << " WHERE "
+      << KeywordHelper::WriteQuoted(synced_column, '"')
+      << " < make_timestamp(?)";
   auto query = sql.str();
   mdlog::info("truncate_table: " + query);
-  auto result = con.Query(query);
+  auto statement = con.Prepare(query);
+
+  // DuckDB make_timestamp takes microseconds; Fivetran sends millisecond
+  // precision -- safe to divide with truncation
+  long cutoff_microseconds = cutoff_ns.count() / 1000;
+  duckdb::vector<duckdb::Value> params = {duckdb::Value(cutoff_microseconds)};
+
+  auto result = statement->Execute(params, false);
   if (result->HasError()) {
     throw std::runtime_error("Error truncating table <" + absolute_table_name +
                              ">:" + result->GetError());
