@@ -407,6 +407,7 @@ TEST_CASE("WriteBatch", "[integration][current]") {
   }
 
   {
+    // check after update
     auto res = con->Query("SELECT id, title, magic_number FROM " + table_name +
                           " ORDER BY id");
     INFO(res->GetError());
@@ -429,6 +430,7 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
     request.set_table_name(table_name);
     request.set_synced_column("_fivetran_synced");
+    request.mutable_soft()->set_deleted_column("_fivetran_deleted");
 
     const auto cutoff_datetime = 1707436800; // 2024-02-09 0:0:0 GMT, trust me
     request.mutable_utc_delete_before()->set_seconds(cutoff_datetime);
@@ -443,7 +445,7 @@ TEST_CASE("WriteBatch", "[integration][current]") {
   {
     // check truncated table
     auto res = con->Query("SELECT title, id, magic_number FROM " + table_name +
-                          " ORDER BY id");
+                          " WHERE _fivetran_deleted = false ORDER BY id");
     INFO(res->GetError());
     REQUIRE(!res->HasError());
     // the 1st row from books_update.csv that had 2024-02-08T23:59:59.999999999Z
@@ -455,12 +457,24 @@ TEST_CASE("WriteBatch", "[integration][current]") {
   }
 
   {
+    // check the rows did not get physically deleted
+    auto res = con->Query("SELECT title, id, magic_number FROM " + table_name +
+                          " ORDER BY id");
+    INFO(res->GetError());
+    REQUIRE(!res->HasError());
+    // the 1st row from books_update.csv that had 2024-02-08T23:59:59.999999999Z
+    // timestamp got deleted
+    REQUIRE(res->RowCount() == 2);
+  }
+
+  {
     // truncate table does nothing if there is no utc_delete_before field set
     ::fivetran_sdk::TruncateRequest request;
     (*request.mutable_configuration())["motherduck_token"] = token;
     (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
     request.set_table_name(table_name);
     request.set_synced_column("_fivetran_synced");
+    request.mutable_soft()->set_deleted_column("_fivetran_deleted");
 
     ::fivetran_sdk::TruncateResponse response;
     auto status = service.Truncate(nullptr, &request, &response);
@@ -471,11 +485,23 @@ TEST_CASE("WriteBatch", "[integration][current]") {
 
   {
     // check truncated table is the same as before
-    auto res = con->Query("SELECT title FROM " + table_name + " ORDER BY id");
+    auto res = con->Query("SELECT title FROM " + table_name +
+                          " WHERE _fivetran_deleted = false ORDER BY id");
     INFO(res->GetError());
     REQUIRE(!res->HasError());
     REQUIRE(res->RowCount() == 1);
     REQUIRE(res->GetValue(0, 0) == "The empire strikes back");
+  }
+
+  {
+    // check again that the rows did not get physically deleted
+    auto res = con->Query("SELECT title, id, magic_number FROM " + table_name +
+                          " ORDER BY id");
+    INFO(res->GetError());
+    REQUIRE(!res->HasError());
+    // the 1st row from books_update.csv that had 2024-02-08T23:59:59.999999999Z
+    // timestamp got deleted
+    REQUIRE(res->RowCount() == 2);
   }
 }
 
@@ -492,6 +518,9 @@ TEST_CASE("Truncate nonexistent table should succeed", "[integration]") {
   (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
   request.set_schema_name("some_schema");
   request.set_table_name(bad_table_name);
+  request.set_synced_column("_fivetran_synced");
+  request.mutable_soft()->set_deleted_column("_fivetran_deleted");
+
   ::fivetran_sdk::TruncateResponse response;
 
   std::stringstream buffer;
@@ -504,4 +533,43 @@ TEST_CASE("Truncate nonexistent table should succeed", "[integration]") {
   REQUIRE_THAT(buffer.str(), Catch::Matchers::ContainsSubstring(
                                  "Table <nonexistent> not found in schema "
                                  "<some_schema>; not truncated"));
+}
+
+TEST_CASE("Truncate fails if required properties are missing") {
+
+  DestinationSdkImpl service;
+
+  const std::string bad_table_name = "nonexistent";
+
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+
+  {
+    // synced_column is required
+    ::fivetran_sdk::TruncateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+    request.set_table_name("some_table");
+
+    ::fivetran_sdk::TruncateResponse response;
+    auto status = service.Truncate(nullptr, &request, &response);
+
+    REQUIRE(!status.ok());
+    REQUIRE(status.error_message() == "Synced column is required");
+  }
+
+  {
+    // synced_column is required
+    ::fivetran_sdk::TruncateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+    request.set_table_name("some_table");
+    request.set_synced_column("_fivetran_synced");
+
+    ::fivetran_sdk::TruncateResponse response;
+    auto status = service.Truncate(nullptr, &request, &response);
+
+    REQUIRE(!status.ok());
+    REQUIRE(status.error_message() == "Deleted column is required");
+  }
 }

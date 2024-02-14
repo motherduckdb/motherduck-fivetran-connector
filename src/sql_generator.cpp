@@ -321,12 +321,14 @@ void delete_rows(duckdb::Connection &con, const table_def &table,
 }
 
 void truncate_table(duckdb::Connection &con, const table_def &table,
-                    const std::string synced_column,
-                    std::chrono::nanoseconds cutoff_ns) {
+                    const std::string &synced_column,
+                    std::chrono::nanoseconds &cutoff_ns,
+                    const std::string &deleted_column) {
   const std::string absolute_table_name = table.to_string();
   std::ostringstream sql;
 
-  sql << "DELETE FROM " << absolute_table_name << " WHERE "
+  sql << "UPDATE " << absolute_table_name << " SET "
+      << KeywordHelper::WriteQuoted(deleted_column, '"') << " = true WHERE "
       << KeywordHelper::WriteQuoted(synced_column, '"')
       << " < make_timestamp(?)";
   auto query = sql.str();
