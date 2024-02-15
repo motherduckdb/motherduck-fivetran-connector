@@ -138,6 +138,10 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
 
   response->add_fields()->CopyFrom(token_field);
   response->add_fields()->CopyFrom(db_field);
+
+  auto test = response->add_tests();
+  test->set_name(CONFIG_TEST_NAME_AUTHENTICATE);
+  test->set_label("Test Authentication");
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
@@ -370,16 +374,40 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
                          const ::fivetran_sdk::TestRequest *request,
                          ::fivetran_sdk::TestResponse *response) {
 
+  std::string db_name;
   try {
-    std::string db_name =
-        find_property(request->configuration(), MD_PROP_DATABASE);
+    db_name = find_property(request->configuration(), MD_PROP_DATABASE);
+  } catch (const std::exception &e) {
+    auto msg = "Test endpoint failed; could not retrieve database name: " +
+               std::string(e.what());
+    mdlog::severe(msg);
+    response->set_success(false);
+    response->set_failure(msg);
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, e.what());
+  }
+
+  try {
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
-    check_connection(*con);
+
+    if (request->name() == CONFIG_TEST_NAME_AUTHENTICATE) {
+      check_connection(*con);
+      response->set_success(true);
+    } else {
+      auto const msg = "Unknown test requested: <" + request->name() + ">";
+      mdlog::severe(msg);
+      response->set_success(false);
+      response->set_failure(msg);
+      return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, msg);
+    }
+    response->set_success(true);
   } catch (const std::exception &e) {
-    mdlog::severe("Test endpoint failed: " + std::string(e.what()));
-    response->set_failure(e.what());
-    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+    auto msg = "Authentication test for database <" + db_name +
+               "> failed: " + std::string(e.what());
+    response->set_success(false);
+    response->set_failure(msg);
+    // grpc call succeeded; the response reflects config test failure
+    return ::grpc::Status(::grpc::StatusCode::OK, msg);
   }
 
   return ::grpc::Status(::grpc::StatusCode::OK, "");
