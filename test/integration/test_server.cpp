@@ -191,8 +191,14 @@ TEST_CASE("Test fails when token is missing", "[integration]") {
 
   auto status = service.Test(nullptr, &request, &response);
 
-  REQUIRE(!status.ok());
-  REQUIRE(status.error_message() == "Missing property motherduck_token");
+  REQUIRE(status.ok());
+  REQUIRE(!response.success());
+  REQUIRE(status.error_message() ==
+          "Authentication test for database <fivetran_test> failed: Missing "
+          "property motherduck_token");
+  REQUIRE(response.failure() ==
+          "Authentication test for database <fivetran_test> failed: Missing "
+          "property motherduck_token");
 }
 
 TEST_CASE("Test endpoint fails when token is bad", "[integration]") {
@@ -206,7 +212,10 @@ TEST_CASE("Test endpoint fails when token is bad", "[integration]") {
 
   auto status = service.Test(nullptr, &request, &response);
 
-  REQUIRE(!status.ok());
+  REQUIRE(status.ok());
+  REQUIRE(!response.success());
+  CHECK_THAT(status.error_message(),
+             Catch::Matchers::ContainsSubstring("UNAUTHENTICATED"));
   CHECK_THAT(status.error_message(),
              Catch::Matchers::ContainsSubstring("UNAUTHENTICATED"));
 }
