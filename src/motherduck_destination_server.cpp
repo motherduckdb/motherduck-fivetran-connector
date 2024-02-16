@@ -113,6 +113,19 @@ void process_file(
   arrow_array_stream.release(&arrow_array_stream);
 }
 
+void find_primary_keys(
+    const std::vector<column_def> &cols,
+    std::vector<const column_def *> &columns_pk,
+    std::vector<const column_def *> *columns_regular = nullptr) {
+  for (auto &col : cols) {
+    if (col.primary_key) {
+      columns_pk.push_back(&col);
+    } else if (columns_regular != nullptr) {
+      columns_regular->push_back(&col);
+    }
+  }
+}
+
 grpc::Status DestinationSdkImpl::ConfigurationForm(
     ::grpc::ServerContext *context,
     const ::fivetran_sdk::ConfigurationFormRequest *request,
@@ -204,7 +217,10 @@ grpc::Status DestinationSdkImpl::CreateTable(
       create_schema(*con, db_name, schema_name);
     }
 
-    create_table(*con, table, get_duckdb_columns(request->table().columns()));
+    std::vector<const column_def *> columns_pk;
+    const auto cols = get_duckdb_columns(request->table().columns());
+    find_primary_keys(cols, columns_pk);
+    create_table(*con, table, columns_pk, cols);
     response->set_success(true);
   } catch (const std::exception &e) {
     mdlog::severe("CreateTable endpoint failed for schema <" +
@@ -297,13 +313,8 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
     const auto cols = get_duckdb_columns(request->table().columns());
     std::vector<const column_def *> columns_pk;
     std::vector<const column_def *> columns_regular;
-    for (auto &col : cols) {
-      if (col.primary_key) {
-        columns_pk.push_back(&col);
-      } else {
-        columns_regular.push_back(&col);
-      }
-    }
+    find_primary_keys(cols, columns_pk, &columns_regular);
+
     if (columns_pk.empty()) {
       throw std::invalid_argument("No primary keys found");
     }
