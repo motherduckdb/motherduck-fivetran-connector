@@ -6,6 +6,9 @@ static constexpr const char *const MD_PROP_DATABASE = "motherduck_database";
 
 static constexpr const char *const MD_PROP_TOKEN = "motherduck_token";
 
+static constexpr const char *const CONFIG_TEST_NAME_AUTHENTICATE =
+    "test_authentication";
+
 class DestinationSdkImpl final : public fivetran_sdk::Destination::Service {
 public:
   DestinationSdkImpl() = default;
