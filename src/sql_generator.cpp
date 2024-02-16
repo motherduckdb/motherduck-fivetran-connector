@@ -129,7 +129,8 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
   auto result = statement->Execute(params, false);
 
   if (result->HasError()) {
-    throw std::runtime_error("Could not describe table <" + table.to_escaped_string() +
+    throw std::runtime_error("Could not describe table <" +
+                             table.to_escaped_string() +
                              ">:" + result->GetError());
   }
   auto materialized_result = duckdb::unique_ptr_cast<
