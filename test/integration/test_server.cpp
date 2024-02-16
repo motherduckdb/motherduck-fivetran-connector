@@ -493,8 +493,6 @@ TEST_CASE("WriteBatch", "[integration][current]") {
                           " ORDER BY id");
     INFO(res->GetError());
     REQUIRE(!res->HasError());
-    // the 1st row from books_update.csv that had 2024-02-08T23:59:59.999999999Z
-    // timestamp got deleted
     REQUIRE(res->RowCount() == 2);
   }
 
@@ -530,9 +528,55 @@ TEST_CASE("WriteBatch", "[integration][current]") {
                           " ORDER BY id");
     INFO(res->GetError());
     REQUIRE(!res->HasError());
-    // the 1st row from books_update.csv that had 2024-02-08T23:59:59.999999999Z
-    // timestamp got deleted
     REQUIRE(res->RowCount() == 2);
+  }
+}
+
+TEST_CASE("CreateTable with multiple primary keys", "[integration]") {
+  DestinationSdkImpl service;
+
+  const std::string table_name =
+      "multikey_table" + std::to_string(Catch::rngSeed());
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+
+  {
+    // Create Table
+    ::fivetran_sdk::CreateTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+    request.mutable_table()->set_name(table_name);
+    auto col1 = request.mutable_table()->add_columns();
+    col1->set_name("id1");
+    col1->set_type(::fivetran_sdk::DataType::INT);
+    col1->set_primary_key(true);
+    auto col2 = request.mutable_table()->add_columns();
+    col2->set_name("id2");
+    col2->set_type(::fivetran_sdk::DataType::INT);
+    col2->set_primary_key(true);
+
+    ::fivetran_sdk::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+
+    INFO(status.error_message());
+    REQUIRE(status.ok());
+  }
+
+  {
+    // Describe the created table
+    ::fivetran_sdk::DescribeTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+    request.set_table_name(table_name);
+
+    {
+      ::fivetran_sdk::DescribeTableResponse response;
+      auto status = service.DescribeTable(nullptr, &request, &response);
+
+      INFO(status.error_message());
+      REQUIRE(status.ok());
+      REQUIRE(response.table().columns().size() == 2);
+    }
   }
 }
 
@@ -565,6 +609,7 @@ TEST_CASE("Truncate nonexistent table should succeed", "[integration]") {
                                  "Table <nonexistent> not found in schema "
                                  "<some_schema>; not truncated"));
 }
+
 
 TEST_CASE("Truncate fails if required properties are missing") {
 
