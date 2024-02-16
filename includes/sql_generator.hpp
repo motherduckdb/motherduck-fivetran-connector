@@ -15,7 +15,7 @@ struct table_def {
   std::string schema_name;
   std::string table_name;
 
-  std::string to_string() const;
+  std::string to_escaped_string() const;
 };
 
 bool schema_exists(duckdb::Connection &con, const std::string &db_name,
@@ -47,7 +47,10 @@ void update_values(duckdb::Connection &con, const table_def &table,
                    std::vector<const column_def *> &columns_regular,
                    const std::string &unmodified_string);
 
-void truncate_table(duckdb::Connection &con, const table_def &table);
+void truncate_table(duckdb::Connection &con, const table_def &table,
+                    const std::string &synced_column,
+                    std::chrono::nanoseconds &cutoff_ns,
+                    const std::string &deleted_column);
 
 void delete_rows(duckdb::Connection &con, const table_def &table,
                  const std::string &staging_table_name,

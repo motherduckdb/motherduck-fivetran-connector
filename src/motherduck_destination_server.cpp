@@ -269,11 +269,22 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
         find_property(request->configuration(), MD_PROP_DATABASE);
     table_def table_name{db_name, get_schema_name(request),
                          get_table_name(request)};
+    if (request->synced_column().empty()) {
+      throw std::invalid_argument("Synced column is required");
+    }
+    if (request->soft().deleted_column().empty()) {
+      // right now, only soft deletes are supported
+      throw std::invalid_argument("Deleted column is required");
+    }
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
 
     if (table_exists(*con, table_name)) {
-      truncate_table(*con, table_name);
+      std::chrono::nanoseconds delete_before_ts =
+          std::chrono::seconds(request->utc_delete_before().seconds()) +
+          std::chrono::nanoseconds(request->utc_delete_before().nanos());
+      truncate_table(*con, table_name, request->synced_column(),
+                     delete_before_ts, request->soft().deleted_column());
     } else {
       mdlog::warning("Table <" + request->table_name() +
                      "> not found in schema <" + request->schema_name() +
