@@ -8,7 +8,7 @@ using duckdb::KeywordHelper;
 
 // Utility
 
-std::string table_def::to_string() const {
+std::string table_def::to_escaped_string() const {
   std::ostringstream out;
   out << KeywordHelper::WriteQuoted(db_name, '"') << "."
       << KeywordHelper::WriteQuoted(schema_name, '"') << "."
@@ -65,7 +65,7 @@ bool table_exists(duckdb::Connection &con, const table_def &table) {
 
   if (result->HasError()) {
     throw std::runtime_error("Could not find whether table <" +
-                             table.to_string() +
+                             table.to_escaped_string() +
                              "> exists: " + result->GetError());
   }
   auto materialized_result = duckdb::unique_ptr_cast<
@@ -83,7 +83,7 @@ void create_schema(duckdb::Connection &con, const std::string &db_name,
 void create_table(duckdb::Connection &con, const table_def &table,
                   const std::vector<const column_def *> &columns_pk,
                   const std::vector<column_def> &all_columns) {
-  const std::string absolute_table_name = table.to_string();
+  const std::string absolute_table_name = table.to_escaped_string();
   std::ostringstream ddl;
   ddl << "CREATE OR REPLACE TABLE " << absolute_table_name << " (";
 
@@ -129,7 +129,7 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
   auto result = statement->Execute(params, false);
 
   if (result->HasError()) {
-    throw std::runtime_error("Could not describe table <" + table.to_string() +
+    throw std::runtime_error("Could not describe table <" + table.to_escaped_string() +
                              ">:" + result->GetError());
   }
   auto materialized_result = duckdb::unique_ptr_cast<
@@ -148,7 +148,7 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
 void alter_table(duckdb::Connection &con, const table_def &table,
                  const std::vector<column_def> &columns) {
 
-  auto absolute_table_name = table.to_string();
+  auto absolute_table_name = table.to_escaped_string();
   std::set<std::string> alter_types;
   std::set<std::string> added_columns;
   std::set<std::string> deleted_columns;
@@ -233,7 +233,7 @@ void upsert(duckdb::Connection &con, const table_def &table,
             const std::string &staging_table_name,
             std::vector<const column_def *> &columns_pk,
             std::vector<const column_def *> &columns_regular) {
-  const std::string absolute_table_name = table.to_string();
+  const std::string absolute_table_name = table.to_escaped_string();
   std::ostringstream sql;
   sql << "INSERT INTO " << absolute_table_name << " SELECT * FROM "
       << staging_table_name;
@@ -264,7 +264,7 @@ void update_values(duckdb::Connection &con, const table_def &table,
                    const std::string &unmodified_string) {
 
   std::ostringstream sql;
-  auto absolute_table_name = table.to_string();
+  auto absolute_table_name = table.to_escaped_string();
 
   sql << "UPDATE " << absolute_table_name << " SET ";
 
@@ -299,7 +299,7 @@ void delete_rows(duckdb::Connection &con, const table_def &table,
                  const std::string &staging_table_name,
                  std::vector<const column_def *> &columns_pk) {
 
-  const std::string absolute_table_name = table.to_string();
+  const std::string absolute_table_name = table.to_escaped_string();
   std::ostringstream sql;
   sql << "DELETE FROM " + absolute_table_name << " USING " << staging_table_name
       << " WHERE ";
@@ -323,7 +323,7 @@ void truncate_table(duckdb::Connection &con, const table_def &table,
                     const std::string &synced_column,
                     std::chrono::nanoseconds &cutoff_ns,
                     const std::string &deleted_column) {
-  const std::string absolute_table_name = table.to_string();
+  const std::string absolute_table_name = table.to_escaped_string();
   std::ostringstream sql;
 
   sql << "UPDATE " << absolute_table_name << " SET "
