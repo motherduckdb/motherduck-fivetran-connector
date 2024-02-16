@@ -610,7 +610,6 @@ TEST_CASE("Truncate nonexistent table should succeed", "[integration]") {
                                  "<some_schema>; not truncated"));
 }
 
-
 TEST_CASE("Truncate fails if required properties are missing") {
 
   DestinationSdkImpl service;
