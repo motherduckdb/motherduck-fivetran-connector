@@ -9,6 +9,33 @@
 #define XSTRING(s) STRING(s)
 const std::string TEST_RESOURCES_DIR = XSTRING(TEST_RESOURCES_LOCATION);
 
+bool NO_FAIL(duckdb::unique_ptr<duckdb::MaterializedQueryResult> &result) {
+  if (result->HasError()) {
+    fprintf(stderr, "Query failed with message: %s\n",
+            result->GetError().c_str());
+  }
+  return !result->HasError();
+}
+
+bool NO_FAIL(const grpc::Status &status) {
+  if (!status.ok()) {
+    fprintf(stderr, "Query failed with message: %s\n",
+            status.error_message().c_str());
+  }
+  return status.ok();
+}
+
+bool IS_FAIL(const grpc::Status &status, const std::string &expected_error) {
+  if (!status.ok() && status.error_message() != expected_error) {
+    fprintf(stderr, "Query failed with unexpected message: %s\n",
+            status.error_message().c_str());
+  }
+  return !status.ok();
+}
+#define REQUIRE_NO_FAIL(result) REQUIRE(NO_FAIL((result)))
+#define REQUIRE_FAIL(result, expected_error)                                   \
+  REQUIRE(IS_FAIL(result, expected_error))
+
 TEST_CASE("ConfigurationForm", "[integration]") {
   DestinationSdkImpl service;
 
@@ -16,8 +43,7 @@ TEST_CASE("ConfigurationForm", "[integration]") {
   auto response = ::fivetran_sdk::ConfigurationFormResponse().New();
 
   auto status = service.ConfigurationForm(nullptr, request, response);
-  INFO(status.error_message());
-  REQUIRE(status.ok());
+  REQUIRE_NO_FAIL(status);
 
   REQUIRE(response->fields_size() == 2);
   REQUIRE(response->fields(0).name() == "motherduck_token");
@@ -36,9 +62,7 @@ TEST_CASE("DescribeTable fails when database missing", "[integration]") {
   ::fivetran_sdk::DescribeTableResponse response;
 
   auto status = service.DescribeTable(nullptr, &request, &response);
-
-  REQUIRE(!status.ok());
-  REQUIRE(status.error_message() == "Missing property motherduck_database");
+  REQUIRE_FAIL(status, "Missing property motherduck_database");
 }
 
 TEST_CASE("DescribeTable on nonexistent table", "[integration]") {
@@ -53,9 +77,7 @@ TEST_CASE("DescribeTable on nonexistent table", "[integration]") {
   ::fivetran_sdk::DescribeTableResponse response;
 
   auto status = service.DescribeTable(nullptr, &request, &response);
-
-  INFO(status.error_message());
-  REQUIRE(status.ok());
+  REQUIRE_NO_FAIL(status);
   REQUIRE(response.not_found());
 }
 
@@ -83,9 +105,7 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable",
 
     ::fivetran_sdk::CreateTableResponse response;
     auto status = service.CreateTable(nullptr, &request, &response);
-
-    INFO(status.error_message());
-    REQUIRE(status.ok());
+    REQUIRE_NO_FAIL(status);
   }
 
   {
@@ -99,9 +119,7 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable",
       // table not found in default "main" schema
       ::fivetran_sdk::DescribeTableResponse response;
       auto status = service.DescribeTable(nullptr, &request, &response);
-
-      INFO(status.error_message());
-      REQUIRE(status.ok());
+      REQUIRE_NO_FAIL(status);
       REQUIRE(response.not_found());
     }
 
@@ -110,9 +128,7 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable",
       request.set_schema_name(schema_name);
       ::fivetran_sdk::DescribeTableResponse response;
       auto status = service.DescribeTable(nullptr, &request, &response);
-
-      INFO(status.error_message());
-      REQUIRE(status.ok());
+      REQUIRE_NO_FAIL(status);
       REQUIRE(!response.not_found());
 
       REQUIRE(response.table().name() == table_name);
@@ -138,9 +154,7 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable",
 
     ::fivetran_sdk::AlterTableResponse response;
     auto status = service.AlterTable(nullptr, &request, &response);
-
-    INFO(status.error_message());
-    REQUIRE(status.ok());
+    REQUIRE_NO_FAIL(status);
   }
 
   {
@@ -154,9 +168,7 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable",
     request.set_schema_name(schema_name);
     ::fivetran_sdk::DescribeTableResponse response;
     auto status = service.DescribeTable(nullptr, &request, &response);
-
-    INFO(status.error_message());
-    REQUIRE(status.ok());
+    REQUIRE_NO_FAIL(status);
     REQUIRE(!response.not_found());
 
     REQUIRE(response.table().name() == table_name);
@@ -176,9 +188,7 @@ TEST_CASE("Test fails when database missing", "[integration]") {
   ::fivetran_sdk::TestResponse response;
 
   auto status = service.Test(nullptr, &request, &response);
-
-  REQUIRE(!status.ok());
-  REQUIRE(status.error_message() == "Missing property motherduck_database");
+  REQUIRE_FAIL(status, "Missing property motherduck_database");
 }
 
 TEST_CASE("Test fails when token is missing", "[integration]") {
@@ -190,15 +200,12 @@ TEST_CASE("Test fails when token is missing", "[integration]") {
   ::fivetran_sdk::TestResponse response;
 
   auto status = service.Test(nullptr, &request, &response);
-
-  REQUIRE(status.ok());
-  REQUIRE(!response.success());
-  REQUIRE(status.error_message() ==
-          "Authentication test for database <fivetran_test> failed: Missing "
-          "property motherduck_token");
-  REQUIRE(response.failure() ==
-          "Authentication test for database <fivetran_test> failed: Missing "
-          "property motherduck_token");
+  REQUIRE_NO_FAIL(status);
+  auto expected_message =
+      "Authentication test for database <fivetran_test> failed: Missing "
+      "property motherduck_token";
+  REQUIRE(status.error_message() == expected_message);
+  REQUIRE(response.failure() == expected_message);
 }
 
 TEST_CASE("Test endpoint fails when token is bad", "[integration]") {
@@ -211,9 +218,7 @@ TEST_CASE("Test endpoint fails when token is bad", "[integration]") {
   ::fivetran_sdk::TestResponse response;
 
   auto status = service.Test(nullptr, &request, &response);
-
-  REQUIRE(status.ok());
-  REQUIRE(!response.success());
+  REQUIRE_NO_FAIL(status);
   CHECK_THAT(status.error_message(),
              Catch::Matchers::ContainsSubstring("UNAUTHENTICATED"));
   CHECK_THAT(status.error_message(),
@@ -234,9 +239,7 @@ TEST_CASE("Test endpoint succeeds when everything is in order",
   ::fivetran_sdk::TestResponse response;
 
   auto status = service.Test(nullptr, &request, &response);
-
-  INFO(status.error_message());
-  REQUIRE(status.ok());
+  REQUIRE_NO_FAIL(status);
 }
 
 template <typename T>
@@ -291,9 +294,7 @@ TEST_CASE("WriteBatch", "[integration][current]") {
 
     ::fivetran_sdk::CreateTableResponse response;
     auto status = service.CreateTable(nullptr, &request, &response);
-
-    INFO(status.error_message());
-    REQUIRE(status.ok());
+    REQUIRE_NO_FAIL(status);
   }
 
   // test connection needs to be created after table creation to avoid stale
@@ -320,17 +321,14 @@ TEST_CASE("WriteBatch", "[integration][current]") {
 
     ::fivetran_sdk::WriteBatchResponse response;
     auto status = service.WriteBatch(nullptr, &request, &response);
-
-    INFO(status.error_message());
-    REQUIRE(status.ok());
+    REQUIRE_NO_FAIL(status);
   }
 
   {
     // check inserted rows
     auto res = con->Query("SELECT id, title, magic_number FROM " + table_name +
                           " ORDER BY id");
-    INFO(res->GetError());
-    REQUIRE(!res->HasError());
+    REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 2);
     REQUIRE(res->GetValue(0, 0) == 1);
     REQUIRE(res->GetValue(1, 0) == "The Hitchhiker's Guide to the Galaxy");
@@ -354,17 +352,14 @@ TEST_CASE("WriteBatch", "[integration][current]") {
 
     ::fivetran_sdk::WriteBatchResponse response;
     auto status = service.WriteBatch(nullptr, &request, &response);
-
-    INFO(status.error_message());
-    REQUIRE(status.ok());
+    REQUIRE_NO_FAIL(status);
   }
 
   {
     // check after upsert
     auto res = con->Query("SELECT id, title, magic_number FROM " + table_name +
                           " ORDER BY id");
-    INFO(res->GetError());
-    REQUIRE(!res->HasError());
+    REQUIRE_NO_FAIL(res);
 
     REQUIRE(res->RowCount() == 3);
     REQUIRE(res->GetValue(0, 0) == 1);
@@ -394,17 +389,14 @@ TEST_CASE("WriteBatch", "[integration][current]") {
 
     ::fivetran_sdk::WriteBatchResponse response;
     auto status = service.WriteBatch(nullptr, &request, &response);
-
-    INFO(status.error_message());
-    REQUIRE(status.ok());
+    REQUIRE_NO_FAIL(status);
   }
 
   {
     // check after delete
     auto res = con->Query("SELECT id, title, magic_number FROM " + table_name +
                           " ORDER BY id");
-    INFO(res->GetError());
-    REQUIRE(!res->HasError());
+    REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 2);
 
     // row 1 got deleted
@@ -432,17 +424,14 @@ TEST_CASE("WriteBatch", "[integration][current]") {
 
     ::fivetran_sdk::WriteBatchResponse response;
     auto status = service.WriteBatch(nullptr, &request, &response);
-
-    INFO(status.error_message());
-    REQUIRE(status.ok());
+    REQUIRE_NO_FAIL(status);
   }
 
   {
     // check after update
     auto res = con->Query("SELECT id, title, magic_number FROM " + table_name +
                           " ORDER BY id");
-    INFO(res->GetError());
-    REQUIRE(!res->HasError());
+    REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 2);
 
     REQUIRE(res->GetValue(0, 0) == 2);
@@ -468,17 +457,14 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     request.mutable_utc_delete_before()->set_nanos(0);
     ::fivetran_sdk::TruncateResponse response;
     auto status = service.Truncate(nullptr, &request, &response);
-
-    INFO(status.error_message());
-    REQUIRE(status.ok());
+    REQUIRE_NO_FAIL(status);
   }
 
   {
     // check truncated table
     auto res = con->Query("SELECT title, id, magic_number FROM " + table_name +
                           " WHERE _fivetran_deleted = false ORDER BY id");
-    INFO(res->GetError());
-    REQUIRE(!res->HasError());
+    REQUIRE_NO_FAIL(res);
     // the 1st row from books_update.csv that had 2024-02-08T23:59:59.999999999Z
     // timestamp got deleted
     REQUIRE(res->RowCount() == 1);
@@ -491,8 +477,7 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     // check the rows did not get physically deleted
     auto res = con->Query("SELECT title, id, magic_number FROM " + table_name +
                           " ORDER BY id");
-    INFO(res->GetError());
-    REQUIRE(!res->HasError());
+    REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 2);
   }
 
@@ -507,17 +492,14 @@ TEST_CASE("WriteBatch", "[integration][current]") {
 
     ::fivetran_sdk::TruncateResponse response;
     auto status = service.Truncate(nullptr, &request, &response);
-
-    INFO(status.error_message());
-    REQUIRE(status.ok());
+    REQUIRE_NO_FAIL(status);
   }
 
   {
     // check truncated table is the same as before
     auto res = con->Query("SELECT title FROM " + table_name +
                           " WHERE _fivetran_deleted = false ORDER BY id");
-    INFO(res->GetError());
-    REQUIRE(!res->HasError());
+    REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 1);
     REQUIRE(res->GetValue(0, 0) == "The empire strikes back");
   }
@@ -526,8 +508,7 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     // check again that the rows did not get physically deleted
     auto res = con->Query("SELECT title, id, magic_number FROM " + table_name +
                           " ORDER BY id");
-    INFO(res->GetError());
-    REQUIRE(!res->HasError());
+    REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 2);
   }
 
@@ -545,17 +526,14 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     request.mutable_utc_delete_before()->set_nanos(0);
     ::fivetran_sdk::TruncateResponse response;
     auto status = service.Truncate(nullptr, &request, &response);
-
-    INFO(status.error_message());
-    REQUIRE(status.ok());
+    REQUIRE_NO_FAIL(status);
   }
 
   {
     // check the rows got physically deleted
     auto res = con->Query("SELECT title, id, magic_number FROM " + table_name +
                           " ORDER BY id");
-    INFO(res->GetError());
-    REQUIRE(!res->HasError());
+    REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 0);
   }
 }
@@ -585,9 +563,7 @@ TEST_CASE("CreateTable with multiple primary keys", "[integration]") {
 
     ::fivetran_sdk::CreateTableResponse response;
     auto status = service.CreateTable(nullptr, &request, &response);
-
-    INFO(status.error_message());
-    REQUIRE(status.ok());
+    REQUIRE_NO_FAIL(status);
   }
 
   {
@@ -600,9 +576,7 @@ TEST_CASE("CreateTable with multiple primary keys", "[integration]") {
     {
       ::fivetran_sdk::DescribeTableResponse response;
       auto status = service.DescribeTable(nullptr, &request, &response);
-
-      INFO(status.error_message());
-      REQUIRE(status.ok());
+      REQUIRE_NO_FAIL(status);
       REQUIRE(response.table().columns().size() == 2);
     }
   }
@@ -631,8 +605,7 @@ TEST_CASE("Truncate nonexistent table should succeed", "[integration]") {
   auto status = service.Truncate(nullptr, &request, &response);
   std::cout.rdbuf(real_cout);
 
-  INFO(status.error_message());
-  REQUIRE(status.ok());
+  REQUIRE_NO_FAIL(status);
   REQUIRE_THAT(buffer.str(), Catch::Matchers::ContainsSubstring(
                                  "Table <nonexistent> not found in schema "
                                  "<some_schema>; not truncated"));
@@ -655,6 +628,5 @@ TEST_CASE("Truncate fails if synced_column is missing") {
   ::fivetran_sdk::TruncateResponse response;
   auto status = service.Truncate(nullptr, &request, &response);
 
-  REQUIRE(!status.ok());
-  REQUIRE(status.error_message() == "Synced column is required");
+  REQUIRE_FAIL(status, "Synced column is required");
 }
