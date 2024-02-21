@@ -343,9 +343,15 @@ void truncate_table(duckdb::Connection &con, const table_def &table,
   const std::string absolute_table_name = table.to_escaped_string();
   std::ostringstream sql;
 
-  sql << "UPDATE " << absolute_table_name << " SET "
-      << KeywordHelper::WriteQuoted(deleted_column, '"') << " = true WHERE "
-      << KeywordHelper::WriteQuoted(synced_column, '"')
+  if (deleted_column.empty()) {
+    // hard delete
+    sql << "DELETE FROM " << absolute_table_name;
+  } else {
+    // soft delete
+    sql << "UPDATE " << absolute_table_name << " SET "
+        << KeywordHelper::WriteQuoted(deleted_column, '"') << " = true";
+  }
+  sql << " WHERE " << KeywordHelper::WriteQuoted(synced_column, '"')
       << " < make_timestamp(?)";
   auto query = sql.str();
   mdlog::info("truncate_table: " + query);
