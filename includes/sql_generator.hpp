@@ -38,8 +38,8 @@ void alter_table(duckdb::Connection &con, const table_def &table,
 
 void upsert(duckdb::Connection &con, const table_def &table,
             const std::string &staging_table_name,
-            std::vector<const column_def *> &columns_pk,
-            std::vector<const column_def *> &columns_regular);
+            const std::vector<const column_def *> &columns_pk,
+            const std::vector<const column_def *> &columns_regular);
 
 void update_values(duckdb::Connection &con, const table_def &table,
                    const std::string &staging_table_name,

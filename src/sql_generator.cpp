@@ -230,14 +230,30 @@ void alter_table(duckdb::Connection &con, const table_def &table,
   }
 }
 
+std::string
+make_full_column_list(const std::vector<const column_def *> &columns_pk,
+                      const std::vector<const column_def *> &columns_regular) {
+  std::ostringstream full_column_list;
+  if (!columns_pk.empty()) {
+    write_joined(full_column_list, columns_pk, print_column);
+    // tiny troubleshooting assist; primary columns are separated from regular columns by 2 spaces
+    full_column_list << ",  ";
+  }
+  write_joined(full_column_list, columns_regular, print_column);
+
+  return full_column_list.str();
+}
+
 void upsert(duckdb::Connection &con, const table_def &table,
             const std::string &staging_table_name,
-            std::vector<const column_def *> &columns_pk,
-            std::vector<const column_def *> &columns_regular) {
+            const std::vector<const column_def *> &columns_pk,
+            const std::vector<const column_def *> &columns_regular) {
+
+  auto full_column_list = make_full_column_list(columns_pk, columns_regular);
   const std::string absolute_table_name = table.to_escaped_string();
   std::ostringstream sql;
-  sql << "INSERT INTO " << absolute_table_name << " SELECT * FROM "
-      << staging_table_name;
+  sql << "INSERT INTO " << absolute_table_name << "(" << full_column_list
+      << ") SELECT " << full_column_list << " FROM " << staging_table_name;
   if (!columns_pk.empty()) {
     sql << " ON CONFLICT (";
     write_joined(sql, columns_pk, print_column);
