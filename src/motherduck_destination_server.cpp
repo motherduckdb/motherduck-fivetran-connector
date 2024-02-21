@@ -272,10 +272,7 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
     if (request->synced_column().empty()) {
       throw std::invalid_argument("Synced column is required");
     }
-    if (request->soft().deleted_column().empty()) {
-      // right now, only soft deletes are supported
-      throw std::invalid_argument("Deleted column is required");
-    }
+
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
 

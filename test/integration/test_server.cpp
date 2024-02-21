@@ -530,6 +530,34 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     REQUIRE(!res->HasError());
     REQUIRE(res->RowCount() == 2);
   }
+
+  {
+    // hard truncate all data (deleted_column not set in request)
+    ::fivetran_sdk::TruncateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+    request.set_table_name(table_name);
+    request.set_synced_column("_fivetran_synced");
+
+    const auto cutoff_datetime =
+        1893456000; // delete everything before 2030-01-01
+    request.mutable_utc_delete_before()->set_seconds(cutoff_datetime);
+    request.mutable_utc_delete_before()->set_nanos(0);
+    ::fivetran_sdk::TruncateResponse response;
+    auto status = service.Truncate(nullptr, &request, &response);
+
+    INFO(status.error_message());
+    REQUIRE(status.ok());
+  }
+
+  {
+    // check the rows got physically deleted
+    auto res = con->Query("SELECT title, id, magic_number FROM " + table_name +
+                          " ORDER BY id");
+    INFO(res->GetError());
+    REQUIRE(!res->HasError());
+    REQUIRE(res->RowCount() == 0);
+  }
 }
 
 TEST_CASE("CreateTable with multiple primary keys", "[integration]") {
@@ -610,7 +638,7 @@ TEST_CASE("Truncate nonexistent table should succeed", "[integration]") {
                                  "<some_schema>; not truncated"));
 }
 
-TEST_CASE("Truncate fails if required properties are missing") {
+TEST_CASE("Truncate fails if synced_column is missing") {
 
   DestinationSdkImpl service;
 
@@ -619,32 +647,14 @@ TEST_CASE("Truncate fails if required properties are missing") {
   auto token = std::getenv("motherduck_token");
   REQUIRE(token);
 
-  {
-    // synced_column is required
-    ::fivetran_sdk::TruncateRequest request;
-    (*request.mutable_configuration())["motherduck_token"] = token;
-    (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
-    request.set_table_name("some_table");
+  ::fivetran_sdk::TruncateRequest request;
+  (*request.mutable_configuration())["motherduck_token"] = token;
+  (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+  request.set_table_name("some_table");
 
-    ::fivetran_sdk::TruncateResponse response;
-    auto status = service.Truncate(nullptr, &request, &response);
+  ::fivetran_sdk::TruncateResponse response;
+  auto status = service.Truncate(nullptr, &request, &response);
 
-    REQUIRE(!status.ok());
-    REQUIRE(status.error_message() == "Synced column is required");
-  }
-
-  {
-    // synced_column is required
-    ::fivetran_sdk::TruncateRequest request;
-    (*request.mutable_configuration())["motherduck_token"] = token;
-    (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
-    request.set_table_name("some_table");
-    request.set_synced_column("_fivetran_synced");
-
-    ::fivetran_sdk::TruncateResponse response;
-    auto status = service.Truncate(nullptr, &request, &response);
-
-    REQUIRE(!status.ok());
-    REQUIRE(status.error_message() == "Deleted column is required");
-  }
+  REQUIRE(!status.ok());
+  REQUIRE(status.error_message() == "Synced column is required");
 }
