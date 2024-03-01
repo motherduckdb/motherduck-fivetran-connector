@@ -19,8 +19,7 @@ bool NO_FAIL(duckdb::unique_ptr<duckdb::MaterializedQueryResult> &result) {
 
 bool NO_FAIL(const grpc::Status &status) {
   if (!status.ok()) {
-    fprintf(stderr, "Query failed with message: %s\n",
-            status.error_message().c_str());
+    UNSCOPED_INFO("Query failed with message: " + status.error_message());
   }
   return status.ok();
 }
@@ -578,6 +577,47 @@ TEST_CASE("CreateTable with multiple primary keys", "[integration]") {
       auto status = service.DescribeTable(nullptr, &request, &response);
       REQUIRE_NO_FAIL(status);
       REQUIRE(response.table().columns().size() == 2);
+    }
+  }
+}
+
+TEST_CASE("CreateTable with JSON column", "[integration]") {
+  DestinationSdkImpl service;
+
+  const std::string table_name =
+      "json_table" + std::to_string(Catch::rngSeed());
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+
+  {
+    // Create Table
+    ::fivetran_sdk::CreateTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+    request.mutable_table()->set_name(table_name);
+    auto col1 = request.mutable_table()->add_columns();
+    col1->set_name("data");
+    col1->set_type(::fivetran_sdk::DataType::JSON);
+
+    ::fivetran_sdk::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // Describe the created table
+    ::fivetran_sdk::DescribeTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+    request.set_table_name(table_name);
+
+    {
+      ::fivetran_sdk::DescribeTableResponse response;
+      auto status = service.DescribeTable(nullptr, &request, &response);
+      REQUIRE_NO_FAIL(status);
+      REQUIRE(response.table().columns().size() == 1);
+      REQUIRE(response.table().columns(0).type() ==
+              ::fivetran_sdk::DataType::STRING);
     }
   }
 }

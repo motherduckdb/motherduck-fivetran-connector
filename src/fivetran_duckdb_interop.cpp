@@ -19,17 +19,13 @@ fivetran_sdk::DataType get_fivetran_type(const LogicalTypeId &duckdb_type) {
   case LogicalTypeId::DATE:
     return fivetran_sdk::NAIVE_DATE;
   case LogicalTypeId::TIMESTAMP:
-    return fivetran_sdk::UTC_DATETIME; // TBD: this is pretty definitely
-    // wrong, and should naive time be
-    // returned for any reason?
+    return fivetran_sdk::UTC_DATETIME;
   case LogicalTypeId::DECIMAL:
     return fivetran_sdk::DECIMAL;
   case LogicalTypeId::BIT:
-    return fivetran_sdk::BINARY; // TBD: double check if correct
+    return fivetran_sdk::BINARY;
   case LogicalTypeId::VARCHAR:
     return fivetran_sdk::STRING;
-  case LogicalTypeId::STRUCT:
-    return fivetran_sdk::JSON;
   default:
     return fivetran_sdk::UNSPECIFIED;
   }
@@ -51,18 +47,20 @@ LogicalTypeId get_duckdb_type(const fivetran_sdk::DataType &fivetranType) {
     return LogicalTypeId::DOUBLE;
   case fivetran_sdk::NAIVE_DATE:
     return LogicalTypeId::DATE;
-  case fivetran_sdk::NAIVE_DATETIME: // TBD: what kind is this?
-    return LogicalTypeId::TIMESTAMP; // TBD: this is pretty definitely wrong
+  case fivetran_sdk::NAIVE_DATETIME:
+    return LogicalTypeId::TIMESTAMP;
   case fivetran_sdk::UTC_DATETIME:
-    return LogicalTypeId::TIMESTAMP; // TBD: this is pretty definitely wrong
+    return LogicalTypeId::TIMESTAMP; // TBD: this is pretty definitely wrong;
+                                     // needs to be with timezone
   case fivetran_sdk::DECIMAL:
     return LogicalTypeId::DECIMAL;
   case fivetran_sdk::BINARY:
-    return LogicalTypeId::BIT; // TBD: double check if correct
+    return LogicalTypeId::BIT;
   case fivetran_sdk::STRING:
     return LogicalTypeId::VARCHAR;
   case fivetran_sdk::JSON:
-    return LogicalTypeId::STRUCT;
+    return LogicalTypeId::
+        VARCHAR; // https://github.com/MotherDuck-Open-Source/motherduck-fivetran-connector/issues/22
   default:
     return LogicalTypeId::INVALID;
   }

@@ -26,19 +26,19 @@ The data types in your MotherDuck data warehouse follow Fivetran's [standard dat
 We use the following data type conversions:
 
 | Fivetran Data Type | Destination Data Type | Notes |
-|--------------------|---|--|
-| BOOLEAN            | BOOLEAN | |
-| SHORT              | SMALLINT | |
-| INT                | INTEGER | |
-| LONG               | BIGINT | |
-| FLOAT              | FLOAT | |
-| DOUBLE             | DOUBLE | |
-| DECIMAL            | DECIMAL | |
-| LOCALDATE          | DATE | |
-| LOCALDATETIME      | TIMESTAMP | |
-| INSTANT            | TIMESTAMP | |
-| STRING             | VARCHAR | |
-| JSON               | STRUCT | |
-| BINARY             | BIT | |
+|--------------------|-----------------------|--|
+| BOOLEAN            | BOOLEAN               | |
+| SHORT              | SMALLINT              | |
+| INT                | INTEGER               | |
+| LONG               | BIGINT                | |
+| FLOAT              | FLOAT                 | |
+| DOUBLE             | DOUBLE                | |
+| DECIMAL            | DECIMAL               | |
+| LOCALDATE          | DATE                  | |
+| LOCALDATETIME      | TIMESTAMP             | |
+| INSTANT            | TIMESTAMP             | |
+| STRING             | VARCHAR               | |
+| JSON               | VARCHAR               | |
+| BINARY             | BIT                   | |
 
 
