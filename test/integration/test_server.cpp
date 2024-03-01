@@ -344,6 +344,7 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     (*request.mutable_configuration())["motherduck_token"] = token;
     (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
     define_test_table(request, table_name);
+    request.mutable_csv()->set_null_string("magic-nullvalue");
     const std::string filename = "books_upsert.csv";
     const std::string filepath = TEST_RESOURCES_DIR + filename;
 
@@ -360,7 +361,7 @@ TEST_CASE("WriteBatch", "[integration][current]") {
                           " ORDER BY id");
     REQUIRE_NO_FAIL(res);
 
-    REQUIRE(res->RowCount() == 3);
+    REQUIRE(res->RowCount() == 4);
     REQUIRE(res->GetValue(0, 0) == 1);
     REQUIRE(res->GetValue(1, 0) == "The Hitchhiker's Guide to the Galaxy");
     REQUIRE(res->GetValue(2, 0) == 42);
@@ -373,6 +374,13 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     REQUIRE(res->GetValue(0, 2) == 3);
     REQUIRE(res->GetValue(1, 2) == "The Hobbit");
     REQUIRE(res->GetValue(2, 2) == 14);
+
+    // new row with null value
+    REQUIRE(res->GetValue(0, 3) == 99);
+    REQUIRE(res->GetValue(1, 3).IsNull() ==
+            false); // a string with text "null" should not be null
+    REQUIRE(res->GetValue(1, 3) == "null");
+    REQUIRE(res->GetValue(2, 3).IsNull() == true);
   }
 
   {
@@ -396,7 +404,7 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     auto res = con->Query("SELECT id, title, magic_number FROM " + table_name +
                           " ORDER BY id");
     REQUIRE_NO_FAIL(res);
-    REQUIRE(res->RowCount() == 2);
+    REQUIRE(res->RowCount() == 3);
 
     // row 1 got deleted
     REQUIRE(res->GetValue(0, 0) == 2);
@@ -406,6 +414,10 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     REQUIRE(res->GetValue(0, 1) == 3);
     REQUIRE(res->GetValue(1, 1) == "The Hobbit");
     REQUIRE(res->GetValue(2, 1) == 14);
+
+    REQUIRE(res->GetValue(0, 2) == 99);
+    REQUIRE(res->GetValue(1, 2) == "null");
+    REQUIRE(res->GetValue(2, 2).IsNull() == true);
   }
 
   {
@@ -415,6 +427,7 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
     request.mutable_csv()->set_unmodified_string(
         "unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
+    request.mutable_csv()->set_null_string("magic-nullvalue");
     define_test_table(request, table_name);
     const std::string filename = "books_update.csv";
     const std::string filepath = TEST_RESOURCES_DIR + filename;
@@ -431,7 +444,7 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     auto res = con->Query("SELECT id, title, magic_number FROM " + table_name +
                           " ORDER BY id");
     REQUIRE_NO_FAIL(res);
-    REQUIRE(res->RowCount() == 2);
+    REQUIRE(res->RowCount() == 3);
 
     REQUIRE(res->GetValue(0, 0) == 2);
     REQUIRE(res->GetValue(1, 0) == "The empire strikes back");
@@ -440,6 +453,11 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     REQUIRE(res->GetValue(0, 1) == 3);
     REQUIRE(res->GetValue(1, 1) == "The Hobbit");
     REQUIRE(res->GetValue(2, 1) == 15); // updated value
+
+    REQUIRE(res->GetValue(0, 2) == 99);
+    REQUIRE(res->GetValue(1, 2).IsNull() == true);
+    REQUIRE(res->GetValue(2, 2).IsNull() == false);
+    REQUIRE(res->GetValue(2, 2) == 99);
   }
 
   {
@@ -477,7 +495,7 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     auto res = con->Query("SELECT title, id, magic_number FROM " + table_name +
                           " ORDER BY id");
     REQUIRE_NO_FAIL(res);
-    REQUIRE(res->RowCount() == 2);
+    REQUIRE(res->RowCount() == 3);
   }
 
   {
@@ -508,7 +526,7 @@ TEST_CASE("WriteBatch", "[integration][current]") {
     auto res = con->Query("SELECT title, id, magic_number FROM " + table_name +
                           " ORDER BY id");
     REQUIRE_NO_FAIL(res);
-    REQUIRE(res->RowCount() == 2);
+    REQUIRE(res->RowCount() == 3);
   }
 
   {
