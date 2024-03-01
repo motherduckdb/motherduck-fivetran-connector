@@ -5,10 +5,15 @@
 #include <decryption.hpp>
 
 arrow::csv::ConvertOptions
-get_arrow_convert_options(std::vector<std::string> &utf8_columns) {
+get_arrow_convert_options(std::vector<std::string> &utf8_columns,
+                          const std::string &null_value) {
   auto convert_options = arrow::csv::ConvertOptions::Defaults();
+  convert_options.null_values
+      .clear(); // there are a lot of default "null" values
+  convert_options.null_values.push_back(null_value);
+  convert_options.strings_can_be_null = true;
   // read all update-file CSV columns as text to accommodate
-  // unmodified_string values
+  // unmodified_string and null_string values
   for (auto &col_name : utf8_columns) {
     convert_options.column_types.insert({col_name, arrow::utf8()});
   }
@@ -16,14 +21,13 @@ get_arrow_convert_options(std::vector<std::string> &utf8_columns) {
 }
 
 template <typename T>
-std::shared_ptr<arrow::Table>
-read_csv_stream_to_arrow_table(T &input_stream,
-                               std::vector<std::string> &utf8_columns,
-                               const std::string &filename) {
+std::shared_ptr<arrow::Table> read_csv_stream_to_arrow_table(
+    T &input_stream, std::vector<std::string> &utf8_columns,
+    const std::string &null_value, const std::string &filename) {
 
   auto read_options = arrow::csv::ReadOptions::Defaults();
   auto parse_options = arrow::csv::ParseOptions::Defaults();
-  auto convert_options = get_arrow_convert_options(utf8_columns);
+  auto convert_options = get_arrow_convert_options(utf8_columns, null_value);
 
   auto maybe_table_reader = arrow::csv::TableReader::Make(
       arrow::io::default_io_context(), std::move(input_stream), read_options,
@@ -46,10 +50,9 @@ read_csv_stream_to_arrow_table(T &input_stream,
   return table;
 }
 
-std::shared_ptr<arrow::Table>
-read_encrypted_csv(const std::string &filename,
-                   const std::string &decryption_key,
-                   std::vector<std::string> &utf8_columns) {
+std::shared_ptr<arrow::Table> read_encrypted_csv(
+    const std::string &filename, const std::string &decryption_key,
+    std::vector<std::string> &utf8_columns, const std::string &null_value) {
 
   std::vector<unsigned char> plaintext = decrypt_file(
       filename,
@@ -76,12 +79,13 @@ read_encrypted_csv(const std::string &filename,
       std::move(maybe_compressed_input_stream.ValueOrDie());
 
   return read_csv_stream_to_arrow_table(compressed_input_stream, utf8_columns,
-                                        filename);
+                                        null_value, filename);
 }
 
 std::shared_ptr<arrow::Table>
 read_unencrypted_csv(const std::string &filename,
-                     std::vector<std::string> &utf8_columns) {
+                     std::vector<std::string> &utf8_columns,
+                     const std::string &null_value) {
 
   auto maybe_file =
       arrow::io::ReadableFile::Open(filename, arrow::default_memory_pool());
@@ -92,5 +96,5 @@ read_unencrypted_csv(const std::string &filename,
   auto plaintext_input_stream = std::move(maybe_file.ValueOrDie());
 
   return read_csv_stream_to_arrow_table(plaintext_input_stream, utf8_columns,
-                                        filename);
+                                        null_value, filename);
 }

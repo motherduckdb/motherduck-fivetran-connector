@@ -88,11 +88,13 @@ get_encryption_key(const std::string &filename,
 void process_file(
     duckdb::Connection &con, const std::string &filename,
     const std::string &decryption_key, std::vector<std::string> &utf8_columns,
+    const std::string &null_value,
     const std::function<void(std::string view_name)> &process_view) {
 
   auto table = decryption_key.empty()
-                   ? read_unencrypted_csv(filename, utf8_columns)
-                   : read_encrypted_csv(filename, decryption_key, utf8_columns);
+                   ? read_unencrypted_csv(filename, utf8_columns, null_value)
+                   : read_encrypted_csv(filename, decryption_key, utf8_columns,
+                                        null_value);
 
   auto batch_reader = std::make_shared<arrow::TableBatchReader>(*table);
   ArrowArrayStream arrow_array_stream;
@@ -327,38 +329,41 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
       throw std::invalid_argument("No primary keys found");
     }
 
-    std::vector<std::string> empty;
+    // update file fields have to be read in as strings to allow
+    // "unmodified_string"/"null_string". Replace (upsert) files have to be read
+    // in as strings to allow "null_string".
+    std::vector<std::string> column_names(cols.size());
+    std::transform(cols.begin(), cols.end(), column_names.begin(),
+                   [](const column_def &col) { return col.name; });
+
     for (auto &filename : request->replace_files()) {
       const auto decryption_key = get_encryption_key(
           filename, request->keys(), request->csv().encryption());
 
-      process_file(*con, filename, decryption_key, empty,
-                   [&](const std::string view_name) {
-                     upsert(*con, table_name, view_name, columns_pk,
-                            columns_regular);
-                   });
+      process_file(
+          *con, filename, decryption_key, column_names,
+          request->csv().null_string(), [&](const std::string view_name) {
+            upsert(*con, table_name, view_name, columns_pk, columns_regular);
+          });
     }
     for (auto &filename : request->update_files()) {
 
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
-      // update file fields have to be read in as strings to allow
-      // "unmodified_string" processing
-      std::vector<std::string> column_names(cols.size());
-      std::transform(cols.begin(), cols.end(), column_names.begin(),
-                     [](const column_def &col) { return col.name; });
 
-      process_file(*con, filename, decryption_key, column_names,
-                   [&](const std::string view_name) {
-                     update_values(*con, table_name, view_name, columns_pk,
-                                   columns_regular,
-                                   request->csv().unmodified_string());
-                   });
+      process_file(
+          *con, filename, decryption_key, column_names,
+          request->csv().null_string(), [&](const std::string view_name) {
+            update_values(*con, table_name, view_name, columns_pk,
+                          columns_regular, request->csv().unmodified_string());
+          });
     }
     for (auto &filename : request->delete_files()) {
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
+      std::vector<std::string> empty;
       process_file(*con, filename, decryption_key, empty,
+                   request->csv().null_string(),
                    [&](const std::string view_name) {
                      delete_rows(*con, table_name, view_name, columns_pk);
                    });
