@@ -10,7 +10,7 @@ menuPosition: 0
 
 Follow our setup guide to connect your MotherDuck destination to Fivetran.
 
-> NOTE: This destination is [partner-built](/docs/partner-built-program). For any questions related to Materialize destination and its documentation, contact [MotherDuck Support](mailto:support@motherduck.com).
+> NOTE: This destination is [partner-built](/docs/partner-built-program). For any questions related to MotherDuck destination and its documentation, contact [MotherDuck Support](mailto:support@motherduck.com).
 
 -------
 
