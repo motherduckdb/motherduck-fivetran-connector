@@ -15,7 +15,7 @@ Fivetran supports MotherDuck as a destination.
 
 Follow our [step-by-step MotherDuck setup guide](/docs/destinations/motherduck/setup-guide) to connect your MotherDuck data warehouse with Fivetran.
 
-> NOTE: This destination is [partner-built](/docs/partner-built-program). For any questions related to Materialize destination and its documentation, contact [MotherDuck Support](mailto:support@motherduck.com).
+> NOTE: This destination is [partner-built](/docs/partner-built-program). For any questions related to MotherDuck destination and its documentation, contact [MotherDuck Support](mailto:support@motherduck.com).
 
 ------
 
