@@ -6,7 +6,7 @@ menuPosition: 0
 ---
 
 
-# Motherduck Setup Guide {% badge text="Partner-Built" /%} {% badge text="Private Preview" /%}
+# MotherDuck Setup Guide {% badge text="Partner-Built" /%} {% badge text="Private Preview" /%}
 
 Follow our setup guide to connect your MotherDuck destination to Fivetran.
 
