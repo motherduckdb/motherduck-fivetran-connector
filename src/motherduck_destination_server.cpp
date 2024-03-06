@@ -165,15 +165,18 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     const ::fivetran_sdk::DescribeTableRequest *request,
     ::fivetran_sdk::DescribeTableResponse *response) {
   try {
-
+    mdlog::info("Endpoint <DescribeTable>: started");
     std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
+    mdlog::info("Endpoint <DescribeTable>: found database name <" + db_name + ">");
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
+    mdlog::info("Endpoint <DescribeTable>: got database connection");
     table_def table_name{db_name, get_schema_name(request),
                          get_table_name(request)};
 
     if (!table_exists(*con, table_name)) {
+      mdlog::info("Endpoint <DescribeTable>: table does not exist; returning not found");
       response->set_not_found(true);
       return ::grpc::Status(::grpc::StatusCode::OK, "");
     }
@@ -183,10 +186,14 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     fivetran_sdk::Table *table = response->mutable_table();
     table->set_name(get_table_name(request));
 
+    mdlog::info("Endpoint <DescribeTable>: before enumerating columns");
     for (auto &col : duckdb_columns) {
       fivetran_sdk::Column *ft_col = table->mutable_columns()->Add();
+      mdlog::info("Endpoint <DescribeTable>: column <" + col.name + ">; duckdb type <" + LogicalTypeIdToString(col.type) + ">");
       ft_col->set_name(col.name);
-      ft_col->set_type(get_fivetran_type(col.type));
+      auto fivetran_type = get_fivetran_type(col.type);
+      mdlog::info("Endpoint <DescribeTable>: column <" + col.name + ">; fivetran type <" + DataType_Name(fivetran_type) + ">");
+      ft_col->set_type(fivetran_type);
       ft_col->set_primary_key(col.primary_key);
     }
 
@@ -198,6 +205,7 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
 
+  mdlog::info("Endpoint <DescribeTable>: ended");
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
@@ -267,21 +275,27 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
                              const ::fivetran_sdk::TruncateRequest *request,
                              ::fivetran_sdk::TruncateResponse *response) {
   try {
+    mdlog::info("Endpoint <Truncate>: started");
     std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
+    mdlog::info("Endpoint <Truncate>: found database name <" + db_name + ">");
     table_def table_name{db_name, get_schema_name(request),
                          get_table_name(request)};
     if (request->synced_column().empty()) {
       throw std::invalid_argument("Synced column is required");
     }
 
+    mdlog::info("Endpoint <Truncate>: found synced column <" + request->synced_column() + ">");
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
 
+    mdlog::info("Endpoint <Truncate>: got database connection");
     if (table_exists(*con, table_name)) {
+      mdlog::info("Endpoint <Truncate>: schema <" + table_name.schema_name + ">, table <" + table_name.table_name + "> exists");
       std::chrono::nanoseconds delete_before_ts =
           std::chrono::seconds(request->utc_delete_before().seconds()) +
           std::chrono::nanoseconds(request->utc_delete_before().nanos());
+      mdlog::info("Endpoint <Truncate>: delete_before_ts = <" + std::to_string(delete_before_ts.count()) + ">");
       truncate_table(*con, table_name, request->synced_column(),
                      delete_before_ts, request->soft().deleted_column());
     } else {
@@ -290,6 +304,7 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
                      ">; not truncated");
     }
 
+    mdlog::info("Endpoint <Truncate>: finished");
   } catch (const std::exception &e) {
     mdlog::severe("Truncate endpoint failed for schema <" +
                   request->schema_name() + ">, table <" +

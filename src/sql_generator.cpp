@@ -122,6 +122,7 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
   auto query = "SELECT column_name, data_type, is_nullable = 'NO' FROM "
                "information_schema.columns WHERE table_catalog=? AND "
                "table_schema=? AND table_name=?";
+  mdlog::info("describe_table: " + std::string(query));
   auto statement = con.Prepare(query);
   duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name),
                                           duckdb::Value(table.schema_name),
@@ -362,6 +363,7 @@ void truncate_table(duckdb::Connection &con, const table_def &table,
   long cutoff_microseconds = cutoff_ns.count() / 1000;
   duckdb::vector<duckdb::Value> params = {duckdb::Value(cutoff_microseconds)};
 
+  mdlog::info("truncate_table: cutoff_microseconds = <" + std::to_string(cutoff_microseconds) + ">");
   auto result = statement->Execute(params, false);
   if (result->HasError()) {
     throw std::runtime_error("Error truncating table <" + absolute_table_name +
