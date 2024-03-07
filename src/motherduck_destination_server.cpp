@@ -321,19 +321,23 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
                                ::fivetran_sdk::WriteBatchResponse *response) {
 
   try {
+    mdlog::info("Endpoint <WriteBatch>: started");
     auto schema_name = get_schema_name(request);
 
     const std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
+    mdlog::info("Endpoint <WriteBatch>: found database name <" + db_name + ">");
     table_def table_name{db_name, get_schema_name(request),
                          request->table().name()};
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
+    mdlog::info("Endpoint <WriteBatch>: got database connection");
 
     // Use local memory by default to prevent Arrow-based VIEW from traveling
     // up to the cloud
     con->Query("ATTACH ':memory:' as localmem");
     con->Query("USE localmem");
+    mdlog::info("Endpoint <WriteBatch>: attached and used local memory db");
 
     const auto cols = get_duckdb_columns(request->table().columns());
     std::vector<const column_def *> columns_pk;
@@ -343,6 +347,7 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
     if (columns_pk.empty()) {
       throw std::invalid_argument("No primary keys found");
     }
+    mdlog::info("Endpoint <WriteBatch>: got " + std::to_string(columns_pk.size()) + " primary keys");
 
     // update file fields have to be read in as strings to allow
     // "unmodified_string"/"null_string". Replace (upsert) files have to be read
@@ -352,36 +357,43 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
                    [](const column_def &col) { return col.name; });
 
     for (auto &filename : request->replace_files()) {
+      mdlog::info("Endpoint <WriteBatch>: processing replace file " + filename);
       const auto decryption_key = get_encryption_key(
           filename, request->keys(), request->csv().encryption());
 
+      mdlog::info("Endpoint <WriteBatch>: got replace file decryption key");
       process_file(
           *con, filename, decryption_key, column_names,
           request->csv().null_string(), [&](const std::string view_name) {
             upsert(*con, table_name, view_name, columns_pk, columns_regular);
           });
+      mdlog::info("Endpoint <WriteBatch>: finished processing replace file " + filename);
     }
     for (auto &filename : request->update_files()) {
-
+      mdlog::info("Endpoint <WriteBatch>: processing update file " + filename);
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
-
+      mdlog::info("Endpoint <WriteBatch>: got update file decryption key");
       process_file(
           *con, filename, decryption_key, column_names,
           request->csv().null_string(), [&](const std::string view_name) {
             update_values(*con, table_name, view_name, columns_pk,
                           columns_regular, request->csv().unmodified_string());
           });
+      mdlog::info("Endpoint <WriteBatch>: finished processing update file " + filename);
     }
     for (auto &filename : request->delete_files()) {
+      mdlog::info("Endpoint <WriteBatch>: processing delete file " + filename);
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
+      mdlog::info("Endpoint <WriteBatch>: got delete file decryption key");
       std::vector<std::string> empty;
       process_file(*con, filename, decryption_key, empty,
                    request->csv().null_string(),
                    [&](const std::string view_name) {
                      delete_rows(*con, table_name, view_name, columns_pk);
                    });
+      mdlog::info("Endpoint <WriteBatch>: finished processing delete file " + filename);
     }
 
   } catch (const std::exception &e) {
@@ -394,6 +406,7 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, msg);
   }
 
+  mdlog::info("Endpoint <WriteBatch>: ended");
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
