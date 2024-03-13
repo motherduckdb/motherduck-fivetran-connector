@@ -42,6 +42,5 @@ public:
              const ::fivetran_sdk::WriteBatchRequest *request,
              ::fivetran_sdk::WriteBatchResponse *response) override;
 private:
-    std::shared_ptr<mdlog::MdLog> logger;
-    std::unique_ptr<MdSqlGenerator> sql_generator;
+    std::shared_ptr<logging_sink::LoggingSink::Stub> loggingSinkClient;
 };

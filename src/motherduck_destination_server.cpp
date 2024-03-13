@@ -159,14 +159,11 @@ std::shared_ptr<grpc::Channel> CreateChannelFromConfig(const std::string &host, 
 
 
 DestinationSdkImpl::DestinationSdkImpl() {
-  std::cout << "************ whee, we have a constructor now" << std::endl;
-  auto logging_host = "api.motherduck.com";
+  auto logging_host = "api.staging.motherduck.com";
   auto logging_port = 443;
   auto use_tls = true;
-  auto client =
-      logging_sink::LoggingSink::NewStub(CreateChannelFromConfig(logging_host, logging_port, use_tls));
-  logger = std::make_shared<mdlog::MdLog>(client);
-  sql_generator = std::make_unique<MdSqlGenerator>(logger);
+  loggingSinkClient = std::shared_ptr<logging_sink::LoggingSink::Stub>(std::move(
+      logging_sink::LoggingSink::NewStub(CreateChannelFromConfig(logging_host, logging_port, use_tls))));
 }
 
 grpc::Status DestinationSdkImpl::ConfigurationForm(
@@ -205,6 +202,11 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     ::grpc::ServerContext *context,
     const ::fivetran_sdk::DescribeTableRequest *request,
     ::fivetran_sdk::DescribeTableResponse *response) {
+  // TODO: refactor -- token is retrieved twice now; this needs error handling
+  const std::string token = find_property(request->configuration(), MD_PROP_TOKEN);
+  auto logger = std::make_shared<mdlog::MdLog>(token, loggingSinkClient);
+  auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
+
   try {
     logger->info("Endpoint <DescribeTable>: started");
     std::string db_name =
@@ -255,6 +257,11 @@ grpc::Status DestinationSdkImpl::CreateTable(
     const ::fivetran_sdk::CreateTableRequest *request,
     ::fivetran_sdk::CreateTableResponse *response) {
 
+  // TODO: refactor -- token is retrieved twice now; this needs error handling
+  const std::string token = find_property(request->configuration(), MD_PROP_TOKEN);
+  auto logger = std::make_shared<mdlog::MdLog>(token, loggingSinkClient);
+  auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
+
   try {
     auto schema_name = get_schema_name(request);
 
@@ -288,6 +295,11 @@ grpc::Status
 DestinationSdkImpl::AlterTable(::grpc::ServerContext *context,
                                const ::fivetran_sdk::AlterTableRequest *request,
                                ::fivetran_sdk::AlterTableResponse *response) {
+  // TODO: refactor -- token is retrieved twice now; this needs error handling
+  const std::string token = find_property(request->configuration(), MD_PROP_TOKEN);
+  auto logger = std::make_shared<mdlog::MdLog>(token, loggingSinkClient);
+  auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
+
   try {
     std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
@@ -315,6 +327,11 @@ grpc::Status
 DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
                              const ::fivetran_sdk::TruncateRequest *request,
                              ::fivetran_sdk::TruncateResponse *response) {
+  // TODO: refactor -- token is retrieved twice now; this needs error handling
+  const std::string token = find_property(request->configuration(), MD_PROP_TOKEN);
+  auto logger = std::make_shared<mdlog::MdLog>(token, loggingSinkClient);
+  auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
+
   try {
     logger->info("Endpoint <Truncate>: started");
     std::string db_name =
@@ -360,6 +377,11 @@ grpc::Status
 DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
                                const ::fivetran_sdk::WriteBatchRequest *request,
                                ::fivetran_sdk::WriteBatchResponse *response) {
+
+  // TODO: refactor -- token is retrieved twice now; this needs error handling
+  const std::string token = find_property(request->configuration(), MD_PROP_TOKEN);
+  auto logger = std::make_shared<mdlog::MdLog>(token, loggingSinkClient);
+  auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
   try {
     logger->info("Endpoint <WriteBatch>: started");
@@ -456,6 +478,12 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
                          const ::fivetran_sdk::TestRequest *request,
                          ::fivetran_sdk::TestResponse *response) {
 
+  // TODO: refactor -- token is retrieved twice now; this needs error handling
+  const std::string token = find_property(request->configuration(), MD_PROP_TOKEN);
+  auto logger = std::make_shared<mdlog::MdLog>(token, loggingSinkClient);
+  auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
+
+  logger->warning("ELENA TRYING SOMETHING");
   std::string db_name;
   try {
     db_name = find_property(request->configuration(), MD_PROP_DATABASE);
