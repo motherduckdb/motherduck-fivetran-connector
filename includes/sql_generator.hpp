@@ -1,6 +1,7 @@
 #pragma once
 
 #include "duckdb.hpp"
+#include <md_logging.hpp>
 
 struct column_def {
   std::string name;
@@ -17,6 +18,11 @@ struct table_def {
 
   std::string to_escaped_string() const;
 };
+
+class MdSqlGenerator {
+
+public:
+    explicit MdSqlGenerator(std::shared_ptr<mdlog::MdLog> &logger_);
 
 bool schema_exists(duckdb::Connection &con, const std::string &db_name,
                    const std::string &schema_name);
@@ -57,3 +63,6 @@ void delete_rows(duckdb::Connection &con, const table_def &table,
                  std::vector<const column_def *> &columns_pk);
 
 void check_connection(duckdb::Connection &con);
+private:
+    std::shared_ptr<mdlog::MdLog> logger;
+};

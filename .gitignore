@@ -39,4 +39,8 @@ install
 cmake-build-debug
 gen
 libduckdb-src
-protos
+
+# Fivetran protos should not be committed
+common.proto
+destination_sdk.proto
+

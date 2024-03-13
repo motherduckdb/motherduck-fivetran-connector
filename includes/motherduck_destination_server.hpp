@@ -1,6 +1,7 @@
 #pragma once
 
 #include "destination_sdk.grpc.pb.h"
+#include "sql_generator.hpp"
 
 static constexpr const char *const MD_PROP_DATABASE = "motherduck_database";
 
@@ -11,7 +12,8 @@ static constexpr const char *const CONFIG_TEST_NAME_AUTHENTICATE =
 
 class DestinationSdkImpl final : public fivetran_sdk::Destination::Service {
 public:
-  DestinationSdkImpl() = default;
+
+  explicit DestinationSdkImpl();
   ~DestinationSdkImpl() = default;
   ::grpc::Status ConfigurationForm(
       ::grpc::ServerContext *context,
@@ -39,4 +41,7 @@ public:
   WriteBatch(::grpc::ServerContext *context,
              const ::fivetran_sdk::WriteBatchRequest *request,
              ::fivetran_sdk::WriteBatchResponse *response) override;
+private:
+    std::shared_ptr<mdlog::MdLog> logger;
+    std::unique_ptr<MdSqlGenerator> sql_generator;
 };

@@ -12,15 +12,17 @@ std::string escape_char(const std::string &str, const char &c) {
   return result;
 }
 
-void log(const std::string level, const std::string message) {
+MdLog::MdLog(std::unique_ptr<logging_sink::LoggingSink::Stub>& client_): client(std::move(client_)) {}
+
+void MdLog::log(const std::string level, const std::string message) {
   std::cout << "{\"level\":\"" << escape_char(level, '"') << "\","
             << "\"message\":\"" << escape_char(message, '"') << "\","
             << "\"message-origin\":\"sdk_destination\"}" << std::endl;
 }
 
-void info(std::string message) { log("INFO", message); }
+void MdLog::info(std::string message) { log("INFO", message); }
 
-void warning(std::string message) { log("WARNING", message); }
+void MdLog::warning(std::string message) { log("WARNING", message); }
 
-void severe(std::string message) { log("SEVERE", message); }
+void MdLog::severe(std::string message) { log("SEVERE", message); }
 } // namespace mdlog

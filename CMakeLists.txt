@@ -35,9 +35,12 @@ else()
 endif()
 
 
-# Proto files
+# Fivetran proto files
 generate_protos(${CMAKE_CURRENT_SOURCE_DIR}/protos/common.proto)
 generate_protos(${CMAKE_CURRENT_SOURCE_DIR}/protos/destination_sdk.proto)
+
+# Motherduck logging proto
+generate_protos(${CMAKE_CURRENT_SOURCE_DIR}/protos/logging_sink.proto)
 
 # DuckDB amalgamation
 set(DuckDB_SOURCE_DIR ./libduckdb-src)
@@ -50,6 +53,8 @@ add_library(motherduck_destination_sources STATIC
         "src/csv_arrow_ingest.cpp"
         "src/fivetran_duckdb_interop.cpp"
         "src/md_logging.cpp"
+        ${TARGET_ROOT}/cpp/logging_sink.pb.cc
+        ${TARGET_ROOT}/cpp/logging_sink.grpc.pb.cc
         ${TARGET_ROOT}/cpp/destination_sdk.pb.cc
         ${TARGET_ROOT}/cpp/destination_sdk.grpc.pb.cc
         ${TARGET_ROOT}/cpp/common.pb.cc
