@@ -24,11 +24,17 @@ void MdLog::log(const std::string &level, const std::string &message) {
   std::cout << json_log_entry << std::endl;
   auto context = std::make_shared<grpc::ClientContext>();
   context->AddMetadata("x-md-token",token);
+  context->AddMetadata("x-md-duckdb-version","v0.9.2");
+  context->AddMetadata("x-md-extension-version","v1.15.22");
+
 
   // just one log event, for testing
   logging_sink::LogEventBatchRequest request;
   logging_sink::LogEventBatchResponse response;
-  request.add_log_events()->set_json_line(json_log_entry);
+  auto log_event = request.add_log_events();
+  log_event->set_json_line(json_log_entry);
+  log_event->set_level(::logging_sink::LOG_LEVEL::LL_WARN);
+  log_event->set_service("fivetran-connector");
 
   const auto result = client->LogEventBatch(context.get(), request, &response);
   std::cout << "****** result of grpc log batch call: "
