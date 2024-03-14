@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package logging_sink;
+
+// This service is exposed by the the native extension logging sink and
+// is used by the native extension to ship logs to the server
+
+service LoggingSink {
+  rpc Log(stream LogLine) returns (LogsResponse) {}
+
+  // We want to support WASM clients, which do not support streaming.
+  // This API can accept json_events, unstructured line_events, or both.
+  rpc LogEventBatch(LogEventBatchRequest) returns (LogEventBatchResponse) {}
+}
+
+enum LOG_LEVEL {
+  LL_NULL = 0;
+  LL_ERROR = 1;
+  LL_WARN = 2;
+  LL_INFO = 3;
+  LL_DEBUG = 4;
+  LL_TRACE = 5;
+}
+
+message LogLine {
+  string service = 1;
+  // unstructured line
+  string line = 2;
+  LOG_LEVEL level = 3;
+  // json-structured line
+  string json_line = 4;
+}
+
+message LogsResponse {}
+
+message LogEventBatchRequest {
+  // A batch of events.
+  repeated LogLine log_events = 1;
+}
+
+message LogEventBatchResponse {}

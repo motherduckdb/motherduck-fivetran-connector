@@ -159,7 +159,7 @@ std::shared_ptr<grpc::Channel> CreateChannelFromConfig(const std::string &host, 
 
 
 DestinationSdkImpl::DestinationSdkImpl() {
-  auto logging_host = "api.staging.motherduck.com";
+  auto logging_host = "api.motherduck.com";
   auto logging_port = 443;
   auto use_tls = true;
   loggingSinkClient = std::shared_ptr<logging_sink::LoggingSink::Stub>(std::move(
