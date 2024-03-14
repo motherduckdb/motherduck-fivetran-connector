@@ -362,7 +362,7 @@ void MdSqlGenerator::truncate_table(duckdb::Connection &con, const table_def &ta
 
   // DuckDB make_timestamp takes microseconds; Fivetran sends millisecond
   // precision -- safe to divide with truncation
-  long cutoff_microseconds = cutoff_ns.count() / 1000;
+  int64_t cutoff_microseconds = cutoff_ns.count() / 1000;
   duckdb::vector<duckdb::Value> params = {duckdb::Value(cutoff_microseconds)};
 
   logger->info("truncate_table: cutoff_microseconds = <" + std::to_string(cutoff_microseconds) + ">");

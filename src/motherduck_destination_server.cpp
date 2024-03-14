@@ -1,6 +1,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <cstdlib>
 
 #include <arrow/c/bridge.h>
 #include <grpcpp/grpcpp.h>
@@ -159,7 +160,12 @@ std::shared_ptr<grpc::Channel> CreateChannelFromConfig(const std::string &host, 
 
 
 DestinationSdkImpl::DestinationSdkImpl() {
-  auto logging_host = "api.motherduck.com";
+
+  const char* logging_host = std::getenv("motherduck_host");
+  if (logging_host == nullptr) {
+    logging_host = "api.motherduck.com";
+  }
+  std::cout << "logging going to " << logging_host << std::endl;
   auto logging_port = 443;
   auto use_tls = true;
   loggingSinkClient = std::shared_ptr<logging_sink::LoggingSink::Stub>(std::move(

@@ -35,6 +35,9 @@ void MdLog::log(const std::string &level, const std::string &message) {
   log_event->set_json_line(json_log_entry);
   log_event->set_level(::logging_sink::LOG_LEVEL::LL_WARN);
   log_event->set_service("fivetran-connector");
+  log_event->set_line(json_log_entry);
+
+  std::cout << "*** actual json: [" << json_log_entry << "]" << std::endl;
 
   const auto result = client->LogEventBatch(context.get(), request, &response);
   std::cout << "****** result of grpc log batch call: "
