@@ -129,7 +129,11 @@ void find_primary_keys(
   }
 }
 
-
+bool disable_host_check(const std::string &host) {
+  auto env_disable = std::getenv("motherduck_disable_host_check");
+  return host == "localhost" || host == "127.0.0.1" || host == "::1" ||
+          env_disable == "true" || env_disable == "1";
+}
 
 std::shared_ptr<grpc::Channel> CreateChannelFromConfig(const std::string &host, int64_t port, bool use_tls) {
   grpc::ChannelArguments channel_arguments;
@@ -149,7 +153,11 @@ std::shared_ptr<grpc::Channel> CreateChannelFromConfig(const std::string &host, 
   if (use_tls) {
     grpc::experimental::TlsChannelCredentialsOptions tls_options;
     tls_options.set_verify_server_certs(false); // TODO: enable server verification before public release
-    // Elena: removed disable_host_check
+    if (disable_host_check(host)) {
+      // dev mode: disable all host validation and cert checks
+      tls_options.set_check_call_host(false);
+      tls_options.set_certificate_verifier(std::make_shared<grpc::experimental::NoOpCertificateVerifier>());
+    }
     channel_credentials = grpc::experimental::TlsCredentials(tls_options);
   } else {
     channel_credentials = grpc::InsecureChannelCredentials();
