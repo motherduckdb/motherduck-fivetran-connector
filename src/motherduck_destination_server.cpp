@@ -90,7 +90,7 @@ void process_file(
     duckdb::Connection &con, const std::string &filename,
     const std::string &decryption_key, std::vector<std::string> &utf8_columns,
     const std::string &null_value,
-    const std::function<void(std::string view_name)> &process_view) {
+    const std::function<void(const std::string &view_name)> &process_view) {
 
   auto table = decryption_key.empty()
                    ? read_unencrypted_csv(filename, utf8_columns, null_value)
@@ -130,9 +130,13 @@ void find_primary_keys(
 }
 
 bool disable_host_check(const std::string &host) {
-  auto env_disable = std::string(std::getenv("motherduck_disable_host_check"));
+  const auto env_disable_host_check = std::getenv("motherduck_disable_host_check");
+  if (env_disable_host_check == nullptr) {
+    return false;
+  }
+  const auto value = std::string(env_disable_host_check);
   return host == "localhost" || host == "127.0.0.1" || host == "::1" ||
-          env_disable == "true" || env_disable == "1";
+          value == "true" || value == "1";
 }
 
 std::shared_ptr<grpc::Channel> CreateChannelFromConfig(const std::string &host, int64_t port, bool use_tls) {
@@ -182,6 +186,7 @@ DestinationSdkImpl::DestinationSdkImpl() {
   auto use_tls = true;
   loggingSinkClient = std::shared_ptr<logging_sink::LoggingSink::Stub>(std::move(
       logging_sink::LoggingSink::NewStub(CreateChannelFromConfig(logging_host, logging_port, use_tls))));
+
 }
 
 grpc::Status DestinationSdkImpl::ConfigurationForm(
@@ -445,7 +450,7 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
       logger->info("Endpoint <WriteBatch>: got replace file decryption key");
       process_file(
           *con, filename, decryption_key, column_names,
-          request->csv().null_string(), [&](const std::string view_name) {
+          request->csv().null_string(), [&](const std::string &view_name) {
               sql_generator->upsert(*con, table_name, view_name, columns_pk, columns_regular);
           });
       logger->info("Endpoint <WriteBatch>: finished processing replace file " + filename);
@@ -457,7 +462,7 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
       logger->info("Endpoint <WriteBatch>: got update file decryption key");
       process_file(
           *con, filename, decryption_key, column_names,
-          request->csv().null_string(), [&](const std::string view_name) {
+          request->csv().null_string(), [&](const std::string &view_name) {
               sql_generator->update_values(*con, table_name, view_name, columns_pk,
                           columns_regular, request->csv().unmodified_string());
           });
@@ -471,7 +476,7 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
       std::vector<std::string> empty;
       process_file(*con, filename, decryption_key, empty,
                    request->csv().null_string(),
-                   [&](const std::string view_name) {
+                   [&](const std::string &view_name) {
                        sql_generator->delete_rows(*con, table_name, view_name, columns_pk);
                    });
       logger->info("Endpoint <WriteBatch>: finished processing delete file " + filename);

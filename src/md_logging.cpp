@@ -35,7 +35,7 @@ void MdLog::log(const std::string &level, const std::string &message) {
   log_event->set_json_line(json_log_entry);
   log_event->set_level(::logging_sink::LOG_LEVEL::LL_WARN);
   log_event->set_service("fivetran-connector");
-  log_event->set_line(json_log_entry);
+  //log_event->set_line(json_log_entry);
 
   std::cout << "*** actual json: [" << json_log_entry << "]" << std::endl;
 
@@ -45,9 +45,9 @@ void MdLog::log(const std::string &level, const std::string &message) {
       << " (error message = " << result.error_message() + ")";
 }
 
-void MdLog::info(std::string message) { log( "INFO", message); }
+void MdLog::info(const std::string& message) { log( "INFO", message); }
 
-void MdLog::warning(std::string message) { log( "WARNING", message); }
+void MdLog::warning(const std::string &message) { log( "WARNING", message); }
 
-void MdLog::severe(std::string message) { log("SEVERE", message); }
+void MdLog::severe(const std::string &message) { log("SEVERE", message); }
 } // namespace mdlog

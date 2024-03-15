@@ -2,7 +2,7 @@
 #include <grpcpp/grpcpp.h>
 #include <string>
 
-void RunServer(std::string port) {
+void RunServer(const std::string &port) {
   std::string server_address = "0.0.0.0:" + port;
   DestinationSdkImpl service;
 
@@ -31,6 +31,7 @@ int main(int argc, char **argv) {
     std::cout << "argument: " << argv[i] << std::endl;
   }
 
+  std::cout << "before run server" << std::endl;
   RunServer(port);
   return 0;
 }
