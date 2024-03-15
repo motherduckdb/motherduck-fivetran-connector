@@ -37,8 +37,9 @@ void write_joined(
 // TODO: add test for schema or remove the logic if it's unused
 bool schema_exists(duckdb::Connection &con, const std::string &db_name,
                    const std::string &schema_name) {
-  const std::string query = "SELECT schema_name FROM information_schema.schemata "
-                      "WHERE catalog_name=? AND schema_name=?";
+  const std::string query =
+      "SELECT schema_name FROM information_schema.schemata "
+      "WHERE catalog_name=? AND schema_name=?";
   auto statement = con.Prepare(query);
   duckdb::vector<duckdb::Value> params = {duckdb::Value(db_name),
                                           duckdb::Value(schema_name)};
@@ -55,8 +56,9 @@ bool schema_exists(duckdb::Connection &con, const std::string &db_name,
 }
 
 bool table_exists(duckdb::Connection &con, const table_def &table) {
-  const std::string query = "SELECT table_name FROM information_schema.tables WHERE "
-                      "table_catalog=? AND table_schema=? AND table_name=?";
+  const std::string query =
+      "SELECT table_name FROM information_schema.tables WHERE "
+      "table_catalog=? AND table_schema=? AND table_name=?";
   auto statement = con.Prepare(query);
   duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name),
                                           duckdb::Value(table.schema_name),
@@ -237,7 +239,8 @@ make_full_column_list(const std::vector<const column_def *> &columns_pk,
   std::ostringstream full_column_list;
   if (!columns_pk.empty()) {
     write_joined(full_column_list, columns_pk, print_column);
-    // tiny troubleshooting assist; primary columns are separated from regular columns by 2 spaces
+    // tiny troubleshooting assist; primary columns are separated from regular
+    // columns by 2 spaces
     full_column_list << ",  ";
   }
   write_joined(full_column_list, columns_regular, print_column);
@@ -360,10 +363,11 @@ void truncate_table(duckdb::Connection &con, const table_def &table,
 
   // DuckDB make_timestamp takes microseconds; Fivetran sends millisecond
   // precision -- safe to divide with truncation
-  long cutoff_microseconds = cutoff_ns.count() / 1000;
+  int64_t cutoff_microseconds = cutoff_ns.count() / 1000;
   duckdb::vector<duckdb::Value> params = {duckdb::Value(cutoff_microseconds)};
 
-  mdlog::info("truncate_table: cutoff_microseconds = <" + std::to_string(cutoff_microseconds) + ">");
+  mdlog::info("truncate_table: cutoff_microseconds = <" +
+              std::to_string(cutoff_microseconds) + ">");
   auto result = statement->Execute(params, false);
   if (result->HasError()) {
     throw std::runtime_error("Error truncating table <" + absolute_table_name +
