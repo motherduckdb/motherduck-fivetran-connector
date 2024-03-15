@@ -89,7 +89,7 @@ void process_file(
     duckdb::Connection &con, const std::string &filename,
     const std::string &decryption_key, std::vector<std::string> &utf8_columns,
     const std::string &null_value,
-    const std::function<void(std::string view_name)> &process_view) {
+    const std::function<void(const std::string &view_name)> &process_view) {
 
   auto table = decryption_key.empty()
                    ? read_unencrypted_csv(filename, utf8_columns, null_value)
@@ -168,7 +168,8 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     mdlog::info("Endpoint <DescribeTable>: started");
     std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
-    mdlog::info("Endpoint <DescribeTable>: found database name <" + db_name + ">");
+    mdlog::info("Endpoint <DescribeTable>: found database name <" + db_name +
+                ">");
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
     mdlog::info("Endpoint <DescribeTable>: got database connection");
@@ -176,7 +177,8 @@ grpc::Status DestinationSdkImpl::DescribeTable(
                          get_table_name(request)};
 
     if (!table_exists(*con, table_name)) {
-      mdlog::info("Endpoint <DescribeTable>: table does not exist; returning not found");
+      mdlog::info("Endpoint <DescribeTable>: table does not exist; returning "
+                  "not found");
       response->set_not_found(true);
       return ::grpc::Status(::grpc::StatusCode::OK, "");
     }
@@ -189,10 +191,12 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     mdlog::info("Endpoint <DescribeTable>: before enumerating columns");
     for (auto &col : duckdb_columns) {
       fivetran_sdk::Column *ft_col = table->mutable_columns()->Add();
-      mdlog::info("Endpoint <DescribeTable>: column <" + col.name + ">; duckdb type <" + LogicalTypeIdToString(col.type) + ">");
+      mdlog::info("Endpoint <DescribeTable>: column <" + col.name +
+                  ">; duckdb type <" + LogicalTypeIdToString(col.type) + ">");
       ft_col->set_name(col.name);
       auto fivetran_type = get_fivetran_type(col.type);
-      mdlog::info("Endpoint <DescribeTable>: column <" + col.name + ">; fivetran type <" + DataType_Name(fivetran_type) + ">");
+      mdlog::info("Endpoint <DescribeTable>: column <" + col.name +
+                  ">; fivetran type <" + DataType_Name(fivetran_type) + ">");
       ft_col->set_type(fivetran_type);
       ft_col->set_primary_key(col.primary_key);
     }
@@ -285,17 +289,20 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
       throw std::invalid_argument("Synced column is required");
     }
 
-    mdlog::info("Endpoint <Truncate>: found synced column <" + request->synced_column() + ">");
+    mdlog::info("Endpoint <Truncate>: found synced column <" +
+                request->synced_column() + ">");
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
 
     mdlog::info("Endpoint <Truncate>: got database connection");
     if (table_exists(*con, table_name)) {
-      mdlog::info("Endpoint <Truncate>: schema <" + table_name.schema_name + ">, table <" + table_name.table_name + "> exists");
+      mdlog::info("Endpoint <Truncate>: schema <" + table_name.schema_name +
+                  ">, table <" + table_name.table_name + "> exists");
       std::chrono::nanoseconds delete_before_ts =
           std::chrono::seconds(request->utc_delete_before().seconds()) +
           std::chrono::nanoseconds(request->utc_delete_before().nanos());
-      mdlog::info("Endpoint <Truncate>: delete_before_ts = <" + std::to_string(delete_before_ts.count()) + ">");
+      mdlog::info("Endpoint <Truncate>: delete_before_ts = <" +
+                  std::to_string(delete_before_ts.count()) + ">");
       truncate_table(*con, table_name, request->synced_column(),
                      delete_before_ts, request->soft().deleted_column());
     } else {
@@ -347,7 +354,8 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
     if (columns_pk.empty()) {
       throw std::invalid_argument("No primary keys found");
     }
-    mdlog::info("Endpoint <WriteBatch>: got " + std::to_string(columns_pk.size()) + " primary keys");
+    mdlog::info("Endpoint <WriteBatch>: got " +
+                std::to_string(columns_pk.size()) + " primary keys");
 
     // update file fields have to be read in as strings to allow
     // "unmodified_string"/"null_string". Replace (upsert) files have to be read
@@ -364,10 +372,11 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
       mdlog::info("Endpoint <WriteBatch>: got replace file decryption key");
       process_file(
           *con, filename, decryption_key, column_names,
-          request->csv().null_string(), [&](const std::string view_name) {
+          request->csv().null_string(), [&](const std::string &view_name) {
             upsert(*con, table_name, view_name, columns_pk, columns_regular);
           });
-      mdlog::info("Endpoint <WriteBatch>: finished processing replace file " + filename);
+      mdlog::info("Endpoint <WriteBatch>: finished processing replace file " +
+                  filename);
     }
     for (auto &filename : request->update_files()) {
       mdlog::info("Endpoint <WriteBatch>: processing update file " + filename);
@@ -376,11 +385,12 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
       mdlog::info("Endpoint <WriteBatch>: got update file decryption key");
       process_file(
           *con, filename, decryption_key, column_names,
-          request->csv().null_string(), [&](const std::string view_name) {
+          request->csv().null_string(), [&](const std::string &view_name) {
             update_values(*con, table_name, view_name, columns_pk,
                           columns_regular, request->csv().unmodified_string());
           });
-      mdlog::info("Endpoint <WriteBatch>: finished processing update file " + filename);
+      mdlog::info("Endpoint <WriteBatch>: finished processing update file " +
+                  filename);
     }
     for (auto &filename : request->delete_files()) {
       mdlog::info("Endpoint <WriteBatch>: processing delete file " + filename);
@@ -390,10 +400,11 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
       std::vector<std::string> empty;
       process_file(*con, filename, decryption_key, empty,
                    request->csv().null_string(),
-                   [&](const std::string view_name) {
+                   [&](const std::string &view_name) {
                      delete_rows(*con, table_name, view_name, columns_pk);
                    });
-      mdlog::info("Endpoint <WriteBatch>: finished processing delete file " + filename);
+      mdlog::info("Endpoint <WriteBatch>: finished processing delete file " +
+                  filename);
     }
 
   } catch (const std::exception &e) {
