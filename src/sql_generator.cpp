@@ -21,13 +21,14 @@ const auto print_column = [](const std::string &quoted_col,
 
 void write_joined(
     std::ostringstream &sql, const std::vector<const column_def *> &columns,
-    std::function<void(const std::string &, std::ostringstream &)> print_str) {
+    std::function<void(const std::string &, std::ostringstream &)> print_str,
+    const std::string &separator = ", ") {
   bool first = true;
   for (const auto &col : columns) {
     if (first) {
       first = false;
     } else {
-      sql << ", ";
+      sql << separator;
     }
     print_str(KeywordHelper::WriteQuoted(col->name, '"'), sql);
   }
@@ -301,11 +302,13 @@ void update_values(duckdb::Connection &con, const table_def &table,
                });
 
   sql << " FROM " << staging_table_name << " WHERE ";
-  write_joined(sql, columns_pk,
-               [&](const std::string &quoted_col, std::ostringstream &out) {
-                 out << table.table_name << "." << quoted_col << " = "
-                     << staging_table_name << "." << quoted_col;
-               });
+  write_joined(
+      sql, columns_pk,
+      [&](const std::string &quoted_col, std::ostringstream &out) {
+        out << table.table_name << "." << quoted_col << " = "
+            << staging_table_name << "." << quoted_col;
+      },
+      " AND ");
 
   auto query = sql.str();
   mdlog::info("update: " + query);
@@ -325,11 +328,13 @@ void delete_rows(duckdb::Connection &con, const table_def &table,
   sql << "DELETE FROM " + absolute_table_name << " USING " << staging_table_name
       << " WHERE ";
 
-  write_joined(sql, columns_pk,
-               [&](const std::string &quoted_col, std::ostringstream &out) {
-                 out << table.table_name << "." << quoted_col << " = "
-                     << staging_table_name << "." << quoted_col;
-               });
+  write_joined(
+      sql, columns_pk,
+      [&](const std::string &quoted_col, std::ostringstream &out) {
+        out << table.table_name << "." << quoted_col << " = "
+            << staging_table_name << "." << quoted_col;
+      },
+      " AND ");
 
   auto query = sql.str();
   mdlog::info("delete_rows: " + query);
