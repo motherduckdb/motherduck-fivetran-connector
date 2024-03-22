@@ -26,10 +26,10 @@ jobs:
       - name: build the connector
         run: |
           make get_fivetran_protos get_duckdb
-          make build_connector
+          make build_connector_debug
 
       - name: run tests
         env:
           motherduck_token: ${{ secrets.CI_TESTING_TOKEN }}
         run: |
-          ./build/Release/integration_tests
+          ASAN_OPTIONS=alloc_dealloc_mismatch=0  LSAN_OPTIONS=suppressions=lsan-suppressions.supp  ./build/Debug/integration_tests
