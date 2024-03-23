@@ -1,4 +1,5 @@
 # https://github.com/MotherDuck-Open-Source/motherduck-fivetran-connector/issues/33
 leak:arrow::internal::StaticVectorImpl
 leak:duckdb::ArrowTableFunction::ArrowScanBind
+leak:duckdb_arrow_scan
 leak:duckdb::GZipFileSystem
