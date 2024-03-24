@@ -6,13 +6,22 @@ on:
     branches: [main]
 
 jobs:
+
   build_and_test:
     name: Build and test the connector
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      - name: install clang-16
+        run: |
+          RUN apt update && apt install -y clang-16
+
       - name: is there clang
+        env:
+          CC=clang-16
+          CXX=clang++-16
+          CPP=clang-cpp-16
         run: |
           clang --version
           echo "cpp = " $CPP
