@@ -19,9 +19,9 @@ jobs:
 
       - name: is there clang
         env:
-          CC=clang-16
-          CXX=clang++-16
-          CPP=clang-cpp-16
+          CC: clang-16
+          CXX: clang++-16
+          CPP: clang-cpp-16
         run: |
           clang --version
           echo "cpp = " $CPP
