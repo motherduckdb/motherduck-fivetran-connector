@@ -15,7 +15,7 @@ jobs:
 
       - name: install clang-16
         run: |
-          apt update && apt install -y clang-16
+          sudo apt update && apt install -y clang-16
 
       - name: is there clang
         env:
