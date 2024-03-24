@@ -12,6 +12,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: is there clang
+        run: |
+          clang --version
+          echo "cpp = " $CPP
+          $CPP --version
+
       - uses: actions/cache@v3
         id: cache-deps
         with:
