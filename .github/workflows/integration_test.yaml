@@ -13,17 +13,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: is there clang
-        env:
-          CC: clang-15
-          CXX: clang++-15
-          CPP: clang-cpp-15
-        run: |
-          clang --version
-          clang-15 --version
-          echo "cpp = " $CPP
-          $CPP --version
-
       - uses: actions/cache@v3
         id: cache-deps
         with:
@@ -32,10 +21,18 @@ jobs:
 
       - name: build the dependencies
         if: ${{ steps.cache-deps.outputs.cache-hit != 'true' }}
+        env:
+          CC: clang-15
+          CXX: clang++-15
+          CPP: clang-cpp-15
         run: |
           make build_openssl_native build_grpc build_arrow build_test_dependencies
 
       - name: build the connector
+        env:
+          CC: clang-15
+          CXX: clang++-15
+          CPP: clang-cpp-15
         run: |
           make get_fivetran_protos get_duckdb
           make build_connector_debug
