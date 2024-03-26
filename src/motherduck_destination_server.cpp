@@ -86,13 +86,13 @@ get_encryption_key(const std::string &filename,
   return encryption_key_it->second;
 }
 
-void validate_file(const std::string &filename) {
-  std::ifstream fs(filename.c_str());
+void validate_file(const std::string &file_path) {
+  std::ifstream fs(file_path.c_str());
   if (fs.good()) {
     fs.close();
     return;
   }
-  throw std::invalid_argument("File <" + filename +
+  throw std::invalid_argument("File <" + file_path +
                               "> is missing or inaccessible");
 }
 

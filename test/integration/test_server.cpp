@@ -823,8 +823,7 @@ TEST_CASE("Truncate fails if synced_column is missing") {
   REQUIRE_FAIL(status, "Synced column is required");
 }
 
-TEST_CASE("reading inaccessible or nonexistent files fails with obvious error "
-          "message") {
+TEST_CASE("reading inaccessible or nonexistent files fails") {
   DestinationSdkImpl service;
 
   const std::string bad_file_name = TEST_RESOURCES_DIR + "nonexistent.csv";
@@ -843,5 +842,6 @@ TEST_CASE("reading inaccessible or nonexistent files fails with obvious error "
 
   ::fivetran_sdk::WriteBatchResponse response;
   auto status = service.WriteBatch(nullptr, &request, &response);
-  REQUIRE_FAIL(status, "is missing or inaccessible");
+  REQUIRE_FAIL(status,
+               "File <" + bad_file_name + "> is missing or inaccessible");
 }
