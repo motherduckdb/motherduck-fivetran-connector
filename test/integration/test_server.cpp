@@ -37,19 +37,18 @@ bool REQUIRE_FAIL(const grpc::Status &status,
 
 TEST_CASE("ConfigurationForm", "[integration]") {
   DestinationSdkImpl service;
+  ::fivetran_sdk::ConfigurationFormRequest request;
+  ::fivetran_sdk::ConfigurationFormResponse response;
 
-  auto request = ::fivetran_sdk::ConfigurationFormRequest().New();
-  auto response = ::fivetran_sdk::ConfigurationFormResponse().New();
-
-  auto status = service.ConfigurationForm(nullptr, request, response);
+  auto status = service.ConfigurationForm(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
 
-  REQUIRE(response->fields_size() == 2);
-  REQUIRE(response->fields(0).name() == "motherduck_token");
-  REQUIRE(response->fields(1).name() == "motherduck_database");
-  REQUIRE(response->tests_size() == 1);
-  REQUIRE(response->tests(0).name() == CONFIG_TEST_NAME_AUTHENTICATE);
-  REQUIRE(response->tests(0).label() == "Test Authentication");
+  REQUIRE(response.fields_size() == 2);
+  REQUIRE(response.fields(0).name() == "motherduck_token");
+  REQUIRE(response.fields(1).name() == "motherduck_database");
+  REQUIRE(response.tests_size() == 1);
+  REQUIRE(response.tests(0).name() == CONFIG_TEST_NAME_AUTHENTICATE);
+  REQUIRE(response.tests(0).label() == "Test Authentication");
 }
 
 TEST_CASE("DescribeTable fails when database missing", "[integration]") {
@@ -301,7 +300,7 @@ std::unique_ptr<duckdb::Connection> get_test_connection(char *token) {
   return std::make_unique<duckdb::Connection>(db);
 }
 
-TEST_CASE("WriteBatch", "[integration][current]") {
+TEST_CASE("WriteBatch", "[integration][write-batch]") {
   DestinationSdkImpl service;
 
   // Schema will be main
@@ -581,7 +580,7 @@ TEST_CASE("WriteBatch", "[integration][current]") {
   }
 }
 
-TEST_CASE("Table with multiple primary keys", "[integration]") {
+TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
   DestinationSdkImpl service;
 
   const std::string table_name =
