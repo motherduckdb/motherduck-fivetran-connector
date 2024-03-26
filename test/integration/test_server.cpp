@@ -24,16 +24,16 @@ bool NO_FAIL(const grpc::Status &status) {
   return status.ok();
 }
 
-bool IS_FAIL(const grpc::Status &status, const std::string &expected_error) {
-  if (!status.ok() && status.error_message() != expected_error) {
-    fprintf(stderr, "Query failed with unexpected message: %s\n",
-            status.error_message().c_str());
+bool REQUIRE_FAIL(const grpc::Status &status,
+                  const std::string &expected_error) {
+  if (!status.ok()) {
+    REQUIRE(status.error_message() == expected_error);
+    return true;
   }
-  return !status.ok();
+  return false;
 }
+
 #define REQUIRE_NO_FAIL(result) REQUIRE(NO_FAIL((result)))
-#define REQUIRE_FAIL(result, expected_error)                                   \
-  REQUIRE(IS_FAIL(result, expected_error))
 
 TEST_CASE("ConfigurationForm", "[integration]") {
   DestinationSdkImpl service;
@@ -817,4 +817,29 @@ TEST_CASE("Truncate fails if synced_column is missing") {
   auto status = service.Truncate(nullptr, &request, &response);
 
   REQUIRE_FAIL(status, "Synced column is required");
+}
+
+TEST_CASE("reading inaccessible or nonexistent files fails") {
+  DestinationSdkImpl service;
+
+  const std::string bad_file_name = TEST_RESOURCES_DIR + "nonexistent.csv";
+  ::fivetran_sdk::WriteBatchRequest request;
+
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+  (*request.mutable_configuration())["motherduck_token"] = token;
+  (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+  request.mutable_csv()->set_encryption(::fivetran_sdk::Encryption::AES);
+  request.mutable_csv()->set_compression(::fivetran_sdk::Compression::ZSTD);
+  define_test_table(request, "unused_table");
+
+  request.add_replace_files(bad_file_name);
+  (*request.mutable_keys())[bad_file_name] = "whatever";
+
+  ::fivetran_sdk::WriteBatchResponse response;
+  auto status = service.WriteBatch(nullptr, &request, &response);
+  const auto expected =
+      "WriteBatch endpoint failed for schema <>, table <unused_table>:File <" +
+      bad_file_name + "> is missing or inaccessible";
+  REQUIRE_FAIL(status, expected);
 }
