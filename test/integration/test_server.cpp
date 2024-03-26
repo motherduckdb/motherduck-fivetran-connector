@@ -24,10 +24,13 @@ bool NO_FAIL(const grpc::Status &status) {
   return status.ok();
 }
 
-bool IS_FAIL(const grpc::Status &status, const std::string &expected_error) {
-  if (!status.ok() && status.error_message() != expected_error) {
-    fprintf(stderr, "Query failed with unexpected message: %s\n",
-            status.error_message().c_str());
+bool IS_FAIL(const grpc::Status &status,
+             const std::string &expected_error_snippet) {
+  if (!status.ok() && status.error_message().find(expected_error_snippet) ==
+                          std::string::npos) {
+    UNSCOPED_INFO("Query failed with unexpected message: " +
+                  status.error_message());
+    return false;
   }
   return !status.ok();
 }
@@ -818,4 +821,27 @@ TEST_CASE("Truncate fails if synced_column is missing") {
   auto status = service.Truncate(nullptr, &request, &response);
 
   REQUIRE_FAIL(status, "Synced column is required");
+}
+
+TEST_CASE("reading inaccessible or nonexistent files fails with obvious error "
+          "message") {
+  DestinationSdkImpl service;
+
+  const std::string bad_file_name = TEST_RESOURCES_DIR + "nonexistent.csv";
+  ::fivetran_sdk::WriteBatchRequest request;
+
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+  (*request.mutable_configuration())["motherduck_token"] = token;
+  (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+  request.mutable_csv()->set_encryption(::fivetran_sdk::Encryption::AES);
+  request.mutable_csv()->set_compression(::fivetran_sdk::Compression::ZSTD);
+  define_test_table(request, "unused_table");
+
+  request.add_replace_files(bad_file_name);
+  (*request.mutable_keys())[bad_file_name] = "whatever";
+
+  ::fivetran_sdk::WriteBatchResponse response;
+  auto status = service.WriteBatch(nullptr, &request, &response);
+  REQUIRE_FAIL(status, "is missing or inaccessible");
 }
