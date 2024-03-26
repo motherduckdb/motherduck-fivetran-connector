@@ -1,6 +1,29 @@
 cmake_minimum_required(VERSION 3.8)
 project(MotherDuckFivetranDestination C CXX)
 
+
+# Debug Asan/Ubsan
+if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT DISABLE_SANITIZER)
+  if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang$")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize-blacklist=${CMAKE_CURRENT_LIST_DIR}/sanitizer-disallowed-entries.txt")
+    set(ENABLE_UBSAN TRUE)
+  else()
+    set(ENABLE_UBSAN FALSE)
+  endif()
+
+  add_compile_options("-fsanitize=address,undefined")
+  add_link_options("-fsanitize=address,undefined")
+  set(ENABLE_SANITIZER TRUE)
+else()
+  set(ENABLE_SANITIZER FALSE)
+  set(ENABLE_UBSAN FALSE)
+endif()
+
+message("-- ENABLE_SANITIZER=${ENABLE_SANITIZER}")
+message("-- ENABLE_UBSAN=${ENABLE_UBSAN}")
+
+# Proto generation
+
 set(TARGET_ROOT ${PROJECT_SOURCE_DIR}/gen)
 include(./proto_helper.cmake)
 
