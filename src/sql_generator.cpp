@@ -93,6 +93,9 @@ void create_table(duckdb::Connection &con, const table_def &table,
   for (const auto &col : all_columns) {
     ddl << KeywordHelper::WriteQuoted(col.name, '"') << " "
         << duckdb::EnumUtil::ToChars(col.type);
+    if (col.type == duckdb::LogicalTypeId::DECIMAL) {
+      ddl << " (" << col.width << "," << col.scale << ")";
+    }
     ddl << ", "; // DuckDB allows trailing commas
   }
 
@@ -142,10 +145,14 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
 
   for (const auto &row : materialized_result->Collection().GetRows()) {
     duckdb::LogicalTypeId column_type = static_cast<duckdb::LogicalTypeId>(row.GetValue(1).GetValue<int8_t>());
-    columns.push_back(
-        column_def{row.GetValue(0).GetValue<duckdb::string>(),
-                   column_type,
-                   row.GetValue(2).GetValue<bool>()});
+    column_def col{row.GetValue(0).GetValue<duckdb::string>(),
+                          column_type,
+                          row.GetValue(2).GetValue<bool>()};
+    if (column_type == duckdb::LogicalTypeId::DECIMAL) {
+      col.width = row.GetValue(3).GetValue<uint32_t>();
+      col.scale = row.GetValue(4).GetValue<uint32_t>();
+    }
+    columns.push_back(col);
   }
   return columns;
 }

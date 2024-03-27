@@ -820,7 +820,7 @@ TEST_CASE("Truncate fails if synced_column is missing") {
   REQUIRE_FAIL(status, "Synced column is required");
 }
 
-TEST_CASE("Test CreateTable/DescribeTable with decimal column") {
+TEST_CASE("Test all types with create and describe table") {
 
   DestinationSdkImpl service;
 
@@ -845,6 +845,8 @@ TEST_CASE("Test CreateTable/DescribeTable with decimal column") {
     auto col3 = request.mutable_table()->add_columns();
     col3->set_name("col_decimal");
     col3->set_type(::fivetran_sdk::DataType::DECIMAL);
+    col3->mutable_decimal()->set_precision(20);
+    col3->mutable_decimal()->set_scale(11);
 
     auto col4 = request.mutable_table()->add_columns();
     col4->set_name("col_utc_datetime");
@@ -903,6 +905,8 @@ TEST_CASE("Test CreateTable/DescribeTable with decimal column") {
     REQUIRE(response.table().columns(2).name() == "col_decimal");
     REQUIRE(response.table().columns(2).type() ==
             ::fivetran_sdk::DataType::DECIMAL);
+    REQUIRE(response.table().columns(2).decimal().scale() == 11);
+    REQUIRE(response.table().columns(2).decimal().precision() == 20);
 
     REQUIRE(response.table().columns(3).name() == "col_utc_datetime");
     REQUIRE(response.table().columns(3).type() ==
@@ -934,13 +938,3 @@ TEST_CASE("Test CreateTable/DescribeTable with decimal column") {
             ::fivetran_sdk::DataType::BINARY);
   }
 }
-/*
- *
-
-
-  case LogicalTypeId::BIT:
-    return fivetran_sdk::BINARY;
-
-  default:
-    return fivetran_sdk::UNSPECIFIED;
-  }*/

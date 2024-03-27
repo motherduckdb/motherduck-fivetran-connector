@@ -188,6 +188,8 @@ grpc::Status DestinationSdkImpl::DescribeTable(
       ft_col->set_name(col.name);
       ft_col->set_type(get_fivetran_type(col.type));
       ft_col->set_primary_key(col.primary_key);
+      ft_col->mutable_decimal()->set_precision(col.width);
+      ft_col->mutable_decimal()->set_scale(col.scale);
     }
 
   } catch (const std::exception &e) {
