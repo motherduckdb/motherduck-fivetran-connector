@@ -93,6 +93,9 @@ void create_table(duckdb::Connection &con, const table_def &table,
   for (const auto &col : all_columns) {
     ddl << KeywordHelper::WriteQuoted(col.name, '"') << " "
         << duckdb::EnumUtil::ToChars(col.type);
+    if (col.type == duckdb::LogicalTypeId::DECIMAL) {
+      ddl << " (" << col.width << "," << col.scale << ")";
+    }
     ddl << ", "; // DuckDB allows trailing commas
   }
 
@@ -122,9 +125,16 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
   // TBD scale/precision
   std::vector<column_def> columns;
 
-  auto query = "SELECT column_name, data_type, is_nullable = 'NO' FROM "
-               "information_schema.columns WHERE table_catalog=? AND "
-               "table_schema=? AND table_name=?";
+  auto query = "SELECT "
+               "column_name, "
+               "data_type_id, "
+               "NOT is_nullable, "
+               "numeric_precision, "
+               "numeric_scale "
+               "FROM duckdb_columns() "
+               "WHERE database_name=? "
+               "AND schema_name=? "
+               "AND table_name=?";
   mdlog::info("describe_table: " + std::string(query));
   auto statement = con.Prepare(query);
   duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name),
@@ -141,11 +151,15 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
       duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
 
   for (const auto &row : materialized_result->Collection().GetRows()) {
-    columns.push_back(
-        column_def{row.GetValue(0).GetValue<duckdb::string>(),
-                   duckdb::EnumUtil::FromString<duckdb::LogicalTypeId>(
-                       row.GetValue(1).GetValue<duckdb::string>()),
-                   row.GetValue(2).GetValue<bool>()});
+    duckdb::LogicalTypeId column_type =
+        static_cast<duckdb::LogicalTypeId>(row.GetValue(1).GetValue<int8_t>());
+    column_def col{row.GetValue(0).GetValue<duckdb::string>(), column_type,
+                   row.GetValue(2).GetValue<bool>()};
+    if (column_type == duckdb::LogicalTypeId::DECIMAL) {
+      col.width = row.GetValue(3).GetValue<uint32_t>();
+      col.scale = row.GetValue(4).GetValue<uint32_t>();
+    }
+    columns.push_back(col);
   }
   return columns;
 }

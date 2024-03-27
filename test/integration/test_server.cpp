@@ -843,3 +843,138 @@ TEST_CASE("reading inaccessible or nonexistent files fails") {
       bad_file_name + "> is missing or inaccessible";
   REQUIRE_FAIL(status, expected);
 }
+
+TEST_CASE("Test all types with create and describe table") {
+
+  DestinationSdkImpl service;
+
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+
+  const std::string table_name =
+      "all_types_table" + std::to_string(Catch::rngSeed());
+
+  {
+    // Create Table
+    ::fivetran_sdk::CreateTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+    request.mutable_table()->set_name(table_name);
+    auto col1 = request.mutable_table()->add_columns();
+    col1->set_name("col_string");
+    col1->set_type(::fivetran_sdk::DataType::STRING);
+    col1->set_primary_key(true);
+    auto col2 = request.mutable_table()->add_columns();
+    col2->set_name("col_int");
+    col2->set_type(::fivetran_sdk::DataType::INT);
+    col2->set_primary_key(true);
+    auto col3 = request.mutable_table()->add_columns();
+    col3->set_name("col_decimal");
+    col3->set_type(::fivetran_sdk::DataType::DECIMAL);
+    col3->mutable_decimal()->set_precision(20);
+    col3->mutable_decimal()->set_scale(11);
+
+    auto col4 = request.mutable_table()->add_columns();
+    col4->set_name("col_utc_datetime");
+    col4->set_type(::fivetran_sdk::DataType::UTC_DATETIME);
+    auto col5 = request.mutable_table()->add_columns();
+    col5->set_name("col_naive_datetime");
+    col5->set_type(::fivetran_sdk::DataType::NAIVE_DATETIME);
+    auto col6 = request.mutable_table()->add_columns();
+    col6->set_name("col_naive_date");
+    col6->set_type(::fivetran_sdk::DataType::NAIVE_DATE);
+
+    auto col7 = request.mutable_table()->add_columns();
+    col7->set_name("col_boolean");
+    col7->set_type(::fivetran_sdk::DataType::BOOLEAN);
+    auto col8 = request.mutable_table()->add_columns();
+    col8->set_name("col_short");
+    col8->set_type(::fivetran_sdk::DataType::SHORT);
+    auto col9 = request.mutable_table()->add_columns();
+    col9->set_name("col_long");
+    col9->set_type(::fivetran_sdk::DataType::LONG);
+    auto col10 = request.mutable_table()->add_columns();
+    col10->set_name("col_float");
+    col10->set_type(::fivetran_sdk::DataType::FLOAT);
+    auto col11 = request.mutable_table()->add_columns();
+    col11->set_name("col_double");
+    col11->set_type(::fivetran_sdk::DataType::DOUBLE);
+    auto col12 = request.mutable_table()->add_columns();
+    col12->set_name("col_binary");
+    col12->set_type(::fivetran_sdk::DataType::BINARY);
+
+    ::fivetran_sdk::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // Describe table
+    ::fivetran_sdk::DescribeTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+    request.set_table_name(table_name);
+
+    ::fivetran_sdk::DescribeTableResponse response;
+    auto status = service.DescribeTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(!response.not_found());
+
+    REQUIRE(response.table().name() == table_name);
+    REQUIRE(response.table().columns_size() == 12);
+
+    REQUIRE(response.table().columns(0).name() == "col_string");
+    REQUIRE(response.table().columns(0).type() ==
+            ::fivetran_sdk::DataType::STRING);
+    REQUIRE(response.table().columns(0).primary_key());
+    REQUIRE(response.table().columns(1).name() == "col_int");
+    REQUIRE(response.table().columns(1).type() ==
+            ::fivetran_sdk::DataType::INT);
+    REQUIRE(response.table().columns(1).primary_key());
+
+    REQUIRE(response.table().columns(2).name() == "col_decimal");
+    REQUIRE(response.table().columns(2).type() ==
+            ::fivetran_sdk::DataType::DECIMAL);
+    REQUIRE(response.table().columns(2).decimal().scale() == 11);
+    REQUIRE(response.table().columns(2).decimal().precision() == 20);
+    REQUIRE_FALSE(response.table().columns(2).primary_key());
+
+    REQUIRE(response.table().columns(3).name() == "col_utc_datetime");
+    REQUIRE(response.table().columns(3).type() ==
+            ::fivetran_sdk::DataType::UTC_DATETIME);
+    REQUIRE_FALSE(response.table().columns(3).primary_key());
+    REQUIRE(response.table().columns(4).name() == "col_naive_datetime");
+    REQUIRE(response.table().columns(4).type() ==
+            ::fivetran_sdk::DataType::NAIVE_DATETIME);
+    REQUIRE_FALSE(response.table().columns(4).primary_key());
+    REQUIRE(response.table().columns(5).name() == "col_naive_date");
+    REQUIRE(response.table().columns(5).type() ==
+            ::fivetran_sdk::DataType::NAIVE_DATE);
+    REQUIRE_FALSE(response.table().columns(5).primary_key());
+
+    REQUIRE(response.table().columns(6).name() == "col_boolean");
+    REQUIRE(response.table().columns(6).type() ==
+            ::fivetran_sdk::DataType::BOOLEAN);
+    REQUIRE_FALSE(response.table().columns(6).primary_key());
+    REQUIRE(response.table().columns(7).name() == "col_short");
+    REQUIRE(response.table().columns(7).type() ==
+            ::fivetran_sdk::DataType::SHORT);
+    REQUIRE_FALSE(response.table().columns(7).primary_key());
+    REQUIRE(response.table().columns(8).name() == "col_long");
+    REQUIRE(response.table().columns(8).type() ==
+            ::fivetran_sdk::DataType::LONG);
+    REQUIRE_FALSE(response.table().columns(8).primary_key());
+    REQUIRE(response.table().columns(9).name() == "col_float");
+    REQUIRE(response.table().columns(9).type() ==
+            ::fivetran_sdk::DataType::FLOAT);
+    REQUIRE_FALSE(response.table().columns(9).primary_key());
+    REQUIRE(response.table().columns(10).name() == "col_double");
+    REQUIRE(response.table().columns(10).type() ==
+            ::fivetran_sdk::DataType::DOUBLE);
+    REQUIRE_FALSE(response.table().columns(10).primary_key());
+    REQUIRE(response.table().columns(11).name() == "col_binary");
+    REQUIRE(response.table().columns(11).type() ==
+            ::fivetran_sdk::DataType::BINARY);
+    REQUIRE_FALSE(response.table().columns(11).primary_key());
+  }
+}

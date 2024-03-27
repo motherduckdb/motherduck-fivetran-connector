@@ -19,6 +19,8 @@ fivetran_sdk::DataType get_fivetran_type(const LogicalTypeId &duckdb_type) {
   case LogicalTypeId::DATE:
     return fivetran_sdk::NAIVE_DATE;
   case LogicalTypeId::TIMESTAMP:
+    return fivetran_sdk::NAIVE_DATETIME;
+  case LogicalTypeId::TIMESTAMP_TZ:
     return fivetran_sdk::UTC_DATETIME;
   case LogicalTypeId::DECIMAL:
     return fivetran_sdk::DECIMAL;
@@ -50,8 +52,8 @@ LogicalTypeId get_duckdb_type(const fivetran_sdk::DataType &fivetranType) {
   case fivetran_sdk::NAIVE_DATETIME:
     return LogicalTypeId::TIMESTAMP;
   case fivetran_sdk::UTC_DATETIME:
-    return LogicalTypeId::TIMESTAMP; // TBD: this is pretty definitely wrong;
-                                     // needs to be with timezone
+    return LogicalTypeId::TIMESTAMP_TZ; // TODO: find format Fivetran sends;
+                                        // make sure UTC included
   case fivetran_sdk::DECIMAL:
     return LogicalTypeId::DECIMAL;
   case fivetran_sdk::BINARY:
