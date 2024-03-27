@@ -24,32 +24,31 @@ bool NO_FAIL(const grpc::Status &status) {
   return status.ok();
 }
 
-bool IS_FAIL(const grpc::Status &status, const std::string &expected_error) {
-  if (!status.ok() && status.error_message() != expected_error) {
-    fprintf(stderr, "Query failed with unexpected message: %s\n",
-            status.error_message().c_str());
+bool REQUIRE_FAIL(const grpc::Status &status,
+                  const std::string &expected_error) {
+  if (!status.ok()) {
+    REQUIRE(status.error_message() == expected_error);
+    return true;
   }
-  return !status.ok();
+  return false;
 }
+
 #define REQUIRE_NO_FAIL(result) REQUIRE(NO_FAIL((result)))
-#define REQUIRE_FAIL(result, expected_error)                                   \
-  REQUIRE(IS_FAIL(result, expected_error))
 
 TEST_CASE("ConfigurationForm", "[integration]") {
   DestinationSdkImpl service;
+  ::fivetran_sdk::ConfigurationFormRequest request;
+  ::fivetran_sdk::ConfigurationFormResponse response;
 
-  auto request = ::fivetran_sdk::ConfigurationFormRequest().New();
-  auto response = ::fivetran_sdk::ConfigurationFormResponse().New();
-
-  auto status = service.ConfigurationForm(nullptr, request, response);
+  auto status = service.ConfigurationForm(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
 
-  REQUIRE(response->fields_size() == 2);
-  REQUIRE(response->fields(0).name() == "motherduck_token");
-  REQUIRE(response->fields(1).name() == "motherduck_database");
-  REQUIRE(response->tests_size() == 1);
-  REQUIRE(response->tests(0).name() == CONFIG_TEST_NAME_AUTHENTICATE);
-  REQUIRE(response->tests(0).label() == "Test Authentication");
+  REQUIRE(response.fields_size() == 2);
+  REQUIRE(response.fields(0).name() == "motherduck_token");
+  REQUIRE(response.fields(1).name() == "motherduck_database");
+  REQUIRE(response.tests_size() == 1);
+  REQUIRE(response.tests(0).name() == CONFIG_TEST_NAME_AUTHENTICATE);
+  REQUIRE(response.tests(0).label() == "Test Authentication");
 }
 
 TEST_CASE("DescribeTable fails when database missing", "[integration]") {
@@ -301,7 +300,7 @@ std::unique_ptr<duckdb::Connection> get_test_connection(char *token) {
   return std::make_unique<duckdb::Connection>(db);
 }
 
-TEST_CASE("WriteBatch", "[integration][current]") {
+TEST_CASE("WriteBatch", "[integration][write-batch]") {
   DestinationSdkImpl service;
 
   // Schema will be main
@@ -581,7 +580,7 @@ TEST_CASE("WriteBatch", "[integration][current]") {
   }
 }
 
-TEST_CASE("Table with multiple primary keys", "[integration]") {
+TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
   DestinationSdkImpl service;
 
   const std::string table_name =
@@ -818,6 +817,31 @@ TEST_CASE("Truncate fails if synced_column is missing") {
   auto status = service.Truncate(nullptr, &request, &response);
 
   REQUIRE_FAIL(status, "Synced column is required");
+}
+
+TEST_CASE("reading inaccessible or nonexistent files fails") {
+  DestinationSdkImpl service;
+
+  const std::string bad_file_name = TEST_RESOURCES_DIR + "nonexistent.csv";
+  ::fivetran_sdk::WriteBatchRequest request;
+
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+  (*request.mutable_configuration())["motherduck_token"] = token;
+  (*request.mutable_configuration())["motherduck_database"] = "fivetran_test";
+  request.mutable_csv()->set_encryption(::fivetran_sdk::Encryption::AES);
+  request.mutable_csv()->set_compression(::fivetran_sdk::Compression::ZSTD);
+  define_test_table(request, "unused_table");
+
+  request.add_replace_files(bad_file_name);
+  (*request.mutable_keys())[bad_file_name] = "whatever";
+
+  ::fivetran_sdk::WriteBatchResponse response;
+  auto status = service.WriteBatch(nullptr, &request, &response);
+  const auto expected =
+      "WriteBatch endpoint failed for schema <>, table <unused_table>:File <" +
+      bad_file_name + "> is missing or inaccessible";
+  REQUIRE_FAIL(status, expected);
 }
 
 TEST_CASE("Test all types with create and describe table") {

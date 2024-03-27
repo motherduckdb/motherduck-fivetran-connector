@@ -1,3 +1,4 @@
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -85,12 +86,23 @@ get_encryption_key(const std::string &filename,
   return encryption_key_it->second;
 }
 
+void validate_file(const std::string &file_path) {
+  std::ifstream fs(file_path.c_str());
+  if (fs.good()) {
+    fs.close();
+    return;
+  }
+  throw std::invalid_argument("File <" + file_path +
+                              "> is missing or inaccessible");
+}
+
 void process_file(
     duckdb::Connection &con, const std::string &filename,
     const std::string &decryption_key, std::vector<std::string> &utf8_columns,
     const std::string &null_value,
     const std::function<void(const std::string &view_name)> &process_view) {
 
+  validate_file(filename);
   auto table = decryption_key.empty()
                    ? read_unencrypted_csv(filename, utf8_columns, null_value)
                    : read_encrypted_csv(filename, decryption_key, utf8_columns,
