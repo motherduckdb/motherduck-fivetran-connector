@@ -125,7 +125,8 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
   // TBD scale/precision
   std::vector<column_def> columns;
 
-  auto query = "SELECT column_name, data_type_id, NOT is_nullable, numeric_precision, numeric_scale FROM "
+  auto query = "SELECT column_name, data_type_id, NOT is_nullable, "
+               "numeric_precision, numeric_scale FROM "
                "duckdb_columns() WHERE database_name=? AND "
                "schema_name=? AND table_name=?";
   mdlog::info("describe_table: " + std::string(query));
@@ -144,10 +145,10 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
       duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
 
   for (const auto &row : materialized_result->Collection().GetRows()) {
-    duckdb::LogicalTypeId column_type = static_cast<duckdb::LogicalTypeId>(row.GetValue(1).GetValue<int8_t>());
-    column_def col{row.GetValue(0).GetValue<duckdb::string>(),
-                          column_type,
-                          row.GetValue(2).GetValue<bool>()};
+    duckdb::LogicalTypeId column_type =
+        static_cast<duckdb::LogicalTypeId>(row.GetValue(1).GetValue<int8_t>());
+    column_def col{row.GetValue(0).GetValue<duckdb::string>(), column_type,
+                   row.GetValue(2).GetValue<bool>()};
     if (column_type == duckdb::LogicalTypeId::DECIMAL) {
       col.width = row.GetValue(3).GetValue<uint32_t>();
       col.scale = row.GetValue(4).GetValue<uint32_t>();

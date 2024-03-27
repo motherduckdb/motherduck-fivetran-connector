@@ -52,7 +52,8 @@ LogicalTypeId get_duckdb_type(const fivetran_sdk::DataType &fivetranType) {
   case fivetran_sdk::NAIVE_DATETIME:
     return LogicalTypeId::TIMESTAMP;
   case fivetran_sdk::UTC_DATETIME:
-    return LogicalTypeId::TIMESTAMP_TZ; // TODO: find format Fivetran sends; make sure UTC included
+    return LogicalTypeId::TIMESTAMP_TZ; // TODO: find format Fivetran sends;
+                                        // make sure UTC included
   case fivetran_sdk::DECIMAL:
     return LogicalTypeId::DECIMAL;
   case fivetran_sdk::BINARY:
