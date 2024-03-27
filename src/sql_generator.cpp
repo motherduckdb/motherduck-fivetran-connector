@@ -125,10 +125,16 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
   // TBD scale/precision
   std::vector<column_def> columns;
 
-  auto query = "SELECT column_name, data_type_id, NOT is_nullable, "
-               "numeric_precision, numeric_scale FROM "
-               "duckdb_columns() WHERE database_name=? AND "
-               "schema_name=? AND table_name=?";
+  auto query = "SELECT "
+               "column_name, "
+               "data_type_id, "
+               "NOT is_nullable, "
+               "numeric_precision, "
+               "numeric_scale "
+               "FROM duckdb_columns() "
+               "WHERE database_name=? "
+               "AND schema_name=? "
+               "AND table_name=?";
   mdlog::info("describe_table: " + std::string(query));
   auto statement = con.Prepare(query);
   duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name),
