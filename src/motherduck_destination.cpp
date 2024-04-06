@@ -1,3 +1,4 @@
+#include "duckdb.hpp"
 #include "motherduck_destination_server.hpp"
 #include <grpcpp/grpcpp.h>
 #include <string>
@@ -18,6 +19,26 @@ void RunServer(const std::string &port) {
   server->Wait();
 }
 
+void download_motherduck_extension() {
+  // create an in-memory DuckDB instance
+  duckdb::DuckDB db;
+  duckdb::Connection con(db);
+  {
+    auto result = con.Query("INSTALL motherduck");
+    if (result->HasError()) {
+      throw std::runtime_error("Could not install motherduck extension prior "
+                               "to gRPC server startup");
+    }
+  }
+  {
+    auto result = con.Query("LOAD motherduck");
+    if (result->HasError()) {
+      throw std::runtime_error(
+          "Could not load motherduck extension prior to gRPC server startup");
+    }
+  }
+}
+
 int main(int argc, char **argv) {
   std::string port = "50052";
   for (auto i = 1; i < argc; i++) {
@@ -31,6 +52,7 @@ int main(int argc, char **argv) {
     std::cout << "argument: " << argv[i] << std::endl;
   }
 
+  download_motherduck_extension();
   RunServer(port);
   return 0;
 }
