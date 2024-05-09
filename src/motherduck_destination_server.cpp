@@ -63,9 +63,11 @@ std::unique_ptr<duckdb::Connection> get_connection(
     const std::string &db_name) {
   std::string token = find_property(request_config, MD_PROP_TOKEN);
 
-  std::unordered_map<std::string, std::string> props{
-      {MD_PROP_TOKEN, token}, {"custom_user_agent", "fivetran"}};
-  duckdb::DBConfig config(props, false);
+  duckdb::DBConfig config;
+  config.SetOptionByName(MD_PROP_TOKEN, token);
+  config.SetOptionByName("custom_user_agent", "fivetran");
+  config.SetOptionByName("old_implicit_casting", true);
+
   duckdb::DuckDB db("md:" + db_name, &config);
   return std::make_unique<duckdb::Connection>(db);
 }
