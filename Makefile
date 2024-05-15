@@ -28,7 +28,7 @@ check_dependencies:
   		exit 1; \
   	fi
 
-build_connector: check_dependencies
+build_connector: check_dependencies get_fivetran_protos
 	echo "dependencies: ${MD_FIVETRAN_DEPENDENCIES_DIR}"
 	cmake -S ${SOURCE_DIR} -B ${BUILD_DIR}/Release \
     		-DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}/Release \
@@ -36,7 +36,7 @@ build_connector: check_dependencies
 	cmake --build ${BUILD_DIR}/Release -j${CORES} --config Release
 	cmake --install ${BUILD_DIR}/Release --config Release
 
-build_connector_debug: check_dependencies
+build_connector_debug: check_dependencies get_fivetran_protos
 	cmake -S ${SOURCE_DIR} -B ${BUILD_DIR}/Debug \
     		-DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}/Debug \
     		-DMD_FIVETRAN_DEPENDENCIES_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR}
@@ -86,10 +86,10 @@ get_duckdb:
 
 get_fivetran_protos:
 	mkdir -p protos
-	curl -o protos/destination_sdk.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/main/destination_sdk.proto
-	curl -o protos/common.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/main/common.proto
+	curl -o protos/destination_sdk.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/production/destination_sdk.proto
+	curl -o protos/common.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/production/common.proto
 
-build_dependencies: get_fivetran_protos get_duckdb build_openssl_native build_grpc build_arrow build_test_dependencies
+build_dependencies: get_duckdb build_openssl_native build_grpc build_arrow build_test_dependencies
 
 # Repo-wide C++ formatting
 # For local formatter use:
