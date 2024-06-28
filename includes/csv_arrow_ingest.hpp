@@ -1,10 +1,6 @@
 #include <arrow/csv/api.h>
+#include "common.hpp"
 
-std::shared_ptr<arrow::Table> read_encrypted_csv(
-    const std::string &filename, const std::string &decryption_key,
-    std::vector<std::string> &utf8_columns, const std::string &null_value);
+std::shared_ptr<arrow::Table> read_encrypted_csv(const IngestProperties &props);
 
-std::shared_ptr<arrow::Table>
-read_unencrypted_csv(const std::string &filename,
-                     std::vector<std::string> &utf8_columns,
-                     const std::string &null_value);
+std::shared_ptr<arrow::Table> read_unencrypted_csv(const IngestProperties &props);

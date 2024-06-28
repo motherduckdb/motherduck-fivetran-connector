@@ -5,7 +5,7 @@
 #include <decryption.hpp>
 
 arrow::csv::ConvertOptions
-get_arrow_convert_options(std::vector<std::string> &utf8_columns,
+get_arrow_convert_options(const std::vector<std::string> &utf8_columns,
                           const std::string &null_value) {
   auto convert_options = arrow::csv::ConvertOptions::Defaults();
   convert_options.null_values
@@ -21,13 +21,13 @@ get_arrow_convert_options(std::vector<std::string> &utf8_columns,
 }
 
 template <typename T>
-std::shared_ptr<arrow::Table> read_csv_stream_to_arrow_table(
-    T &input_stream, std::vector<std::string> &utf8_columns,
-    const std::string &null_value, const std::string &filename) {
+std::shared_ptr<arrow::Table> read_csv_stream_to_arrow_table(T &input_stream, const IngestProperties &props) {
 
   auto read_options = arrow::csv::ReadOptions::Defaults();
+  read_options.block_size = props.csv_block_size_mb << 20;
   auto parse_options = arrow::csv::ParseOptions::Defaults();
-  auto convert_options = get_arrow_convert_options(utf8_columns, null_value);
+  parse_options.newlines_in_values = true;
+  auto convert_options = get_arrow_convert_options(props.utf8_columns, props.null_value);
 
   auto maybe_table_reader = arrow::csv::TableReader::Make(
       arrow::io::default_io_context(), std::move(input_stream), read_options,
@@ -42,7 +42,7 @@ std::shared_ptr<arrow::Table> read_csv_stream_to_arrow_table(
 
   auto maybe_table = table_reader->Read();
   if (!maybe_table.ok()) {
-    throw std::runtime_error("Could not read CSV <" + filename +
+    throw std::runtime_error("Could not read CSV <" + props.filename +
                              ">: " + maybe_table.status().message());
   }
   auto table = std::move(maybe_table.ValueOrDie());
@@ -50,13 +50,11 @@ std::shared_ptr<arrow::Table> read_csv_stream_to_arrow_table(
   return table;
 }
 
-std::shared_ptr<arrow::Table> read_encrypted_csv(
-    const std::string &filename, const std::string &decryption_key,
-    std::vector<std::string> &utf8_columns, const std::string &null_value) {
+std::shared_ptr<arrow::Table> read_encrypted_csv(const IngestProperties &props) {
 
   std::vector<unsigned char> plaintext = decrypt_file(
-      filename,
-      reinterpret_cast<const unsigned char *>(decryption_key.c_str()));
+      props.filename,
+      reinterpret_cast<const unsigned char *>(props.decryption_key.c_str()));
   auto buffer = std::make_shared<arrow::Buffer>(
       reinterpret_cast<const uint8_t *>(plaintext.data()), plaintext.size());
   auto buffer_reader = std::make_shared<arrow::io::BufferReader>(buffer);
@@ -78,23 +76,19 @@ std::shared_ptr<arrow::Table> read_encrypted_csv(
   auto compressed_input_stream =
       std::move(maybe_compressed_input_stream.ValueOrDie());
 
-  return read_csv_stream_to_arrow_table(compressed_input_stream, utf8_columns,
-                                        null_value, filename);
+  return read_csv_stream_to_arrow_table(compressed_input_stream, props);
 }
 
 std::shared_ptr<arrow::Table>
-read_unencrypted_csv(const std::string &filename,
-                     std::vector<std::string> &utf8_columns,
-                     const std::string &null_value) {
+read_unencrypted_csv(const IngestProperties &props) {
 
   auto maybe_file =
-      arrow::io::ReadableFile::Open(filename, arrow::default_memory_pool());
+      arrow::io::ReadableFile::Open(props.filename, arrow::default_memory_pool());
   if (!maybe_file.ok()) {
-    throw std::runtime_error("Could not open uncompressed file <" + filename +
+    throw std::runtime_error("Could not open uncompressed file <" + props.filename +
                              ">: " + maybe_file.status().message());
   }
   auto plaintext_input_stream = std::move(maybe_file.ValueOrDie());
 
-  return read_csv_stream_to_arrow_table(plaintext_input_stream, utf8_columns,
-                                        null_value, filename);
+  return read_csv_stream_to_arrow_table(plaintext_input_stream, props);
 }
