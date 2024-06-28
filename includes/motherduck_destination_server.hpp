@@ -6,8 +6,13 @@ static constexpr const char *const MD_PROP_DATABASE = "motherduck_database";
 
 static constexpr const char *const MD_PROP_TOKEN = "motherduck_token";
 
+static constexpr const char *const MD_PROP_CSV_BLOCK_SIZE = "motherduck_csv_block_size";
+
 static constexpr const char *const CONFIG_TEST_NAME_AUTHENTICATE =
     "test_authentication";
+
+static constexpr const char *const CONFIG_TEST_NAME_CSV_BLOCK_SIZE =
+    "test_csv_block_size";
 
 class DestinationSdkImpl final : public fivetran_sdk::Destination::Service {
 public:

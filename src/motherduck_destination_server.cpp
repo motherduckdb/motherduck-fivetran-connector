@@ -31,15 +31,6 @@ int find_optional_property(const google::protobuf::Map<std::string, std::string>
   return token_it == config.end() ? default_value : parse(token_it->second);
 }
 
-
-//template <typename T>
-//T find_optional_property(const google::protobuf::Map<std::string, std::string> &config,
-//                         const std::string &property_name, T default_value, const std::function<T (const std::string &)> &parse ) {
-//  auto token_it = config.find(property_name);
-//  return token_it == config.end() ? default_value : parse(token_it->second);
-//}
-
-
 template <typename T> std::string get_schema_name(const T *request) {
   std::string schema_name = request->schema_name();
   if (schema_name.empty()) {
@@ -170,6 +161,8 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
   token_field.set_text_field(fivetran_sdk::Password);
   token_field.set_required(true);
 
+  response->add_fields()->CopyFrom(token_field);
+
   fivetran_sdk::FormField db_field;
   db_field.set_name(MD_PROP_DATABASE);
   db_field.set_label("Database Name");
@@ -177,12 +170,25 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
   db_field.set_text_field(fivetran_sdk::PlainText);
   db_field.set_required(true);
 
-  response->add_fields()->CopyFrom(token_field);
   response->add_fields()->CopyFrom(db_field);
 
-  auto test = response->add_tests();
-  test->set_name(CONFIG_TEST_NAME_AUTHENTICATE);
-  test->set_label("Test Authentication");
+  fivetran_sdk::FormField block_size_field;
+  block_size_field.set_name(MD_PROP_CSV_BLOCK_SIZE);
+  block_size_field.set_label("Maximum individual value size, in megabytes (default 1 MB)");
+  block_size_field.set_description("This field limits the maximum length of a single field value coming from the input source."
+                           "Must be a valid numeric value");
+  block_size_field.set_text_field(fivetran_sdk::PlainText);
+  block_size_field.set_required(false);
+  response->add_fields()->CopyFrom(block_size_field);
+
+  auto connection_test = response->add_tests();
+  connection_test->set_name(CONFIG_TEST_NAME_AUTHENTICATE);
+  connection_test->set_label("Test Authentication");
+
+  auto block_size_test = response->add_tests();
+  block_size_test->set_name(CONFIG_TEST_NAME_CSV_BLOCK_SIZE);
+  block_size_test->set_label("Test block size is a valid number");
+
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
@@ -343,8 +349,9 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
     const std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
     const int csv_block_size = find_optional_property(
-        request->configuration(), "largest_value_size_mb", 1,
+        request->configuration(), MD_PROP_CSV_BLOCK_SIZE, 1,
         [&](const std::string &val) -> int { return std::stoi(val); });
+    mdlog::info("CSV BLOCK SIZE = " + std::to_string(csv_block_size));
 
     table_def table_name{db_name, get_schema_name(request),
                          request->table().name()};
@@ -420,6 +427,15 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
+void check_csv_block_size_is_numeric(const google::protobuf::Map<std::string, std::string> &config) {
+  auto token_it = config.find(MD_PROP_CSV_BLOCK_SIZE);
+
+  // missing token is fine but non-numeric token isn't
+  if (token_it != config.end() && token_it->second.find_first_not_of("0123456789") != std::string::npos) {
+    throw std::runtime_error("Maximum individual value size must be numeric if present");
+  }
+}
+
 grpc::Status
 DestinationSdkImpl::Test(::grpc::ServerContext *context,
                          const ::fivetran_sdk::TestRequest *request,
@@ -443,7 +459,8 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
 
     if (request->name() == CONFIG_TEST_NAME_AUTHENTICATE) {
       check_connection(*con);
-      response->set_success(true);
+    } else if (request->name() == CONFIG_TEST_NAME_CSV_BLOCK_SIZE) {
+      check_csv_block_size_is_numeric(request->configuration());
     } else {
       auto const msg = "Unknown test requested: <" + request->name() + ">";
       mdlog::severe(msg);
@@ -451,15 +468,14 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
       response->set_failure(msg);
       return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, msg);
     }
-    response->set_success(true);
   } catch (const std::exception &e) {
-    auto msg = "Authentication test for database <" + db_name +
-               "> failed: " + std::string(e.what());
+    auto msg = "Test for database <" + db_name + "> failed: " + std::string(e.what());
     response->set_success(false);
     response->set_failure(msg);
     // grpc call succeeded; the response reflects config test failure
     return ::grpc::Status(::grpc::StatusCode::OK, msg);
   }
 
+  response->set_success(true);
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
