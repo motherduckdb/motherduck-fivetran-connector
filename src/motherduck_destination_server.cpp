@@ -181,13 +181,13 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
   block_size_field.set_required(false);
   response->add_fields()->CopyFrom(block_size_field);
 
+  auto block_size_test = response->add_tests();
+  block_size_test->set_name(CONFIG_TEST_NAME_CSV_BLOCK_SIZE);
+  block_size_test->set_label("Maximum value size is a valid number");
+
   auto connection_test = response->add_tests();
   connection_test->set_name(CONFIG_TEST_NAME_AUTHENTICATE);
   connection_test->set_label("Test Authentication");
-
-  auto block_size_test = response->add_tests();
-  block_size_test->set_name(CONFIG_TEST_NAME_CSV_BLOCK_SIZE);
-  block_size_test->set_label("Test block size is a valid number");
 
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }

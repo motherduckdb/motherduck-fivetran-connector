@@ -37,7 +37,7 @@ bool REQUIRE_FAIL(const grpc::Status &status,
 
 #define REQUIRE_NO_FAIL(result) REQUIRE(NO_FAIL((result)))
 
-TEST_CASE("ConfigurationForm", "[integration]") {
+TEST_CASE("ConfigurationForm", "[integration][config]") {
   DestinationSdkImpl service;
   ::fivetran_sdk::ConfigurationFormRequest request;
   ::fivetran_sdk::ConfigurationFormResponse response;
@@ -49,9 +49,13 @@ TEST_CASE("ConfigurationForm", "[integration]") {
   REQUIRE(response.fields(0).name() == "motherduck_token");
   REQUIRE(response.fields(1).name() == "motherduck_database");
   REQUIRE(response.fields(2).name() == "motherduck_csv_block_size");
+  REQUIRE(response.fields(2).label() == "Maximum individual value size, in megabytes (default 1 MB)");
+
   REQUIRE(response.tests_size() == 2);
-  REQUIRE(response.tests(0).name() == CONFIG_TEST_NAME_AUTHENTICATE);
-  REQUIRE(response.tests(0).label() == "Test Authentication");
+  REQUIRE(response.tests(0).name() == CONFIG_TEST_NAME_CSV_BLOCK_SIZE);
+  REQUIRE(response.tests(0).label() == "Maximum value size is a valid number");
+  REQUIRE(response.tests(1).name() == CONFIG_TEST_NAME_AUTHENTICATE);
+  REQUIRE(response.tests(1).label() == "Test Authentication");
 }
 
 TEST_CASE("DescribeTable fails when database missing", "[integration]") {
