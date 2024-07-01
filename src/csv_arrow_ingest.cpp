@@ -21,13 +21,15 @@ get_arrow_convert_options(const std::vector<std::string> &utf8_columns,
 }
 
 template <typename T>
-std::shared_ptr<arrow::Table> read_csv_stream_to_arrow_table(T &input_stream, const IngestProperties &props) {
+std::shared_ptr<arrow::Table>
+read_csv_stream_to_arrow_table(T &input_stream, const IngestProperties &props) {
 
   auto read_options = arrow::csv::ReadOptions::Defaults();
   read_options.block_size = props.csv_block_size_mb << 20;
   auto parse_options = arrow::csv::ParseOptions::Defaults();
   parse_options.newlines_in_values = true;
-  auto convert_options = get_arrow_convert_options(props.utf8_columns, props.null_value);
+  auto convert_options =
+      get_arrow_convert_options(props.utf8_columns, props.null_value);
 
   auto maybe_table_reader = arrow::csv::TableReader::Make(
       arrow::io::default_io_context(), std::move(input_stream), read_options,
@@ -50,7 +52,8 @@ std::shared_ptr<arrow::Table> read_csv_stream_to_arrow_table(T &input_stream, co
   return table;
 }
 
-std::shared_ptr<arrow::Table> read_encrypted_csv(const IngestProperties &props) {
+std::shared_ptr<arrow::Table>
+read_encrypted_csv(const IngestProperties &props) {
 
   std::vector<unsigned char> plaintext = decrypt_file(
       props.filename,
@@ -82,10 +85,11 @@ std::shared_ptr<arrow::Table> read_encrypted_csv(const IngestProperties &props) 
 std::shared_ptr<arrow::Table>
 read_unencrypted_csv(const IngestProperties &props) {
 
-  auto maybe_file =
-      arrow::io::ReadableFile::Open(props.filename, arrow::default_memory_pool());
+  auto maybe_file = arrow::io::ReadableFile::Open(props.filename,
+                                                  arrow::default_memory_pool());
   if (!maybe_file.ok()) {
-    throw std::runtime_error("Could not open uncompressed file <" + props.filename +
+    throw std::runtime_error("Could not open uncompressed file <" +
+                             props.filename +
                              ">: " + maybe_file.status().message());
   }
   auto plaintext_input_stream = std::move(maybe_file.ValueOrDie());

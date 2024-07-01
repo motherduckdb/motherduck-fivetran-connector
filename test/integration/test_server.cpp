@@ -49,7 +49,8 @@ TEST_CASE("ConfigurationForm", "[integration][config]") {
   REQUIRE(response.fields(0).name() == "motherduck_token");
   REQUIRE(response.fields(1).name() == "motherduck_database");
   REQUIRE(response.fields(2).name() == "motherduck_csv_block_size");
-  REQUIRE(response.fields(2).label() == "Maximum individual value size, in megabytes (default 1 MB)");
+  REQUIRE(response.fields(2).label() ==
+          "Maximum individual value size, in megabytes (default 1 MB)");
 
   REQUIRE(response.tests_size() == 2);
   REQUIRE(response.tests(0).name() == CONFIG_TEST_NAME_CSV_BLOCK_SIZE);
@@ -213,15 +214,15 @@ TEST_CASE("Test fails when token is missing", "[integration][configtest]") {
 
   auto status = service.Test(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
-  auto expected_message = "Test for database <" +
-                          TEST_DATABASE_NAME +
+  auto expected_message = "Test for database <" + TEST_DATABASE_NAME +
                           "> failed: Missing "
                           "property motherduck_token";
   REQUIRE(status.error_message() == expected_message);
   REQUIRE(response.failure() == expected_message);
 }
 
-TEST_CASE("Test endpoint fails when token is bad", "[integration][configtest]") {
+TEST_CASE("Test endpoint fails when token is bad",
+          "[integration][configtest]") {
   DestinationSdkImpl service;
 
   ::fivetran_sdk::TestRequest request;
@@ -240,8 +241,9 @@ TEST_CASE("Test endpoint fails when token is bad", "[integration][configtest]") 
              Catch::Matchers::ContainsSubstring("UNAUTHENTICATED"));
 }
 
-TEST_CASE("Test endpoint authentication test succeeds when everything is in order",
-          "[integration][configtest]") {
+TEST_CASE(
+    "Test endpoint authentication test succeeds when everything is in order",
+    "[integration][configtest]") {
   DestinationSdkImpl service;
 
   ::fivetran_sdk::TestRequest request;
@@ -258,7 +260,8 @@ TEST_CASE("Test endpoint authentication test succeeds when everything is in orde
   REQUIRE_NO_FAIL(status);
 }
 
-TEST_CASE("Test endpoint block size validation succeeds when optional block size is missing",
+TEST_CASE("Test endpoint block size validation succeeds when optional block "
+          "size is missing",
           "[integration][configtest]") {
   DestinationSdkImpl service;
 
@@ -276,7 +279,8 @@ TEST_CASE("Test endpoint block size validation succeeds when optional block size
   REQUIRE_NO_FAIL(status);
 }
 
-TEST_CASE("Test endpoint block size validation succeeds when optional block size is a valid number",
+TEST_CASE("Test endpoint block size validation succeeds when optional block "
+          "size is a valid number",
           "[integration][configtest]") {
   DestinationSdkImpl service;
 
@@ -289,14 +293,14 @@ TEST_CASE("Test endpoint block size validation succeeds when optional block size
   (*request.mutable_configuration())["motherduck_token"] = token;
   (*request.mutable_configuration())[MD_PROP_CSV_BLOCK_SIZE] = "5";
 
-
   ::fivetran_sdk::TestResponse response;
 
   auto status = service.Test(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
 }
 
-TEST_CASE("Test endpoint block size validation fails when optional block size is not a valid number",
+TEST_CASE("Test endpoint block size validation fails when optional block size "
+          "is not a valid number",
           "[integration][configtest]") {
   DestinationSdkImpl service;
 
@@ -315,7 +319,9 @@ TEST_CASE("Test endpoint block size validation fails when optional block size is
   REQUIRE_NO_FAIL(status);
   REQUIRE_FALSE(response.success());
 
-  auto expected_message =  "Test for database <" + TEST_DATABASE_NAME + "> failed: Maximum individual value size must be numeric if present";
+  auto expected_message =
+      "Test for database <" + TEST_DATABASE_NAME +
+      "> failed: Maximum individual value size must be numeric if present";
   REQUIRE(response.failure() == expected_message);
 }
 
@@ -875,8 +881,6 @@ void make_book_table(T &request, const std::string &table_name) {
   auto col1 = request.mutable_table()->add_columns();
   col1->set_name("text");
   col1->set_type(::fivetran_sdk::DataType::STRING);
-
-
 }
 
 TEST_CASE("Table with large json row", "[integration][write-batch]") {
@@ -918,7 +922,8 @@ TEST_CASE("Table with large json row", "[integration][write-batch]") {
     auto status = service.WriteBatch(nullptr, &request, &response);
     REQUIRE_FALSE(status.ok());
     CHECK_THAT(status.error_message(),
-               Catch::Matchers::ContainsSubstring("straddling object straddles two block boundaries"));
+               Catch::Matchers::ContainsSubstring(
+                   "straddling object straddles two block boundaries"));
   }
 
   {
