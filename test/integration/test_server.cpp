@@ -37,7 +37,7 @@ bool REQUIRE_FAIL(const grpc::Status &status,
 
 #define REQUIRE_NO_FAIL(result) REQUIRE(NO_FAIL((result)))
 
-TEST_CASE("ConfigurationForm", "[integration]") {
+TEST_CASE("ConfigurationForm", "[integration][config]") {
   DestinationSdkImpl service;
   ::fivetran_sdk::ConfigurationFormRequest request;
   ::fivetran_sdk::ConfigurationFormResponse response;
@@ -45,12 +45,18 @@ TEST_CASE("ConfigurationForm", "[integration]") {
   auto status = service.ConfigurationForm(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
 
-  REQUIRE(response.fields_size() == 2);
+  REQUIRE(response.fields_size() == 3);
   REQUIRE(response.fields(0).name() == "motherduck_token");
   REQUIRE(response.fields(1).name() == "motherduck_database");
-  REQUIRE(response.tests_size() == 1);
-  REQUIRE(response.tests(0).name() == CONFIG_TEST_NAME_AUTHENTICATE);
-  REQUIRE(response.tests(0).label() == "Test Authentication");
+  REQUIRE(response.fields(2).name() == "motherduck_csv_block_size");
+  REQUIRE(response.fields(2).label() ==
+          "Maximum individual value size, in megabytes (default 1 MB)");
+
+  REQUIRE(response.tests_size() == 2);
+  REQUIRE(response.tests(0).name() == CONFIG_TEST_NAME_CSV_BLOCK_SIZE);
+  REQUIRE(response.tests(0).label() == "Maximum value size is a valid number");
+  REQUIRE(response.tests(1).name() == CONFIG_TEST_NAME_AUTHENTICATE);
+  REQUIRE(response.tests(1).label() == "Test Authentication");
 }
 
 TEST_CASE("DescribeTable fails when database missing", "[integration]") {
@@ -184,7 +190,7 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable",
   }
 }
 
-TEST_CASE("Test fails when database missing", "[integration]") {
+TEST_CASE("Test fails when database missing", "[integration][configtest]") {
   DestinationSdkImpl service;
 
   ::fivetran_sdk::TestRequest request;
@@ -196,10 +202,11 @@ TEST_CASE("Test fails when database missing", "[integration]") {
   REQUIRE_FAIL(status, "Missing property motherduck_database");
 }
 
-TEST_CASE("Test fails when token is missing", "[integration]") {
+TEST_CASE("Test fails when token is missing", "[integration][configtest]") {
   DestinationSdkImpl service;
 
   ::fivetran_sdk::TestRequest request;
+  request.set_name(CONFIG_TEST_NAME_AUTHENTICATE);
   (*request.mutable_configuration())["motherduck_database"] =
       TEST_DATABASE_NAME;
 
@@ -207,7 +214,7 @@ TEST_CASE("Test fails when token is missing", "[integration]") {
 
   auto status = service.Test(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
-  auto expected_message = "Authentication test for database <" +
+  auto expected_message = "Test <test_authentication> for database <" +
                           TEST_DATABASE_NAME +
                           "> failed: Missing "
                           "property motherduck_token";
@@ -215,10 +222,12 @@ TEST_CASE("Test fails when token is missing", "[integration]") {
   REQUIRE(response.failure() == expected_message);
 }
 
-TEST_CASE("Test endpoint fails when token is bad", "[integration]") {
+TEST_CASE("Test endpoint fails when token is bad",
+          "[integration][configtest]") {
   DestinationSdkImpl service;
 
   ::fivetran_sdk::TestRequest request;
+  request.set_name(CONFIG_TEST_NAME_AUTHENTICATE);
   (*request.mutable_configuration())["motherduck_database"] =
       TEST_DATABASE_NAME;
   (*request.mutable_configuration())["motherduck_token"] = "12345";
@@ -233,8 +242,9 @@ TEST_CASE("Test endpoint fails when token is bad", "[integration]") {
              Catch::Matchers::ContainsSubstring("UNAUTHENTICATED"));
 }
 
-TEST_CASE("Test endpoint succeeds when everything is in order",
-          "[integration]") {
+TEST_CASE(
+    "Test endpoint authentication test succeeds when everything is in order",
+    "[integration][configtest]") {
   DestinationSdkImpl service;
 
   ::fivetran_sdk::TestRequest request;
@@ -249,6 +259,71 @@ TEST_CASE("Test endpoint succeeds when everything is in order",
 
   auto status = service.Test(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
+}
+
+TEST_CASE("Test endpoint block size validation succeeds when optional block "
+          "size is missing",
+          "[integration][configtest]") {
+  DestinationSdkImpl service;
+
+  ::fivetran_sdk::TestRequest request;
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+  request.set_name(CONFIG_TEST_NAME_CSV_BLOCK_SIZE);
+  (*request.mutable_configuration())["motherduck_database"] =
+      TEST_DATABASE_NAME;
+  (*request.mutable_configuration())["motherduck_token"] = token;
+
+  ::fivetran_sdk::TestResponse response;
+
+  auto status = service.Test(nullptr, &request, &response);
+  REQUIRE_NO_FAIL(status);
+}
+
+TEST_CASE("Test endpoint block size validation succeeds when optional block "
+          "size is a valid number",
+          "[integration][configtest]") {
+  DestinationSdkImpl service;
+
+  ::fivetran_sdk::TestRequest request;
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+  request.set_name(CONFIG_TEST_NAME_CSV_BLOCK_SIZE);
+  (*request.mutable_configuration())["motherduck_database"] =
+      TEST_DATABASE_NAME;
+  (*request.mutable_configuration())["motherduck_token"] = token;
+  (*request.mutable_configuration())[MD_PROP_CSV_BLOCK_SIZE] = "5";
+
+  ::fivetran_sdk::TestResponse response;
+
+  auto status = service.Test(nullptr, &request, &response);
+  REQUIRE_NO_FAIL(status);
+}
+
+TEST_CASE("Test endpoint block size validation fails when optional block size "
+          "is not a valid number",
+          "[integration][configtest]") {
+  DestinationSdkImpl service;
+
+  ::fivetran_sdk::TestRequest request;
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+  request.set_name(CONFIG_TEST_NAME_CSV_BLOCK_SIZE);
+  (*request.mutable_configuration())["motherduck_database"] =
+      TEST_DATABASE_NAME;
+  (*request.mutable_configuration())["motherduck_token"] = token;
+  (*request.mutable_configuration())[MD_PROP_CSV_BLOCK_SIZE] = "lizard";
+
+  ::fivetran_sdk::TestResponse response;
+
+  auto status = service.Test(nullptr, &request, &response);
+  REQUIRE_NO_FAIL(status);
+  REQUIRE_FALSE(response.success());
+
+  auto expected_message =
+      "Test <test_csv_block_size> for database <" + TEST_DATABASE_NAME +
+      "> failed: Maximum individual value size must be numeric if present";
+  REQUIRE(response.failure() == expected_message);
 }
 
 template <typename T>
@@ -792,6 +867,100 @@ TEST_CASE("CreateTable with JSON column", "[integration]") {
       REQUIRE(response.table().columns(0).type() ==
               ::fivetran_sdk::DataType::STRING);
     }
+  }
+}
+
+template <typename T>
+void make_book_table(T &request, const std::string &table_name) {
+
+  request.mutable_table()->set_name(table_name);
+  auto col0 = request.mutable_table()->add_columns();
+  col0->set_name("id");
+  col0->set_type(::fivetran_sdk::DataType::INT);
+  col0->set_primary_key(true);
+
+  auto col1 = request.mutable_table()->add_columns();
+  col1->set_name("text");
+  col1->set_type(::fivetran_sdk::DataType::STRING);
+}
+
+TEST_CASE("Table with large json row", "[integration][write-batch]") {
+  DestinationSdkImpl service;
+
+  const std::string table_name =
+      "huge_book_" + std::to_string(Catch::rngSeed());
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+
+  {
+    // Create Table
+    ::fivetran_sdk::CreateTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    make_book_table(request, table_name);
+    ::fivetran_sdk::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  auto con = get_test_connection(token);
+  {
+    // fail when default block_size is used
+    ::fivetran_sdk::WriteBatchRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+
+    make_book_table(request, table_name);
+
+    const std::string filename = "huge_books.csv";
+    const std::string filepath = TEST_RESOURCES_DIR + filename;
+
+    request.add_replace_files(filepath);
+
+    ::fivetran_sdk::WriteBatchResponse response;
+    auto status = service.WriteBatch(nullptr, &request, &response);
+    REQUIRE_FALSE(status.ok());
+    CHECK_THAT(status.error_message(),
+               Catch::Matchers::ContainsSubstring(
+                   "straddling object straddles two block boundaries"));
+  }
+
+  {
+    // check no rows were inserted
+    auto res = con->Query("SELECT count(*) FROM " + table_name);
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 1);
+    REQUIRE(res->GetValue(0, 0) == 0);
+  }
+
+  {
+    // succeed when block_size is increased
+    ::fivetran_sdk::WriteBatchRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    (*request.mutable_configuration())[MD_PROP_CSV_BLOCK_SIZE] = "2";
+
+    make_book_table(request, table_name);
+
+    const std::string filename = "huge_books.csv";
+    const std::string filepath = TEST_RESOURCES_DIR + filename;
+
+    request.add_replace_files(filepath);
+
+    ::fivetran_sdk::WriteBatchResponse response;
+    auto status = service.WriteBatch(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // check one row was inserted
+    auto res = con->Query("SELECT count(*) FROM " + table_name);
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 1);
+    REQUIRE(res->GetValue(0, 0) == 1);
   }
 }
 

@@ -6,6 +6,7 @@
 #include <arrow/c/bridge.h>
 #include <grpcpp/grpcpp.h>
 
+#include <common.hpp>
 #include <csv_arrow_ingest.hpp>
 #include <destination_sdk.grpc.pb.h>
 #include <fivetran_duckdb_interop.hpp>
@@ -21,6 +22,14 @@ find_property(const google::protobuf::Map<std::string, std::string> &config,
     throw std::invalid_argument("Missing property " + property_name);
   }
   return token_it->second;
+}
+
+int find_optional_property(
+    const google::protobuf::Map<std::string, std::string> &config,
+    const std::string &property_name, int default_value,
+    const std::function<int(const std::string &)> &parse) {
+  auto token_it = config.find(property_name);
+  return token_it == config.end() ? default_value : parse(token_it->second);
 }
 
 template <typename T> std::string get_schema_name(const T *request) {
@@ -99,16 +108,12 @@ void validate_file(const std::string &file_path) {
 }
 
 void process_file(
-    duckdb::Connection &con, const std::string &filename,
-    const std::string &decryption_key, std::vector<std::string> &utf8_columns,
-    const std::string &null_value,
+    duckdb::Connection &con, IngestProperties &props,
     const std::function<void(const std::string &view_name)> &process_view) {
 
-  validate_file(filename);
-  auto table = decryption_key.empty()
-                   ? read_unencrypted_csv(filename, utf8_columns, null_value)
-                   : read_encrypted_csv(filename, decryption_key, utf8_columns,
-                                        null_value);
+  validate_file(props.filename);
+  auto table = props.decryption_key.empty() ? read_unencrypted_csv(props)
+                                            : read_encrypted_csv(props);
 
   auto batch_reader = std::make_shared<arrow::TableBatchReader>(*table);
   ArrowArrayStream arrow_array_stream;
@@ -117,7 +122,7 @@ void process_file(
   if (!status.ok()) {
     throw std::runtime_error(
         "Could not convert Arrow batch reader to an array stream for file <" +
-        filename + ">: " + status.message());
+        props.filename + ">: " + status.message());
   }
 
   duckdb_connection c_con = reinterpret_cast<duckdb_connection>(&con);
@@ -158,6 +163,8 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
   token_field.set_text_field(fivetran_sdk::Password);
   token_field.set_required(true);
 
+  response->add_fields()->CopyFrom(token_field);
+
   fivetran_sdk::FormField db_field;
   db_field.set_name(MD_PROP_DATABASE);
   db_field.set_label("Database Name");
@@ -165,12 +172,28 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
   db_field.set_text_field(fivetran_sdk::PlainText);
   db_field.set_required(true);
 
-  response->add_fields()->CopyFrom(token_field);
   response->add_fields()->CopyFrom(db_field);
 
-  auto test = response->add_tests();
-  test->set_name(CONFIG_TEST_NAME_AUTHENTICATE);
-  test->set_label("Test Authentication");
+  fivetran_sdk::FormField block_size_field;
+  block_size_field.set_name(MD_PROP_CSV_BLOCK_SIZE);
+  block_size_field.set_label(
+      "Maximum individual value size, in megabytes (default 1 MB)");
+  block_size_field.set_description(
+      "This field limits the maximum length of a single field value coming "
+      "from the input source."
+      "Must be a valid numeric value");
+  block_size_field.set_text_field(fivetran_sdk::PlainText);
+  block_size_field.set_required(false);
+  response->add_fields()->CopyFrom(block_size_field);
+
+  auto block_size_test = response->add_tests();
+  block_size_test->set_name(CONFIG_TEST_NAME_CSV_BLOCK_SIZE);
+  block_size_test->set_label("Maximum value size is a valid number");
+
+  auto connection_test = response->add_tests();
+  connection_test->set_name(CONFIG_TEST_NAME_AUTHENTICATE);
+  connection_test->set_label("Test Authentication");
+
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
@@ -330,6 +353,11 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
 
     const std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
+    const int csv_block_size = find_optional_property(
+        request->configuration(), MD_PROP_CSV_BLOCK_SIZE, 1,
+        [&](const std::string &val) -> int { return std::stoi(val); });
+    mdlog::info("CSV BLOCK SIZE = " + std::to_string(csv_block_size));
+
     table_def table_name{db_name, get_schema_name(request),
                          request->table().name()};
     std::unique_ptr<duckdb::Connection> con =
@@ -360,33 +388,35 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
       const auto decryption_key = get_encryption_key(
           filename, request->keys(), request->csv().encryption());
 
-      process_file(
-          *con, filename, decryption_key, column_names,
-          request->csv().null_string(), [&](const std::string &view_name) {
-            upsert(*con, table_name, view_name, columns_pk, columns_regular);
-          });
+      IngestProperties props(filename, decryption_key, column_names,
+                             request->csv().null_string(), csv_block_size);
+
+      process_file(*con, props, [&](const std::string &view_name) {
+        upsert(*con, table_name, view_name, columns_pk, columns_regular);
+      });
     }
     for (auto &filename : request->update_files()) {
 
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
+      IngestProperties props(filename, decryption_key, column_names,
+                             request->csv().null_string(), csv_block_size);
 
-      process_file(
-          *con, filename, decryption_key, column_names,
-          request->csv().null_string(), [&](const std::string &view_name) {
-            update_values(*con, table_name, view_name, columns_pk,
-                          columns_regular, request->csv().unmodified_string());
-          });
+      process_file(*con, props, [&](const std::string &view_name) {
+        update_values(*con, table_name, view_name, columns_pk, columns_regular,
+                      request->csv().unmodified_string());
+      });
     }
     for (auto &filename : request->delete_files()) {
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
       std::vector<std::string> empty;
-      process_file(*con, filename, decryption_key, empty,
-                   request->csv().null_string(),
-                   [&](const std::string &view_name) {
-                     delete_rows(*con, table_name, view_name, columns_pk);
-                   });
+      IngestProperties props(filename, decryption_key, empty,
+                             request->csv().null_string(), csv_block_size);
+
+      process_file(*con, props, [&](const std::string &view_name) {
+        delete_rows(*con, table_name, view_name, columns_pk);
+      });
     }
 
   } catch (const std::exception &e) {
@@ -401,6 +431,18 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
 
   mdlog::info("Endpoint <WriteBatch>: ended");
   return ::grpc::Status(::grpc::StatusCode::OK, "");
+}
+
+void check_csv_block_size_is_numeric(
+    const google::protobuf::Map<std::string, std::string> &config) {
+  auto token_it = config.find(MD_PROP_CSV_BLOCK_SIZE);
+
+  // missing token is fine but non-numeric token isn't
+  if (token_it != config.end() &&
+      token_it->second.find_first_not_of("0123456789") != std::string::npos) {
+    throw std::runtime_error(
+        "Maximum individual value size must be numeric if present");
+  }
 }
 
 grpc::Status
@@ -426,7 +468,8 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
 
     if (request->name() == CONFIG_TEST_NAME_AUTHENTICATE) {
       check_connection(*con);
-      response->set_success(true);
+    } else if (request->name() == CONFIG_TEST_NAME_CSV_BLOCK_SIZE) {
+      check_csv_block_size_is_numeric(request->configuration());
     } else {
       auto const msg = "Unknown test requested: <" + request->name() + ">";
       mdlog::severe(msg);
@@ -434,9 +477,8 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
       response->set_failure(msg);
       return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, msg);
     }
-    response->set_success(true);
   } catch (const std::exception &e) {
-    auto msg = "Authentication test for database <" + db_name +
+    auto msg = "Test <" + request->name() + "> for database <" + db_name +
                "> failed: " + std::string(e.what());
     response->set_success(false);
     response->set_failure(msg);
@@ -444,5 +486,6 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
     return ::grpc::Status(::grpc::StatusCode::OK, msg);
   }
 
+  response->set_success(true);
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
