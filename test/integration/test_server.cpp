@@ -214,7 +214,8 @@ TEST_CASE("Test fails when token is missing", "[integration][configtest]") {
 
   auto status = service.Test(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
-  auto expected_message = "Test for database <" + TEST_DATABASE_NAME +
+  auto expected_message = "Test <test_authentication> for database <" +
+                          TEST_DATABASE_NAME +
                           "> failed: Missing "
                           "property motherduck_token";
   REQUIRE(status.error_message() == expected_message);
@@ -320,7 +321,7 @@ TEST_CASE("Test endpoint block size validation fails when optional block size "
   REQUIRE_FALSE(response.success());
 
   auto expected_message =
-      "Test for database <" + TEST_DATABASE_NAME +
+      "Test <test_csv_block_size> for database <" + TEST_DATABASE_NAME +
       "> failed: Maximum individual value size must be numeric if present";
   REQUIRE(response.failure() == expected_message);
 }

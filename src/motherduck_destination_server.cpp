@@ -478,8 +478,8 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
       return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, msg);
     }
   } catch (const std::exception &e) {
-    auto msg =
-        "Test for database <" + db_name + "> failed: " + std::string(e.what());
+    auto msg = "Test <" + request->name() + "> for database <" + db_name +
+               "> failed: " + std::string(e.what());
     response->set_success(false);
     response->set_failure(msg);
     // grpc call succeeded; the response reflects config test failure
