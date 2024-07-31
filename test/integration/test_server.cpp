@@ -1177,3 +1177,237 @@ TEST_CASE("Test all types with create and describe table") {
     REQUIRE_FALSE(response.table().columns(11).primary_key());
   }
 }
+
+TEST_CASE("AlterTable with constraints", "[integration]") {
+  DestinationSdkImpl service;
+
+  const std::string table_name =
+      "some_table" + std::to_string(Catch::rngSeed());
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+
+  auto con = get_test_connection(token);
+
+  {
+    // Create Table
+    ::fivetran_sdk::CreateTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_table()->set_name(table_name);
+    auto col1 = request.mutable_table()->add_columns();
+    col1->set_name("id");
+    col1->set_type(::fivetran_sdk::DataType::STRING);
+    col1->set_primary_key(true);
+
+    auto col2 = request.mutable_table()->add_columns();
+    col2->set_name("name");
+    col2->set_type(::fivetran_sdk::DataType::STRING);
+
+    ::fivetran_sdk::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // Alter Table to add a new primary key
+    ::fivetran_sdk::AlterTableRequest request;
+
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_table()->set_name(table_name);
+    auto col1 = request.mutable_table()->add_columns();
+    col1->set_name("id");
+    col1->set_type(::fivetran_sdk::DataType::STRING);
+    col1->set_primary_key(true);
+
+    auto col2 = request.mutable_table()->add_columns();
+    col2->set_name("name");
+    col2->set_type(::fivetran_sdk::DataType::STRING);
+    col2->set_primary_key(true);
+
+    auto col3 = request.mutable_table()->add_columns();
+    col3->set_name("id_new");
+    col3->set_type(::fivetran_sdk::DataType::INT);
+    col3->set_primary_key(true);
+
+    ::fivetran_sdk::AlterTableResponse response;
+    auto status = service.AlterTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // Describe the altered table
+    ::fivetran_sdk::DescribeTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.set_table_name(table_name);
+
+    ::fivetran_sdk::DescribeTableResponse response;
+    auto status = service.DescribeTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(!response.not_found());
+
+    REQUIRE(response.table().name() == table_name);
+    REQUIRE(response.table().columns_size() == 3);
+    REQUIRE(response.table().columns(0).name() == "id");
+    REQUIRE(response.table().columns(0).type() ==
+            ::fivetran_sdk::DataType::STRING);
+    REQUIRE(response.table().columns(0).primary_key());
+
+    REQUIRE(response.table().columns(1).name() == "name");
+    REQUIRE(response.table().columns(1).type() ==
+            ::fivetran_sdk::DataType::STRING);
+    REQUIRE(response.table().columns(1).primary_key());
+
+    REQUIRE(response.table().columns(2).name() == "id_new");
+    REQUIRE(response.table().columns(2).type() ==
+            ::fivetran_sdk::DataType::INT);
+    REQUIRE(response.table().columns(2).primary_key());
+  }
+
+  {
+    // insert some test data to make sure it stays correct after primary key
+    // modification
+    auto res = con->Query("INSERT INTO " + table_name +
+                          "(id, name, id_new) VALUES (1, 'one', 101)");
+    REQUIRE_NO_FAIL(res);
+    auto res2 = con->Query("INSERT INTO " + table_name +
+                           "(id, name, id_new) VALUES (2, 'two', 102)");
+    REQUIRE_NO_FAIL(res2);
+  }
+
+  {
+    // Alter Table to make an existing (unique valued) column into a primary key
+    ::fivetran_sdk::AlterTableRequest request;
+
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_table()->set_name(table_name);
+    auto col1 = request.mutable_table()->add_columns();
+    col1->set_name("id");
+    col1->set_type(::fivetran_sdk::DataType::STRING);
+    col1->set_primary_key(true);
+
+    auto col2 = request.mutable_table()->add_columns();
+    col2->set_name("name");
+    col2->set_type(::fivetran_sdk::DataType::STRING);
+    col2->set_primary_key(true); // turn existing column into a primary key
+
+    auto col3 = request.mutable_table()->add_columns();
+    col3->set_name("id_new");
+    col3->set_type(::fivetran_sdk::DataType::INT);
+    col3->set_primary_key(true);
+
+    ::fivetran_sdk::AlterTableResponse response;
+    auto status = service.AlterTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // Describe the altered table
+    ::fivetran_sdk::DescribeTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.set_table_name(table_name);
+
+    ::fivetran_sdk::DescribeTableResponse response;
+    auto status = service.DescribeTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(!response.not_found());
+
+    REQUIRE(response.table().name() == table_name);
+    REQUIRE(response.table().columns_size() == 3);
+    REQUIRE(response.table().columns(0).name() == "id");
+    REQUIRE(response.table().columns(0).type() ==
+            ::fivetran_sdk::DataType::STRING);
+    REQUIRE(response.table().columns(0).primary_key());
+
+    REQUIRE(response.table().columns(1).name() == "name");
+    REQUIRE(response.table().columns(1).type() ==
+            ::fivetran_sdk::DataType::STRING);
+    REQUIRE(response.table().columns(1).primary_key());
+
+    REQUIRE(response.table().columns(2).name() == "id_new");
+    REQUIRE(response.table().columns(2).type() ==
+            ::fivetran_sdk::DataType::INT);
+    REQUIRE(response.table().columns(2).primary_key());
+  }
+
+  {
+    // Make sure the data is still correct after recreating the table
+    auto res = con->Query("SELECT id, name, id_new FROM " + table_name);
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 2);
+    REQUIRE(res->GetValue(0, 0) == "1");
+    REQUIRE(res->GetValue(1, 0) == "one");
+    REQUIRE(res->GetValue(2, 0) == 101);
+    REQUIRE(res->GetValue(0, 1) == "2");
+    REQUIRE(res->GetValue(1, 1) == "two");
+    REQUIRE(res->GetValue(2, 1) == 102);
+  }
+
+  {
+    // Alter Table to drop a primary key column
+    ::fivetran_sdk::AlterTableRequest request;
+
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_table()->set_name(table_name);
+    auto col1 = request.mutable_table()->add_columns();
+    col1->set_name("id");
+    col1->set_type(::fivetran_sdk::DataType::STRING);
+    col1->set_primary_key(true);
+
+    auto col2 = request.mutable_table()->add_columns();
+    col2->set_name("name");
+    col2->set_type(::fivetran_sdk::DataType::STRING);
+    col2->set_primary_key(true);
+
+    ::fivetran_sdk::AlterTableResponse response;
+    auto status = service.AlterTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // Describe the altered table
+    ::fivetran_sdk::DescribeTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.set_table_name(table_name);
+
+    ::fivetran_sdk::DescribeTableResponse response;
+    auto status = service.DescribeTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(!response.not_found());
+
+    REQUIRE(response.table().name() == table_name);
+    REQUIRE(response.table().columns_size() == 2);
+    REQUIRE(response.table().columns(0).name() == "id");
+    REQUIRE(response.table().columns(0).type() ==
+            ::fivetran_sdk::DataType::STRING);
+    REQUIRE(response.table().columns(0).primary_key());
+
+    REQUIRE(response.table().columns(1).name() == "name");
+    REQUIRE(response.table().columns(1).type() ==
+            ::fivetran_sdk::DataType::STRING);
+    REQUIRE(response.table().columns(1).primary_key());
+  }
+
+  {
+    // Make sure the data is still correct after recreating the table
+    auto res = con->Query("SELECT id, name FROM " + table_name);
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 2);
+    REQUIRE(res->GetValue(0, 0) == "1");
+    REQUIRE(res->GetValue(1, 0) == "one");
+    REQUIRE(res->GetValue(0, 1) == "2");
+    REQUIRE(res->GetValue(1, 1) == "two");
+  }
+}

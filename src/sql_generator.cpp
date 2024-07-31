@@ -34,6 +34,42 @@ void write_joined(
   }
 }
 
+void find_primary_keys(const std::vector<column_def> &cols,
+                       std::vector<const column_def *> &columns_pk,
+                       std::vector<const column_def *> *columns_regular) {
+  for (auto &col : cols) {
+    if (col.primary_key) {
+      columns_pk.push_back(&col);
+    } else if (columns_regular != nullptr) {
+      columns_regular->push_back(&col);
+    }
+  }
+}
+
+std::string
+make_full_column_list(const std::vector<const column_def *> &columns_pk,
+                      const std::vector<const column_def *> &columns_regular) {
+  std::ostringstream full_column_list;
+  if (!columns_pk.empty()) {
+    write_joined(full_column_list, columns_pk, print_column);
+    // tiny troubleshooting assist; primary columns are separated from regular
+    // columns by 2 spaces
+    full_column_list << ",  ";
+  }
+  write_joined(full_column_list, columns_regular, print_column);
+
+  return full_column_list.str();
+}
+
+void run_query(duckdb::Connection &con, const std::string &log_prefix,
+               const std::string &query, const std::string &error_message) {
+  mdlog::info(log_prefix + ": " + query);
+  auto result = con.Query(query);
+  if (result->HasError()) {
+    throw std::runtime_error(error_message + ": " + result->GetError());
+  }
+}
+
 // DuckDB querying
 // TODO: add test for schema or remove the logic if it's unused
 bool schema_exists(duckdb::Connection &con, const std::string &db_name,
@@ -84,9 +120,12 @@ void create_schema(duckdb::Connection &con, const std::string &db_name,
 }
 
 void create_table(duckdb::Connection &con, const table_def &table,
-                  const std::vector<const column_def *> &columns_pk,
                   const std::vector<column_def> &all_columns) {
   const std::string absolute_table_name = table.to_escaped_string();
+
+  std::vector<const column_def *> columns_pk;
+  find_primary_keys(all_columns, columns_pk);
+
   std::ostringstream ddl;
   ddl << "CREATE OR REPLACE TABLE " << absolute_table_name << " (";
 
@@ -164,13 +203,103 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
   return columns;
 }
 
+void alter_table_recreate(duckdb::Connection &con, const table_def &table,
+                          const std::vector<column_def> &all_columns,
+                          const std::set<std::string> &common_columns) {
+  long timestamp = std::chrono::duration_cast<std::chrono::seconds>(
+                       std::chrono::system_clock::now().time_since_epoch())
+                       .count();
+  auto temp_table =
+      table_def{table.db_name, table.schema_name,
+                "tmp_" + table.table_name + "_" + std::to_string(timestamp)};
+  auto absolute_table_name = table.to_escaped_string();
+  auto absolute_temp_table_name = temp_table.to_escaped_string();
+
+  run_query(con, "renaming table",
+            "ALTER TABLE " + table.to_escaped_string() + " RENAME TO " +
+                KeywordHelper::WriteQuoted(temp_table.table_name, '"'),
+            "Could not rename table <" + absolute_table_name + ">");
+
+  create_table(con, table, all_columns);
+
+  std::ostringstream out_column_list;
+  bool first = true;
+  for (auto &col : common_columns) {
+    if (first) {
+      first = false;
+    } else {
+      out_column_list << ",";
+    }
+    out_column_list << KeywordHelper::WriteQuoted(col, '"');
+  }
+  std::string common_column_list = out_column_list.str();
+
+  std::ostringstream out;
+  out << "INSERT INTO " << absolute_table_name << "(" << common_column_list
+      << ") SELECT " << common_column_list << " FROM "
+      << absolute_temp_table_name;
+
+  run_query(con, "Reinserting data after changing primary keys", out.str(),
+            "Could not reinsert data into table <" + absolute_table_name + ">");
+  run_query(con, "Dropping temp table after recreating table with constraints",
+            "DROP TABLE " + absolute_temp_table_name,
+            "Could not drop table <" + absolute_temp_table_name + ">");
+}
+
+void alter_table_in_place(
+    duckdb::Connection &con, const std::string &absolute_table_name,
+    const std::set<std::string> &added_columns,
+    const std::set<std::string> &deleted_columns,
+    const std::set<std::string> &alter_types,
+    const std::map<std::string, column_def> &new_column_map) {
+  for (const auto &col_name : added_columns) {
+    std::ostringstream out;
+    out << "ALTER TABLE " << absolute_table_name << " ADD COLUMN ";
+    const auto &col = new_column_map.at(col_name);
+
+    out << KeywordHelper::WriteQuoted(col_name, '"') << " "
+        << duckdb::EnumUtil::ToChars(col.type);
+
+    run_query(con, "alter_table add", out.str(),
+              "Could not add column <" + col_name + "> to table <" +
+                  absolute_table_name + ">");
+  }
+
+  for (const auto &col_name : deleted_columns) {
+    std::ostringstream out;
+    out << "ALTER TABLE " << absolute_table_name << " DROP COLUMN ";
+
+    out << KeywordHelper::WriteQuoted(col_name, '"');
+
+    run_query(con, "alter_table drop", out.str(),
+              "Could not drop column <" + col_name + "> from table <" +
+                  absolute_table_name + ">");
+  }
+
+  for (const auto &col_name : alter_types) {
+    std::ostringstream out;
+    out << "ALTER TABLE " << absolute_table_name << " ALTER ";
+    const auto &col = new_column_map.at(col_name);
+
+    out << KeywordHelper::WriteQuoted(col_name, '"') << " TYPE "
+        << duckdb::EnumUtil::ToChars(col.type);
+
+    run_query(con, "alter table change type", out.str(),
+              "Could not alter type for column <" + col_name + "> in table <" +
+                  absolute_table_name + ">");
+  }
+}
+
 void alter_table(duckdb::Connection &con, const table_def &table,
                  const std::vector<column_def> &columns) {
+
+  bool recreate_table = false;
 
   auto absolute_table_name = table.to_escaped_string();
   std::set<std::string> alter_types;
   std::set<std::string> added_columns;
   std::set<std::string> deleted_columns;
+  std::set<std::string> common_columns;
 
   const auto &existing_columns = describe_table(con, table);
   std::map<std::string, column_def> new_column_map;
@@ -183,84 +312,49 @@ void alter_table(duckdb::Connection &con, const table_def &table,
   for (const auto &col : existing_columns) {
     const auto &new_col_it = new_column_map.find(col.name);
 
-    added_columns.erase(col.name);
+    if (added_columns.erase(col.name)) {
+      common_columns.emplace(col.name);
+    }
 
     if (new_col_it == new_column_map.end()) {
       deleted_columns.emplace(col.name);
-    } else if (new_col_it->second.type !=
-               col.type) { // altering primary key not supported in duckdb
+      if (col.primary_key) {
+        recreate_table = true;
+      }
+    } else if (new_col_it->second.type != col.type) {
       alter_types.emplace(col.name);
+    } else if (new_col_it->second.primary_key != col.primary_key) {
+      mdlog::info("Altering primary key requested for column <" +
+                  new_col_it->second.name + ">");
+      recreate_table = true;
     }
   }
 
-  for (const auto &col_name : added_columns) {
-    std::ostringstream out;
-    out << "ALTER TABLE " << absolute_table_name << " ADD COLUMN ";
-    const auto &col = new_column_map[col_name];
-
-    out << KeywordHelper::WriteQuoted(col_name, '"') << " "
-        << duckdb::EnumUtil::ToChars(col.type);
-    if (col.primary_key) {
-      out << " PRIMARY KEY";
-    }
-    auto query = out.str();
-    mdlog::info("alter_table: " + query);
-    auto result = con.Query(query);
-    if (result->HasError()) {
-      throw std::runtime_error("Could not add column <" + col_name +
-                               "> to table <" + absolute_table_name +
-                               ">:" + result->GetError());
-    }
+  auto primary_key_added_it =
+      std::find_if(added_columns.begin(), added_columns.end(),
+                   [&new_column_map](const std::string &column_name) {
+                     return new_column_map[column_name].primary_key;
+                   });
+  if (primary_key_added_it != added_columns.end()) {
+    mdlog::info("Adding primary key requested for column <" +
+                *primary_key_added_it + ">");
+    recreate_table = true;
   }
 
-  for (const auto &col_name : deleted_columns) {
-    std::ostringstream out;
-    out << "ALTER TABLE " << absolute_table_name << " DROP COLUMN ";
+  run_query(con, "begin alter table transaction", "BEGIN TRANSACTION",
+            "Could not begin transaction for altering table <" +
+                absolute_table_name + ">");
 
-    out << KeywordHelper::WriteQuoted(col_name, '"');
-
-    auto query = out.str();
-    mdlog::info("alter_table: " + query);
-    auto result = con.Query(query);
-    if (result->HasError()) {
-      throw std::runtime_error("Could not drop column <" + col_name +
-                               "> from table <" + absolute_table_name +
-                               ">:" + result->GetError());
-    }
+  if (recreate_table) {
+    alter_table_recreate(con, table, columns, common_columns);
+  } else {
+    alter_table_in_place(con, absolute_table_name, added_columns,
+                         deleted_columns, alter_types, new_column_map);
   }
 
-  for (const auto &col_name : alter_types) {
-    std::ostringstream out;
-    out << "ALTER TABLE " << absolute_table_name << " ALTER ";
-    const auto &col = new_column_map[col_name];
-
-    out << KeywordHelper::WriteQuoted(col_name, '"') << " TYPE "
-        << duckdb::EnumUtil::ToChars(col.type);
-
-    auto query = out.str();
-    mdlog::info("alter table: " + query);
-    auto result = con.Query(query);
-    if (result->HasError()) {
-      throw std::runtime_error("Could not alter type for column <" + col_name +
-                               "> in table <" + absolute_table_name +
-                               ">:" + result->GetError());
-    }
-  }
-}
-
-std::string
-make_full_column_list(const std::vector<const column_def *> &columns_pk,
-                      const std::vector<const column_def *> &columns_regular) {
-  std::ostringstream full_column_list;
-  if (!columns_pk.empty()) {
-    write_joined(full_column_list, columns_pk, print_column);
-    // tiny troubleshooting assist; primary columns are separated from regular
-    // columns by 2 spaces
-    full_column_list << ",  ";
-  }
-  write_joined(full_column_list, columns_regular, print_column);
-
-  return full_column_list.str();
+  run_query(con, "commit alter table transaction", "END TRANSACTION",
+            "Could not commit transaction for altering table <" +
+                absolute_table_name + ">");
 }
 
 void upsert(duckdb::Connection &con, const table_def &table,
