@@ -237,9 +237,9 @@ TEST_CASE("Test endpoint fails when token is bad",
   auto status = service.Test(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
   CHECK_THAT(status.error_message(),
-             Catch::Matchers::ContainsSubstring("UNAUTHENTICATED"));
+             Catch::Matchers::ContainsSubstring("not authenticated"));
   CHECK_THAT(status.error_message(),
-             Catch::Matchers::ContainsSubstring("UNAUTHENTICATED"));
+             Catch::Matchers::ContainsSubstring("not authenticated"));
 }
 
 TEST_CASE(
