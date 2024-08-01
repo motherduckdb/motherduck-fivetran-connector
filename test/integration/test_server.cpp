@@ -1410,4 +1410,60 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
     REQUIRE(res->GetValue(0, 1) == "2");
     REQUIRE(res->GetValue(1, 1) == "two");
   }
+
+  {
+    // Alter Table to add new primary key columns with correct defaults
+    ::fivetran_sdk::AlterTableRequest request;
+
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_table()->set_name(table_name);
+    auto col1 = request.mutable_table()->add_columns();
+    col1->set_name("id");
+    col1->set_type(::fivetran_sdk::DataType::STRING);
+    col1->set_primary_key(true);
+
+    auto col2 = request.mutable_table()->add_columns();
+    col2->set_name("name");
+    col2->set_type(::fivetran_sdk::DataType::STRING);
+    col2->set_primary_key(true); // turn existing column into a primary key
+
+    auto col3 = request.mutable_table()->add_columns();
+    col3->set_name("id_int");
+    col3->set_type(::fivetran_sdk::DataType::INT);
+    col3->set_primary_key(true);
+
+    auto col4 = request.mutable_table()->add_columns();
+    col4->set_name("id_varchar");
+    col4->set_type(::fivetran_sdk::DataType::STRING);
+    col4->set_primary_key(true);
+
+    auto col5 = request.mutable_table()->add_columns();
+    col5->set_name("id_date");
+    col5->set_type(::fivetran_sdk::DataType::NAIVE_DATE);
+    col5->set_primary_key(true);
+
+    auto col6 = request.mutable_table()->add_columns();
+    col6->set_name("id_float");
+    col6->set_type(::fivetran_sdk::DataType::FLOAT);
+    col6->set_primary_key(true);
+
+    ::fivetran_sdk::AlterTableResponse response;
+    auto status = service.AlterTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // Make sure the defaults are set correctly
+    auto res = con->Query("SELECT * FROM " + table_name);
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 2);
+    REQUIRE(res->GetValue(0, 0) == "1");
+    REQUIRE(res->GetValue(1, 0) == "one");
+    REQUIRE(res->GetValue(2, 0) == 0);
+    REQUIRE(res->GetValue(3, 0) == "");
+    REQUIRE(res->GetValue(4, 0) == "1970-01-01");
+    REQUIRE(res->GetValue(5, 0) == 0.0);
+  }
 }

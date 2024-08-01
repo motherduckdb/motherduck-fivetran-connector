@@ -32,7 +32,8 @@ void create_schema(duckdb::Connection &con, const std::string &db_name,
 bool table_exists(duckdb::Connection &con, const table_def &table);
 
 void create_table(duckdb::Connection &con, const table_def &table,
-                  const std::vector<column_def> &all_columns);
+                  const std::vector<column_def> &all_columns,
+                  const std::set<std::string> &columns_with_default_value);
 
 std::vector<column_def> describe_table(duckdb::Connection &con,
                                        const table_def &table);

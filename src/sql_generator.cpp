@@ -119,8 +119,24 @@ void create_schema(duckdb::Connection &con, const std::string &db_name,
   con.Query(query);
 }
 
+std::string get_default_value() {}
+
+std::string get_default_value(duckdb::LogicalTypeId type) {
+  switch (type) {
+  case duckdb::LogicalTypeId::VARCHAR:
+    return "''";
+  case duckdb::LogicalTypeId::DATE:
+  case duckdb::LogicalTypeId::TIMESTAMP:
+  case duckdb::LogicalTypeId::TIMESTAMP_TZ:
+    return "'epoch'";
+  default:
+    return "0";
+  }
+}
+
 void create_table(duckdb::Connection &con, const table_def &table,
-                  const std::vector<column_def> &all_columns) {
+                  const std::vector<column_def> &all_columns,
+                  const std::set<std::string> &columns_with_default_value) {
   const std::string absolute_table_name = table.to_escaped_string();
 
   std::vector<const column_def *> columns_pk;
@@ -135,6 +151,11 @@ void create_table(duckdb::Connection &con, const table_def &table,
     if (col.type == duckdb::LogicalTypeId::DECIMAL) {
       ddl << " (" << col.width << "," << col.scale << ")";
     }
+    if (columns_with_default_value.find(col.name) !=
+        columns_with_default_value.end()) {
+      ddl << " DEFAULT " + get_default_value(col.type);
+    }
+
     ddl << ", "; // DuckDB allows trailing commas
   }
 
@@ -220,7 +241,15 @@ void alter_table_recreate(duckdb::Connection &con, const table_def &table,
                 KeywordHelper::WriteQuoted(temp_table.table_name, '"'),
             "Could not rename table <" + absolute_table_name + ">");
 
-  create_table(con, table, all_columns);
+  std::set<std::string> new_primary_key_cols;
+  for (const auto &col : all_columns) {
+    if (col.primary_key &&
+        common_columns.find(col.name) == common_columns.end()) {
+      new_primary_key_cols.insert(col.name);
+    }
+  }
+
+  create_table(con, table, all_columns, new_primary_key_cols);
 
   std::ostringstream out_column_list;
   bool first = true;

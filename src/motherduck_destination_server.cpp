@@ -247,7 +247,7 @@ grpc::Status DestinationSdkImpl::CreateTable(
     }
 
     const auto cols = get_duckdb_columns(request->table().columns());
-    create_table(*con, table, cols);
+    create_table(*con, table, cols, {});
     response->set_success(true);
   } catch (const std::exception &e) {
     mdlog::severe("CreateTable endpoint failed for schema <" +
