@@ -1209,14 +1209,16 @@ TEST_CASE("Test all types with create and describe table") {
 }
 
 template <typename T>
-void add_config(T &request, const std::string &token, const std::string &database, const std::string &table) {
+void add_config(T &request, const std::string &token,
+                const std::string &database, const std::string &table) {
   (*request.mutable_configuration())["motherduck_token"] = token;
   (*request.mutable_configuration())["motherduck_database"] = database;
   request.mutable_table()->set_name(table);
 }
 
 template <typename T>
-void add_col(T &request, const std::string &name, ::fivetran_sdk::DataType type, bool is_primary_key) {
+void add_col(T &request, const std::string &name, ::fivetran_sdk::DataType type,
+             bool is_primary_key) {
   auto col = request.mutable_table()->add_columns();
   col->set_name(name);
   col->set_type(type);
@@ -1237,8 +1239,8 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
     // Create Table
     ::fivetran_sdk::CreateTableRequest request;
     add_config(request, token, TEST_DATABASE_NAME, table_name);
-    add_col(request, "id",::fivetran_sdk::DataType::STRING, true);
-    add_col(request, "name",::fivetran_sdk::DataType::STRING, false);
+    add_col(request, "id", ::fivetran_sdk::DataType::STRING, true);
+    add_col(request, "name", ::fivetran_sdk::DataType::STRING, false);
 
     ::fivetran_sdk::CreateTableResponse response;
     auto status = service.CreateTable(nullptr, &request, &response);
@@ -1485,7 +1487,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 
     REQUIRE(response.table().columns(2).name() == "id_int");
     REQUIRE(response.table().columns(2).type() ==
-            ::fivetran_sdk::DataType::LONG);  // this type got updated
+            ::fivetran_sdk::DataType::LONG); // this type got updated
     REQUIRE_FALSE(response.table().columns(2).primary_key());
 
     REQUIRE(response.table().columns(3).name() == "id_varchar");
@@ -1500,7 +1502,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 
     REQUIRE(response.table().columns(5).name() == "id_float");
     REQUIRE(response.table().columns(5).type() ==
-            ::fivetran_sdk::DataType::FLOAT);  
+            ::fivetran_sdk::DataType::FLOAT);
     REQUIRE(response.table().columns(5).primary_key());
   }
 
