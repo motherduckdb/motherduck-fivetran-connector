@@ -238,8 +238,6 @@ TEST_CASE("Test endpoint fails when token is bad",
   REQUIRE_NO_FAIL(status);
   CHECK_THAT(status.error_message(),
              Catch::Matchers::ContainsSubstring("not authenticated"));
-  CHECK_THAT(status.error_message(),
-             Catch::Matchers::ContainsSubstring("not authenticated"));
 }
 
 TEST_CASE(
@@ -911,6 +909,38 @@ TEST_CASE("Table with large json row", "[integration][write-batch]") {
     (*request.mutable_configuration())["motherduck_token"] = token;
     (*request.mutable_configuration())["motherduck_database"] =
         TEST_DATABASE_NAME;
+
+    make_book_table(request, table_name);
+
+    const std::string filename = "huge_books.csv";
+    const std::string filepath = TEST_RESOURCES_DIR + filename;
+
+    request.add_replace_files(filepath);
+
+    ::fivetran_sdk::WriteBatchResponse response;
+    auto status = service.WriteBatch(nullptr, &request, &response);
+    REQUIRE_FALSE(status.ok());
+    CHECK_THAT(status.error_message(),
+               Catch::Matchers::ContainsSubstring(
+                   "straddling object straddles two block boundaries"));
+  }
+
+  {
+    // check no rows were inserted
+    auto res = con->Query("SELECT count(*) FROM " + table_name);
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 1);
+    REQUIRE(res->GetValue(0, 0) == 0);
+  }
+
+  {
+    // Empty string for the block size falls back to default value,
+    // but sync fails due to default block size being too small.
+    ::fivetran_sdk::WriteBatchRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    (*request.mutable_configuration())[MD_PROP_CSV_BLOCK_SIZE] = "";
 
     make_book_table(request, table_name);
 

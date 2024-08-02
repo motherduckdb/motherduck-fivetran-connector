@@ -29,7 +29,7 @@ int find_optional_property(
     const std::string &property_name, int default_value,
     const std::function<int(const std::string &)> &parse) {
   auto token_it = config.find(property_name);
-  return token_it == config.end() ? default_value : parse(token_it->second);
+  return token_it == config.end() || token_it->second.empty() ? default_value : parse(token_it->second);
 }
 
 template <typename T> std::string get_schema_name(const T *request) {

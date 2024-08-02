@@ -119,8 +119,6 @@ void create_schema(duckdb::Connection &con, const std::string &db_name,
   con.Query(query);
 }
 
-std::string get_default_value() {}
-
 std::string get_default_value(duckdb::LogicalTypeId type) {
   switch (type) {
   case duckdb::LogicalTypeId::VARCHAR:
