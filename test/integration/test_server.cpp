@@ -1208,6 +1208,21 @@ TEST_CASE("Test all types with create and describe table") {
   }
 }
 
+template <typename T>
+void add_config(T &request, const std::string &token, const std::string &database, const std::string &table) {
+  (*request.mutable_configuration())["motherduck_token"] = token;
+  (*request.mutable_configuration())["motherduck_database"] = database;
+  request.mutable_table()->set_name(table);
+}
+
+template <typename T>
+void add_col(T &request, const std::string &name, ::fivetran_sdk::DataType type, bool is_primary_key) {
+  auto col = request.mutable_table()->add_columns();
+  col->set_name(name);
+  col->set_type(type);
+  col->set_primary_key(is_primary_key);
+}
+
 TEST_CASE("AlterTable with constraints", "[integration]") {
   DestinationSdkImpl service;
 
@@ -1221,18 +1236,9 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
   {
     // Create Table
     ::fivetran_sdk::CreateTableRequest request;
-    (*request.mutable_configuration())["motherduck_token"] = token;
-    (*request.mutable_configuration())["motherduck_database"] =
-        TEST_DATABASE_NAME;
-    request.mutable_table()->set_name(table_name);
-    auto col1 = request.mutable_table()->add_columns();
-    col1->set_name("id");
-    col1->set_type(::fivetran_sdk::DataType::STRING);
-    col1->set_primary_key(true);
-
-    auto col2 = request.mutable_table()->add_columns();
-    col2->set_name("name");
-    col2->set_type(::fivetran_sdk::DataType::STRING);
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id",::fivetran_sdk::DataType::STRING, true);
+    add_col(request, "name",::fivetran_sdk::DataType::STRING, false);
 
     ::fivetran_sdk::CreateTableResponse response;
     auto status = service.CreateTable(nullptr, &request, &response);
@@ -1240,27 +1246,13 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
   }
 
   {
-    // Alter Table to add a new primary key
+    // Alter Table to add a new primary key to an empty table
     ::fivetran_sdk::AlterTableRequest request;
 
-    (*request.mutable_configuration())["motherduck_token"] = token;
-    (*request.mutable_configuration())["motherduck_database"] =
-        TEST_DATABASE_NAME;
-    request.mutable_table()->set_name(table_name);
-    auto col1 = request.mutable_table()->add_columns();
-    col1->set_name("id");
-    col1->set_type(::fivetran_sdk::DataType::STRING);
-    col1->set_primary_key(true);
-
-    auto col2 = request.mutable_table()->add_columns();
-    col2->set_name("name");
-    col2->set_type(::fivetran_sdk::DataType::STRING);
-    col2->set_primary_key(true);
-
-    auto col3 = request.mutable_table()->add_columns();
-    col3->set_name("id_new");
-    col3->set_type(::fivetran_sdk::DataType::INT);
-    col3->set_primary_key(true);
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id", ::fivetran_sdk::DataType::STRING, true);
+    add_col(request, "name", ::fivetran_sdk::DataType::STRING, false);
+    add_col(request, "id_new", ::fivetran_sdk::DataType::INT, true);
 
     ::fivetran_sdk::AlterTableResponse response;
     auto status = service.AlterTable(nullptr, &request, &response);
@@ -1290,7 +1282,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
     REQUIRE(response.table().columns(1).name() == "name");
     REQUIRE(response.table().columns(1).type() ==
             ::fivetran_sdk::DataType::STRING);
-    REQUIRE(response.table().columns(1).primary_key());
+    REQUIRE_FALSE(response.table().columns(1).primary_key());
 
     REQUIRE(response.table().columns(2).name() == "id_new");
     REQUIRE(response.table().columns(2).type() ==
@@ -1299,8 +1291,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
   }
 
   {
-    // insert some test data to make sure it stays correct after primary key
-    // modification
+    // Insert some test data to validate after primary key modification
     auto res = con->Query("INSERT INTO " + table_name +
                           "(id, name, id_new) VALUES (1, 'one', 101)");
     REQUIRE_NO_FAIL(res);
@@ -1313,24 +1304,11 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
     // Alter Table to make an existing (unique valued) column into a primary key
     ::fivetran_sdk::AlterTableRequest request;
 
-    (*request.mutable_configuration())["motherduck_token"] = token;
-    (*request.mutable_configuration())["motherduck_database"] =
-        TEST_DATABASE_NAME;
-    request.mutable_table()->set_name(table_name);
-    auto col1 = request.mutable_table()->add_columns();
-    col1->set_name("id");
-    col1->set_type(::fivetran_sdk::DataType::STRING);
-    col1->set_primary_key(true);
-
-    auto col2 = request.mutable_table()->add_columns();
-    col2->set_name("name");
-    col2->set_type(::fivetran_sdk::DataType::STRING);
-    col2->set_primary_key(true); // turn existing column into a primary key
-
-    auto col3 = request.mutable_table()->add_columns();
-    col3->set_name("id_new");
-    col3->set_type(::fivetran_sdk::DataType::INT);
-    col3->set_primary_key(true);
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id", ::fivetran_sdk::DataType::STRING, true);
+    // turn existing column into a primary key
+    add_col(request, "name", ::fivetran_sdk::DataType::STRING, true);
+    add_col(request, "id_new", ::fivetran_sdk::DataType::INT, true);
 
     ::fivetran_sdk::AlterTableResponse response;
     auto status = service.AlterTable(nullptr, &request, &response);
@@ -1385,19 +1363,9 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
     // Alter Table to drop a primary key column
     ::fivetran_sdk::AlterTableRequest request;
 
-    (*request.mutable_configuration())["motherduck_token"] = token;
-    (*request.mutable_configuration())["motherduck_database"] =
-        TEST_DATABASE_NAME;
-    request.mutable_table()->set_name(table_name);
-    auto col1 = request.mutable_table()->add_columns();
-    col1->set_name("id");
-    col1->set_type(::fivetran_sdk::DataType::STRING);
-    col1->set_primary_key(true);
-
-    auto col2 = request.mutable_table()->add_columns();
-    col2->set_name("name");
-    col2->set_type(::fivetran_sdk::DataType::STRING);
-    col2->set_primary_key(true);
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id", ::fivetran_sdk::DataType::STRING, true);
+    add_col(request, "name", ::fivetran_sdk::DataType::STRING, true);
 
     ::fivetran_sdk::AlterTableResponse response;
     auto status = service.AlterTable(nullptr, &request, &response);
@@ -1445,39 +1413,14 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
     // Alter Table to add new primary key columns with correct defaults
     ::fivetran_sdk::AlterTableRequest request;
 
-    (*request.mutable_configuration())["motherduck_token"] = token;
-    (*request.mutable_configuration())["motherduck_database"] =
-        TEST_DATABASE_NAME;
-    request.mutable_table()->set_name(table_name);
-    auto col1 = request.mutable_table()->add_columns();
-    col1->set_name("id");
-    col1->set_type(::fivetran_sdk::DataType::STRING);
-    col1->set_primary_key(true);
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id", ::fivetran_sdk::DataType::STRING, true);
+    add_col(request, "name", ::fivetran_sdk::DataType::STRING, true);
 
-    auto col2 = request.mutable_table()->add_columns();
-    col2->set_name("name");
-    col2->set_type(::fivetran_sdk::DataType::STRING);
-    col2->set_primary_key(true); // turn existing column into a primary key
-
-    auto col3 = request.mutable_table()->add_columns();
-    col3->set_name("id_int");
-    col3->set_type(::fivetran_sdk::DataType::INT);
-    col3->set_primary_key(true);
-
-    auto col4 = request.mutable_table()->add_columns();
-    col4->set_name("id_varchar");
-    col4->set_type(::fivetran_sdk::DataType::STRING);
-    col4->set_primary_key(true);
-
-    auto col5 = request.mutable_table()->add_columns();
-    col5->set_name("id_date");
-    col5->set_type(::fivetran_sdk::DataType::NAIVE_DATE);
-    col5->set_primary_key(true);
-
-    auto col6 = request.mutable_table()->add_columns();
-    col6->set_name("id_float");
-    col6->set_type(::fivetran_sdk::DataType::FLOAT);
-    col6->set_primary_key(true);
+    add_col(request, "id_int", ::fivetran_sdk::DataType::INT, true);
+    add_col(request, "id_varchar", ::fivetran_sdk::DataType::STRING, true);
+    add_col(request, "id_date", ::fivetran_sdk::DataType::NAIVE_DATE, true);
+    add_col(request, "id_float", ::fivetran_sdk::DataType::FLOAT, true);
 
     ::fivetran_sdk::AlterTableResponse response;
     auto status = service.AlterTable(nullptr, &request, &response);
