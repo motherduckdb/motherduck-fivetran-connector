@@ -29,7 +29,9 @@ int find_optional_property(
     const std::string &property_name, int default_value,
     const std::function<int(const std::string &)> &parse) {
   auto token_it = config.find(property_name);
-  return token_it == config.end() || token_it->second.empty() ? default_value : parse(token_it->second);
+  return token_it == config.end() || token_it->second.empty()
+             ? default_value
+             : parse(token_it->second);
 }
 
 template <typename T> std::string get_schema_name(const T *request) {
@@ -132,19 +134,6 @@ void process_file(
   process_view("localmem.arrow_view");
 
   arrow_array_stream.release(&arrow_array_stream);
-}
-
-void find_primary_keys(
-    const std::vector<column_def> &cols,
-    std::vector<const column_def *> &columns_pk,
-    std::vector<const column_def *> *columns_regular = nullptr) {
-  for (auto &col : cols) {
-    if (col.primary_key) {
-      columns_pk.push_back(&col);
-    } else if (columns_regular != nullptr) {
-      columns_regular->push_back(&col);
-    }
-  }
 }
 
 grpc::Status DestinationSdkImpl::ConfigurationForm(
@@ -259,10 +248,8 @@ grpc::Status DestinationSdkImpl::CreateTable(
       create_schema(*con, db_name, schema_name);
     }
 
-    std::vector<const column_def *> columns_pk;
     const auto cols = get_duckdb_columns(request->table().columns());
-    find_primary_keys(cols, columns_pk);
-    create_table(*con, table, columns_pk, cols);
+    create_table(*con, table, cols, {});
     response->set_success(true);
   } catch (const std::exception &e) {
     mdlog::severe("CreateTable endpoint failed for schema <" +

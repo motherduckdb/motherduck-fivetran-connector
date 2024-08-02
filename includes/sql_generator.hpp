@@ -18,6 +18,11 @@ struct table_def {
   std::string to_escaped_string() const;
 };
 
+void find_primary_keys(
+    const std::vector<column_def> &cols,
+    std::vector<const column_def *> &columns_pk,
+    std::vector<const column_def *> *columns_regular = nullptr);
+
 bool schema_exists(duckdb::Connection &con, const std::string &db_name,
                    const std::string &schema_name);
 
@@ -27,8 +32,8 @@ void create_schema(duckdb::Connection &con, const std::string &db_name,
 bool table_exists(duckdb::Connection &con, const table_def &table);
 
 void create_table(duckdb::Connection &con, const table_def &table,
-                  const std::vector<const column_def *> &columns_pk,
-                  const std::vector<column_def> &all_columns);
+                  const std::vector<column_def> &all_columns,
+                  const std::set<std::string> &columns_with_default_value);
 
 std::vector<column_def> describe_table(duckdb::Connection &con,
                                        const table_def &table);
