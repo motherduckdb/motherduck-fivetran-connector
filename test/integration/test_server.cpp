@@ -1439,4 +1439,81 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
     REQUIRE(res->GetValue(4, 0) == "1970-01-01");
     REQUIRE(res->GetValue(5, 0) == 0.0);
   }
+
+  {
+    // Alter Table make a column no longer be a primary key AND change its type
+    ::fivetran_sdk::AlterTableRequest request;
+
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id", ::fivetran_sdk::DataType::STRING, true);
+    add_col(request, "name", ::fivetran_sdk::DataType::STRING, true);
+
+    add_col(request, "id_int", ::fivetran_sdk::DataType::LONG, false);
+    add_col(request, "id_varchar", ::fivetran_sdk::DataType::STRING, true);
+    add_col(request, "id_date", ::fivetran_sdk::DataType::NAIVE_DATE, true);
+    add_col(request, "id_float", ::fivetran_sdk::DataType::FLOAT, true);
+
+    ::fivetran_sdk::AlterTableResponse response;
+    auto status = service.AlterTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // Describe the altered table
+    ::fivetran_sdk::DescribeTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.set_table_name(table_name);
+
+    ::fivetran_sdk::DescribeTableResponse response;
+    auto status = service.DescribeTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(!response.not_found());
+
+    REQUIRE(response.table().name() == table_name);
+    REQUIRE(response.table().columns_size() == 6);
+    REQUIRE(response.table().columns(0).name() == "id");
+    REQUIRE(response.table().columns(0).type() ==
+            ::fivetran_sdk::DataType::STRING);
+    REQUIRE(response.table().columns(0).primary_key());
+
+    REQUIRE(response.table().columns(1).name() == "name");
+    REQUIRE(response.table().columns(1).type() ==
+            ::fivetran_sdk::DataType::STRING);
+    REQUIRE(response.table().columns(1).primary_key());
+
+    REQUIRE(response.table().columns(2).name() == "id_int");
+    REQUIRE(response.table().columns(2).type() ==
+            ::fivetran_sdk::DataType::LONG);  // this type got updated
+    REQUIRE_FALSE(response.table().columns(2).primary_key());
+
+    REQUIRE(response.table().columns(3).name() == "id_varchar");
+    REQUIRE(response.table().columns(3).type() ==
+            ::fivetran_sdk::DataType::STRING);
+    REQUIRE(response.table().columns(3).primary_key());
+
+    REQUIRE(response.table().columns(4).name() == "id_date");
+    REQUIRE(response.table().columns(4).type() ==
+            ::fivetran_sdk::DataType::NAIVE_DATE);
+    REQUIRE(response.table().columns(4).primary_key());
+
+    REQUIRE(response.table().columns(5).name() == "id_float");
+    REQUIRE(response.table().columns(5).type() ==
+            ::fivetran_sdk::DataType::FLOAT);  
+    REQUIRE(response.table().columns(5).primary_key());
+  }
+
+  {
+    // Make sure the defaults are set correctly
+    auto res = con->Query("SELECT * FROM " + table_name);
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 2);
+    REQUIRE(res->GetValue(0, 0) == "1");
+    REQUIRE(res->GetValue(1, 0) == "one");
+    REQUIRE(res->GetValue(2, 0) == 0);
+    REQUIRE(res->GetValue(3, 0) == "");
+    REQUIRE(res->GetValue(4, 0) == "1970-01-01");
+    REQUIRE(res->GetValue(5, 0) == 0.0);
+  }
 }

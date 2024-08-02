@@ -348,12 +348,12 @@ void alter_table(duckdb::Connection &con, const table_def &table,
       if (col.primary_key) {
         recreate_table = true;
       }
-    } else if (new_col_it->second.type != col.type) {
-      alter_types.emplace(col.name);
     } else if (new_col_it->second.primary_key != col.primary_key) {
       mdlog::info("Altering primary key requested for column <" +
                   new_col_it->second.name + ">");
       recreate_table = true;
+    } else if (new_col_it->second.type != col.type) {
+      alter_types.emplace(col.name);
     }
   }
 
