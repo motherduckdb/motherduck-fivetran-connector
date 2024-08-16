@@ -62,8 +62,8 @@ std::vector<column_def> get_duckdb_columns(
                                   DataType_Name(col.type()) + "> for column <" +
                                   col.name() + "> to a DuckDB type");
     }
-    auto precision = col.has_decimal() ? col.decimal().precision() : 18;
-    auto scale = col.has_decimal() ? col.decimal().scale() : 3;
+    auto precision = col.has_decimal() ? col.decimal().precision() : DUCKDB_DEFAULT_PRECISION;
+    auto scale = col.has_decimal() ? col.decimal().scale() : DUCKDB_DEFAULT_SCALE;
     duckdb_columns.push_back(column_def{col.name(), ddbtype, col.primary_key(),
         precision, scale});
   }
