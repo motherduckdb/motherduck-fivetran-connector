@@ -62,9 +62,10 @@ std::vector<column_def> get_duckdb_columns(
                                   DataType_Name(col.type()) + "> for column <" +
                                   col.name() + "> to a DuckDB type");
     }
+    auto precision = col.has_decimal() ? col.decimal().precision() : DUCKDB_DEFAULT_PRECISION;
+    auto scale = col.has_decimal() ? col.decimal().scale() : DUCKDB_DEFAULT_SCALE;
     duckdb_columns.push_back(column_def{col.name(), ddbtype, col.primary_key(),
-                                        col.decimal().precision(),
-                                        col.decimal().scale()});
+        precision, scale});
   }
   return duckdb_columns;
 }
@@ -310,8 +311,9 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
       std::chrono::nanoseconds delete_before_ts =
           std::chrono::seconds(request->utc_delete_before().seconds()) +
           std::chrono::nanoseconds(request->utc_delete_before().nanos());
+          const std::string deleted_column = request->has_soft() ? request->soft().deleted_column() : "";
       truncate_table(*con, table_name, request->synced_column(),
-                     delete_before_ts, request->soft().deleted_column());
+                     delete_before_ts, deleted_column);
     } else {
       mdlog::warning("Table <" + request->table_name() +
                      "> not found in schema <" + request->schema_name() +

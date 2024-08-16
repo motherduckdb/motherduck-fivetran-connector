@@ -15,6 +15,10 @@ static constexpr const char *const CONFIG_TEST_NAME_AUTHENTICATE =
 static constexpr const char *const CONFIG_TEST_NAME_CSV_BLOCK_SIZE =
     "test_csv_block_size";
 
+static constexpr const int DUCKDB_DEFAULT_PRECISION = 18;
+
+static constexpr const int DUCKDB_DEFAULT_SCALE = 3;
+
 class DestinationSdkImpl final : public fivetran_sdk::Destination::Service {
 public:
   DestinationSdkImpl() = default;
