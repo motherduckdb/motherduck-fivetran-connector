@@ -77,14 +77,17 @@ bool schema_exists(duckdb::Connection &con, const std::string &db_name,
   const std::string query =
       "SELECT schema_name FROM information_schema.schemata "
       "WHERE catalog_name=? AND schema_name=?";
+  const std::string err = "Could not find whether schema <" + schema_name +
+                          "> exists in database <" + db_name + ">";
   auto statement = con.Prepare(query);
+  if (statement->HasError()) {
+    throw std::runtime_error(err + " (at bind step): " + statement->GetError());
+  }
   duckdb::vector<duckdb::Value> params = {duckdb::Value(db_name),
                                           duckdb::Value(schema_name)};
   auto result = statement->Execute(params, false);
   if (result->HasError()) {
-    throw std::runtime_error("Could not find whether schema <" + schema_name +
-                             "> exists in database <" + db_name +
-                             ">: " + result->GetError());
+    throw std::runtime_error(err + ": " + result->GetError());
   }
   auto materialized_result = duckdb::unique_ptr_cast<
       duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
@@ -96,16 +99,19 @@ bool table_exists(duckdb::Connection &con, const table_def &table) {
   const std::string query =
       "SELECT table_name FROM information_schema.tables WHERE "
       "table_catalog=? AND table_schema=? AND table_name=?";
+  const std::string err =
+      "Could not find whether table <" + table.to_escaped_string() + "> exists";
   auto statement = con.Prepare(query);
+  if (statement->HasError()) {
+    throw std::runtime_error(err + " (at bind step): " + statement->GetError());
+  }
   duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name),
                                           duckdb::Value(table.schema_name),
                                           duckdb::Value(table.table_name)};
   auto result = statement->Execute(params, false);
 
   if (result->HasError()) {
-    throw std::runtime_error("Could not find whether table <" +
-                             table.to_escaped_string() +
-                             "> exists: " + result->GetError());
+    throw std::runtime_error(err + ": " + result->GetError());
   }
   auto materialized_result = duckdb::unique_ptr_cast<
       duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
@@ -193,17 +199,20 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
                "WHERE database_name=? "
                "AND schema_name=? "
                "AND table_name=?";
+  const std::string err =
+      "Could not describe table <" + table.to_escaped_string() + ">";
   mdlog::info("describe_table: " + std::string(query));
   auto statement = con.Prepare(query);
+  if (statement->HasError()) {
+    throw std::runtime_error(err + " (at bind step): " + statement->GetError());
+  }
   duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name),
                                           duckdb::Value(table.schema_name),
                                           duckdb::Value(table.table_name)};
   auto result = statement->Execute(params, false);
 
   if (result->HasError()) {
-    throw std::runtime_error("Could not describe table <" +
-                             table.to_escaped_string() +
-                             ">:" + result->GetError());
+    throw std::runtime_error(err + ": " + result->GetError());
   }
   auto materialized_result = duckdb::unique_ptr_cast<
       duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
@@ -487,6 +496,7 @@ void truncate_table(duckdb::Connection &con, const table_def &table,
   const std::string absolute_table_name = table.to_escaped_string();
   std::ostringstream sql;
 
+  mdlog::info("truncate_table request: deleted column = " + deleted_column);
   if (deleted_column.empty()) {
     // hard delete
     sql << "DELETE FROM " << absolute_table_name;
@@ -495,11 +505,17 @@ void truncate_table(duckdb::Connection &con, const table_def &table,
     sql << "UPDATE " << absolute_table_name << " SET "
         << KeywordHelper::WriteQuoted(deleted_column, '"') << " = true";
   }
+  mdlog::info("truncate_table request: synced column = " + synced_column);
   sql << " WHERE " << KeywordHelper::WriteQuoted(synced_column, '"')
       << " < make_timestamp(?)";
   auto query = sql.str();
+  const std::string err =
+      "Error truncating table at bind step <" + absolute_table_name + ">";
   mdlog::info("truncate_table: " + query);
   auto statement = con.Prepare(query);
+  if (statement->HasError()) {
+    throw std::runtime_error(err + " (at bind step):" + statement->GetError());
+  }
 
   // DuckDB make_timestamp takes microseconds; Fivetran sends millisecond
   // precision -- safe to divide with truncation
@@ -510,8 +526,7 @@ void truncate_table(duckdb::Connection &con, const table_def &table,
               std::to_string(cutoff_microseconds) + ">");
   auto result = statement->Execute(params, false);
   if (result->HasError()) {
-    throw std::runtime_error("Error truncating table <" + absolute_table_name +
-                             ">:" + result->GetError());
+    throw std::runtime_error(err + ": " + result->GetError());
   }
 }
 
