@@ -145,6 +145,7 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable",
       REQUIRE(response.table().columns(0).name() == "id");
       REQUIRE(response.table().columns(0).type() ==
               ::fivetran_sdk::DataType::STRING);
+      REQUIRE_FALSE(response.table().columns(0).has_decimal());
     }
   }
 
@@ -1164,6 +1165,7 @@ TEST_CASE("Test all types with create and describe table") {
     REQUIRE(response.table().columns(2).name() == "col_decimal");
     REQUIRE(response.table().columns(2).type() ==
             ::fivetran_sdk::DataType::DECIMAL);
+    REQUIRE(response.table().columns(2).has_decimal());
     REQUIRE(response.table().columns(2).decimal().scale() == 11);
     REQUIRE(response.table().columns(2).decimal().precision() == 20);
     REQUIRE_FALSE(response.table().columns(2).primary_key());
