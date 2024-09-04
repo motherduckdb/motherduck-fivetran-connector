@@ -207,18 +207,26 @@ grpc::Status DestinationSdkImpl::DescribeTable(
       return ::grpc::Status(::grpc::StatusCode::OK, "");
     }
 
+    mdlog::info("Endpoint <DescribeTable>: table exists; getting columns");
     auto duckdb_columns = describe_table(*con, table_name);
+    mdlog::info("Endpoint <DescribeTable>: got columns");
 
     fivetran_sdk::Table *table = response->mutable_table();
     table->set_name(get_table_name(request));
 
     for (auto &col : duckdb_columns) {
+      mdlog::info("Endpoint <DescribeTable>:   processing column " + col.name);
       fivetran_sdk::Column *ft_col = table->mutable_columns()->Add();
       ft_col->set_name(col.name);
-      ft_col->set_type(get_fivetran_type(col.type));
+      const auto fivetran_type = get_fivetran_type(col.type);
+      mdlog::info("Endpoint <DescribeTable>:   column type = " +
+                  std::to_string(fivetran_type));
+      ft_col->set_type(fivetran_type);
       ft_col->set_primary_key(col.primary_key);
-      ft_col->mutable_decimal()->set_precision(col.width);
-      ft_col->mutable_decimal()->set_scale(col.scale);
+      if (fivetran_type == fivetran_sdk::DECIMAL) {
+        ft_col->mutable_decimal()->set_precision(col.width);
+        ft_col->mutable_decimal()->set_scale(col.scale);
+      }
     }
 
   } catch (const std::exception &e) {

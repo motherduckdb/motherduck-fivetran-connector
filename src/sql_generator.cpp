@@ -186,7 +186,6 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
   // TBD is_identity is never set, used is_nullable=no temporarily but really
   // should use duckdb_constraints table.
 
-  // TBD scale/precision
   std::vector<column_def> columns;
 
   auto query = "SELECT "
@@ -221,7 +220,7 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
     duckdb::LogicalTypeId column_type =
         static_cast<duckdb::LogicalTypeId>(row.GetValue(1).GetValue<int8_t>());
     column_def col{row.GetValue(0).GetValue<duckdb::string>(), column_type,
-                   row.GetValue(2).GetValue<bool>()};
+                   row.GetValue(2).GetValue<bool>(), 0, 0};
     if (column_type == duckdb::LogicalTypeId::DECIMAL) {
       col.width = row.GetValue(3).GetValue<uint32_t>();
       col.scale = row.GetValue(4).GetValue<uint32_t>();
