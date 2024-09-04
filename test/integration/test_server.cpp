@@ -1522,8 +1522,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
   }
 }
 
-TEST_CASE("Invalid truncate with nonexisting delete column",
-          "[integration][current]") {
+TEST_CASE("Invalid truncate with nonexisting delete column", "[integration]") {
   DestinationSdkImpl service;
 
   const std::string table_name =
@@ -1570,5 +1569,67 @@ TEST_CASE("Invalid truncate with nonexisting delete column",
         status.error_message(),
         Catch::Matchers::ContainsSubstring(
             "Referenced column \"_fivetran_synced\" not found in FROM clause"));
+  }
+}
+
+TEST_CASE("Temp fix to drop table with only _fivetran_deleted column",
+          "[integration]") {
+  DestinationSdkImpl service;
+
+  const std::string table_name =
+      "table_with_only_deleted_column_" + std::to_string(Catch::rngSeed());
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+
+  {
+    // Create Table that is missing the _fivetran_deleted column
+    ::fivetran_sdk::CreateTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_table()->set_name(table_name);
+    auto col1 = request.mutable_table()->add_columns();
+    col1->set_name("_fivetran_deleted");
+    col1->set_type(::fivetran_sdk::DataType::BOOLEAN);
+
+    ::fivetran_sdk::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  auto con = get_test_connection(token);
+  const std::string table_exists_query =
+      "SELECT table_name FROM information_schema.tables WHERE table_catalog='" +
+      TEST_DATABASE_NAME + "' AND table_schema='main' AND table_name='" +
+      table_name + "'";
+  {
+    // make sure table exists
+    auto res = con->Query(table_exists_query);
+    REQUIRE(res->RowCount() == 1);
+  }
+
+  {
+    // Attempt to truncate the bad table
+    ::fivetran_sdk::TruncateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.set_table_name(table_name);
+    request.set_synced_column(
+        "_fivetran_synced"); // does not exist but the code won't get there
+    request.mutable_soft()->set_deleted_column("_fivetran_deleted");
+
+    const auto cutoff_datetime = 1707436800; // 2024-02-09 0:0:0 GMT, trust me
+    request.mutable_utc_delete_before()->set_seconds(cutoff_datetime);
+    request.mutable_utc_delete_before()->set_nanos(0);
+    ::fivetran_sdk::TruncateResponse response;
+    auto status = service.Truncate(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // make sure table no longer exists
+    auto res = con->Query(table_exists_query);
+    REQUIRE(res->RowCount() == 0);
   }
 }
