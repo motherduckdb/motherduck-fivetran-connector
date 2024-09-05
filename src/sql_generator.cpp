@@ -281,6 +281,15 @@ void alter_table_recreate(duckdb::Connection &con, const table_def &table,
             "Could not drop table <" + absolute_temp_table_name + ">");
 }
 
+// this is only used for a temporary workaround --
+// https://github.com/MotherDuck-Open-Source/motherduck-fivetran-connector/issues/51
+void drop_table(duckdb::Connection &con, const table_def &table) {
+  auto absolute_table_name = table.to_escaped_string();
+
+  run_query(con, "Dropping table", "DROP TABLE " + absolute_table_name,
+            "Could not directly drop table <" + absolute_table_name + ">");
+}
+
 void alter_table_in_place(
     duckdb::Connection &con, const std::string &absolute_table_name,
     const std::set<std::string> &added_columns,
@@ -494,8 +503,19 @@ void truncate_table(duckdb::Connection &con, const table_def &table,
                     const std::string &deleted_column) {
   const std::string absolute_table_name = table.to_escaped_string();
   std::ostringstream sql;
-
   mdlog::info("truncate_table request: deleted column = " + deleted_column);
+
+  // this is only used for a temporary workaround --
+  // https://github.com/MotherDuck-Open-Source/motherduck-fivetran-connector/issues/51
+  auto duckdb_columns = describe_table(con, table);
+  if (duckdb_columns.size() == 1 &&
+      duckdb_columns[0].name == "_fivetran_deleted") {
+    mdlog::info("truncate_table: dropping bad table with only "
+                "_fivetran_deleted column");
+    drop_table(con, table);
+    return;
+  }
+
   if (deleted_column.empty()) {
     // hard delete
     sql << "DELETE FROM " << absolute_table_name;
