@@ -81,6 +81,7 @@ std::unique_ptr<duckdb::Connection> get_connection(
   config.SetOptionByName(MD_PROP_TOKEN, token);
   config.SetOptionByName("custom_user_agent", "fivetran");
   config.SetOptionByName("old_implicit_casting", true);
+  config.SetOptionByName("motherduck_attach_mode", "single");
 
   duckdb::DuckDB db("md:" + db_name, &config);
   return std::make_unique<duckdb::Connection>(db);
