@@ -31,7 +31,7 @@ To connect MotherDuck to Fivetran, you need the following:
 4. Click **Add**.
 5. Select **MotherDuck** as the destination type.
 6. Enter your **Authentication Token**.  Refer to [MotherDuck's documentation](https://motherduck.com/docs/authenticating-to-motherduck#fetching-the-service-token) for details on how to get the authentication token.
-7. Enter the **Database** name that you would like to send your data to. Note that if this database does not exist, it will be created the first time you connect to it.
+7. Enter the **Database** name of an existing MotherDuck database that you would like to send your data to.
 8. Click **Save and Test**.
 
 Fivetran tests that you are able to connect to MotherDuck with the provided token.
