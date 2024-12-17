@@ -130,12 +130,16 @@ void process_file(
         "Could not convert Arrow batch reader to an array stream for file <" +
         props.filename + ">: " + status.message());
   }
+  mdlog::info("ArrowArrayStream created for file " + props.filename);
 
   duckdb_connection c_con = reinterpret_cast<duckdb_connection>(&con);
   duckdb_arrow_stream c_arrow_stream = (duckdb_arrow_stream)&arrow_array_stream;
+  mdlog::info("duckdb_arrow_stream created for file " + props.filename);
   duckdb_arrow_scan(c_con, "arrow_view", c_arrow_stream);
+  mdlog::info("duckdb_arrow_scan completed for file " + props.filename);
 
-  process_view("localmem.arrow_view");
+  process_view("\"localmem\".\"arrow_view\"");
+  mdlog::info("view processed for file " + props.filename);
 
   arrow_array_stream.release(&arrow_array_stream);
 }
@@ -386,6 +390,7 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
                    [](const column_def &col) { return col.name; });
 
     for (auto &filename : request->replace_files()) {
+      mdlog::info("Processing replace file " + filename);
       const auto decryption_key = get_encryption_key(
           filename, request->keys(), request->csv().encryption());
 
@@ -397,7 +402,7 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
       });
     }
     for (auto &filename : request->update_files()) {
-
+      mdlog::info("Processing update file " + filename);
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
       IngestProperties props(filename, decryption_key, column_names,
@@ -409,6 +414,7 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
       });
     }
     for (auto &filename : request->delete_files()) {
+      mdlog::info("Processing delete file " + filename);
       auto decryption_key = get_encryption_key(filename, request->keys(),
                                                request->csv().encryption());
       std::vector<std::string> empty;
