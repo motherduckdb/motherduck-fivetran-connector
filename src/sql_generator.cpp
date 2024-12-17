@@ -448,8 +448,8 @@ void update_values(duckdb::Connection &con, const table_def &table,
   write_joined(
       sql, columns_pk,
       [&](const std::string &quoted_col, std::ostringstream &out) {
-        out << table.table_name << "." << quoted_col << " = "
-            << staging_table_name << "." << quoted_col;
+        out << KeywordHelper::WriteQuoted(table.table_name, '"') << "."
+            << quoted_col << " = " << staging_table_name << "." << quoted_col;
       },
       " AND ");
 
@@ -474,8 +474,8 @@ void delete_rows(duckdb::Connection &con, const table_def &table,
   write_joined(
       sql, columns_pk,
       [&](const std::string &quoted_col, std::ostringstream &out) {
-        out << table.table_name << "." << quoted_col << " = "
-            << staging_table_name << "." << quoted_col;
+        out << KeywordHelper::WriteQuoted(table.table_name, '"') << "."
+            << quoted_col << " = " << staging_table_name << "." << quoted_col;
       },
       " AND ");
 
