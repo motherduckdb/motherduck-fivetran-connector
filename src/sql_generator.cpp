@@ -61,9 +61,14 @@ make_full_column_list(const std::vector<const column_def *> &columns_pk,
   return full_column_list.str();
 }
 
-void run_query(duckdb::Connection &con, const std::string &log_prefix,
-               const std::string &query, const std::string &error_message) {
-  mdlog::info(log_prefix + ": " + query);
+MdSqlGenerator::MdSqlGenerator(std::shared_ptr<mdlog::MdLog> &logger_)
+    : logger(logger_) {}
+
+void MdSqlGenerator::run_query(duckdb::Connection &con,
+                               const std::string &log_prefix,
+                               const std::string &query,
+                               const std::string &error_message) {
+  logger->info(log_prefix + ": " + query);
   auto result = con.Query(query);
   if (result->HasError()) {
     throw std::runtime_error(error_message + ": " + result->GetError());
@@ -72,8 +77,9 @@ void run_query(duckdb::Connection &con, const std::string &log_prefix,
 
 // DuckDB querying
 // TODO: add test for schema or remove the logic if it's unused
-bool schema_exists(duckdb::Connection &con, const std::string &db_name,
-                   const std::string &schema_name) {
+bool MdSqlGenerator::schema_exists(duckdb::Connection &con,
+                                   const std::string &db_name,
+                                   const std::string &schema_name) {
   const std::string query =
       "SELECT schema_name FROM information_schema.schemata "
       "WHERE catalog_name=? AND schema_name=?";
@@ -95,7 +101,8 @@ bool schema_exists(duckdb::Connection &con, const std::string &db_name,
   return materialized_result->RowCount() > 0;
 }
 
-bool table_exists(duckdb::Connection &con, const table_def &table) {
+bool MdSqlGenerator::table_exists(duckdb::Connection &con,
+                                  const table_def &table) {
   const std::string query =
       "SELECT table_name FROM information_schema.tables WHERE "
       "table_catalog=? AND table_schema=? AND table_name=?";
@@ -118,10 +125,11 @@ bool table_exists(duckdb::Connection &con, const table_def &table) {
   return materialized_result->RowCount() > 0;
 }
 
-void create_schema(duckdb::Connection &con, const std::string &db_name,
-                   const std::string &schema_name) {
+void MdSqlGenerator::create_schema(duckdb::Connection &con,
+                                   const std::string &db_name,
+                                   const std::string &schema_name) {
   auto query = "CREATE schema " + KeywordHelper::WriteQuoted(schema_name, '\'');
-  mdlog::info("create_schema: " + query);
+  logger->info("create_schema: " + query);
   con.Query(query);
 }
 
@@ -138,9 +146,10 @@ std::string get_default_value(duckdb::LogicalTypeId type) {
   }
 }
 
-void create_table(duckdb::Connection &con, const table_def &table,
-                  const std::vector<column_def> &all_columns,
-                  const std::set<std::string> &columns_with_default_value) {
+void MdSqlGenerator::create_table(
+    duckdb::Connection &con, const table_def &table,
+    const std::vector<column_def> &all_columns,
+    const std::set<std::string> &columns_with_default_value) {
   const std::string absolute_table_name = table.to_escaped_string();
 
   std::vector<const column_def *> columns_pk;
@@ -172,7 +181,7 @@ void create_table(duckdb::Connection &con, const table_def &table,
   ddl << ")";
 
   auto query = ddl.str();
-  mdlog::info("create_table: " + query);
+  logger->info("create_table: " + query);
 
   auto result = con.Query(query);
   if (result->HasError()) {
@@ -181,8 +190,8 @@ void create_table(duckdb::Connection &con, const table_def &table,
   }
 }
 
-std::vector<column_def> describe_table(duckdb::Connection &con,
-                                       const table_def &table) {
+std::vector<column_def> MdSqlGenerator::describe_table(duckdb::Connection &con,
+                                                       const table_def &table) {
   // TBD is_identity is never set, used is_nullable=no temporarily but really
   // should use duckdb_constraints table.
 
@@ -200,7 +209,7 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
                "AND table_name=?";
   const std::string err =
       "Could not describe table <" + table.to_escaped_string() + ">";
-  mdlog::info("describe_table: " + std::string(query));
+  logger->info("describe_table: " + std::string(query));
   auto statement = con.Prepare(query);
   if (statement->HasError()) {
     throw std::runtime_error(err + " (at bind step): " + statement->GetError());
@@ -230,9 +239,10 @@ std::vector<column_def> describe_table(duckdb::Connection &con,
   return columns;
 }
 
-void alter_table_recreate(duckdb::Connection &con, const table_def &table,
-                          const std::vector<column_def> &all_columns,
-                          const std::set<std::string> &common_columns) {
+void MdSqlGenerator::alter_table_recreate(
+    duckdb::Connection &con, const table_def &table,
+    const std::vector<column_def> &all_columns,
+    const std::set<std::string> &common_columns) {
   long timestamp = std::chrono::duration_cast<std::chrono::seconds>(
                        std::chrono::system_clock::now().time_since_epoch())
                        .count();
@@ -281,7 +291,7 @@ void alter_table_recreate(duckdb::Connection &con, const table_def &table,
             "Could not drop table <" + absolute_temp_table_name + ">");
 }
 
-void alter_table_in_place(
+void MdSqlGenerator::alter_table_in_place(
     duckdb::Connection &con, const std::string &absolute_table_name,
     const std::set<std::string> &added_columns,
     const std::set<std::string> &deleted_columns,
@@ -325,8 +335,9 @@ void alter_table_in_place(
   }
 }
 
-void alter_table(duckdb::Connection &con, const table_def &table,
-                 const std::vector<column_def> &columns) {
+void MdSqlGenerator::alter_table(duckdb::Connection &con,
+                                 const table_def &table,
+                                 const std::vector<column_def> &columns) {
 
   bool recreate_table = false;
 
@@ -357,8 +368,8 @@ void alter_table(duckdb::Connection &con, const table_def &table,
         recreate_table = true;
       }
     } else if (new_col_it->second.primary_key != col.primary_key) {
-      mdlog::info("Altering primary key requested for column <" +
-                  new_col_it->second.name + ">");
+      logger->info("Altering primary key requested for column <" +
+                   new_col_it->second.name + ">");
       recreate_table = true;
     } else if (new_col_it->second.type != col.type) {
       alter_types.emplace(col.name);
@@ -371,8 +382,8 @@ void alter_table(duckdb::Connection &con, const table_def &table,
                      return new_column_map[column_name].primary_key;
                    });
   if (primary_key_added_it != added_columns.end()) {
-    mdlog::info("Adding primary key requested for column <" +
-                *primary_key_added_it + ">");
+    logger->info("Adding primary key requested for column <" +
+                 *primary_key_added_it + ">");
     recreate_table = true;
   }
 
@@ -392,10 +403,11 @@ void alter_table(duckdb::Connection &con, const table_def &table,
                 absolute_table_name + ">");
 }
 
-void upsert(duckdb::Connection &con, const table_def &table,
-            const std::string &staging_table_name,
-            const std::vector<const column_def *> &columns_pk,
-            const std::vector<const column_def *> &columns_regular) {
+void MdSqlGenerator::upsert(
+    duckdb::Connection &con, const table_def &table,
+    const std::string &staging_table_name,
+    const std::vector<const column_def *> &columns_pk,
+    const std::vector<const column_def *> &columns_regular) {
 
   auto full_column_list = make_full_column_list(columns_pk, columns_regular);
   const std::string absolute_table_name = table.to_escaped_string();
@@ -414,7 +426,7 @@ void upsert(duckdb::Connection &con, const table_def &table,
   }
 
   auto query = sql.str();
-  mdlog::info("upsert: " + query);
+  logger->info("upsert: " + query);
   auto result = con.Query(query);
   if (result->HasError()) {
     throw std::runtime_error("Could not upsert table <" + absolute_table_name +
@@ -422,11 +434,12 @@ void upsert(duckdb::Connection &con, const table_def &table,
   }
 }
 
-void update_values(duckdb::Connection &con, const table_def &table,
-                   const std::string &staging_table_name,
-                   std::vector<const column_def *> &columns_pk,
-                   std::vector<const column_def *> &columns_regular,
-                   const std::string &unmodified_string) {
+void MdSqlGenerator::update_values(
+    duckdb::Connection &con, const table_def &table,
+    const std::string &staging_table_name,
+    std::vector<const column_def *> &columns_pk,
+    std::vector<const column_def *> &columns_regular,
+    const std::string &unmodified_string) {
 
   std::ostringstream sql;
   auto absolute_table_name = table.to_escaped_string();
@@ -454,7 +467,7 @@ void update_values(duckdb::Connection &con, const table_def &table,
       " AND ");
 
   auto query = sql.str();
-  mdlog::info("update: " + query);
+  logger->info("update: " + query);
   auto result = con.Query(query);
   if (result->HasError()) {
     throw std::runtime_error("Could not update table <" + absolute_table_name +
@@ -462,9 +475,10 @@ void update_values(duckdb::Connection &con, const table_def &table,
   }
 }
 
-void delete_rows(duckdb::Connection &con, const table_def &table,
-                 const std::string &staging_table_name,
-                 std::vector<const column_def *> &columns_pk) {
+void MdSqlGenerator::delete_rows(duckdb::Connection &con,
+                                 const table_def &table,
+                                 const std::string &staging_table_name,
+                                 std::vector<const column_def *> &columns_pk) {
 
   const std::string absolute_table_name = table.to_escaped_string();
   std::ostringstream sql;
@@ -480,7 +494,7 @@ void delete_rows(duckdb::Connection &con, const table_def &table,
       " AND ");
 
   auto query = sql.str();
-  mdlog::info("delete_rows: " + query);
+  logger->info("delete_rows: " + query);
   auto result = con.Query(query);
   if (result->HasError()) {
     throw std::runtime_error("Error deleting rows from table <" +
@@ -488,14 +502,15 @@ void delete_rows(duckdb::Connection &con, const table_def &table,
   }
 }
 
-void truncate_table(duckdb::Connection &con, const table_def &table,
-                    const std::string &synced_column,
-                    std::chrono::nanoseconds &cutoff_ns,
-                    const std::string &deleted_column) {
+void MdSqlGenerator::truncate_table(duckdb::Connection &con,
+                                    const table_def &table,
+                                    const std::string &synced_column,
+                                    std::chrono::nanoseconds &cutoff_ns,
+                                    const std::string &deleted_column) {
   const std::string absolute_table_name = table.to_escaped_string();
   std::ostringstream sql;
 
-  mdlog::info("truncate_table request: deleted column = " + deleted_column);
+  logger->info("truncate_table request: deleted column = " + deleted_column);
   if (deleted_column.empty()) {
     // hard delete
     sql << "DELETE FROM " << absolute_table_name;
@@ -504,13 +519,13 @@ void truncate_table(duckdb::Connection &con, const table_def &table,
     sql << "UPDATE " << absolute_table_name << " SET "
         << KeywordHelper::WriteQuoted(deleted_column, '"') << " = true";
   }
-  mdlog::info("truncate_table request: synced column = " + synced_column);
+  logger->info("truncate_table request: synced column = " + synced_column);
   sql << " WHERE " << KeywordHelper::WriteQuoted(synced_column, '"')
       << " < make_timestamp(?)";
   auto query = sql.str();
   const std::string err =
       "Error truncating table at bind step <" + absolute_table_name + ">";
-  mdlog::info("truncate_table: " + query);
+  logger->info("truncate_table: " + query);
   auto statement = con.Prepare(query);
   if (statement->HasError()) {
     throw std::runtime_error(err + " (at bind step):" + statement->GetError());
@@ -521,15 +536,15 @@ void truncate_table(duckdb::Connection &con, const table_def &table,
   int64_t cutoff_microseconds = cutoff_ns.count() / 1000;
   duckdb::vector<duckdb::Value> params = {duckdb::Value(cutoff_microseconds)};
 
-  mdlog::info("truncate_table: cutoff_microseconds = <" +
-              std::to_string(cutoff_microseconds) + ">");
+  logger->info("truncate_table: cutoff_microseconds = <" +
+               std::to_string(cutoff_microseconds) + ">");
   auto result = statement->Execute(params, false);
   if (result->HasError()) {
     throw std::runtime_error(err + ": " + result->GetError());
   }
 }
 
-void check_connection(duckdb::Connection &con) {
+void MdSqlGenerator::check_connection(duckdb::Connection &con) {
   auto result = con.Query("PRAGMA MD_VERSION");
   if (result->HasError()) {
     throw std::runtime_error("Error checking connection: " +
