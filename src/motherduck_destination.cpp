@@ -1,5 +1,7 @@
 #include "duckdb.hpp"
 #include "motherduck_destination_server.hpp"
+#include <csignal>
+#include <execinfo.h>
 #include <grpcpp/grpcpp.h>
 #include <string>
 
@@ -39,7 +41,26 @@ void download_motherduck_extension() {
   }
 }
 
+void logCrash(int sig) {
+  void *array[512];
+  size_t size = backtrace(array, 512);
+  char **strings = backtrace_symbols(array, size);
+
+  std::cerr << "Crash signal " << sig << std::endl;
+  std::cerr << "Stack trace: " << std::endl;
+
+  for (size_t i = 0; i < size; i++) {
+    std::cerr << strings[i] << std::endl;
+  }
+
+  free(strings);
+  std::exit(sig);
+}
+
 int main(int argc, char **argv) {
+  std::signal(SIGSEGV, logCrash);
+  std::signal(SIGABRT, logCrash);
+
   std::string port = "50052";
   for (auto i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--port") == 0) {
