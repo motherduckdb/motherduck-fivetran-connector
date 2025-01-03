@@ -204,10 +204,16 @@ grpc::Status DestinationSdkImpl::DescribeTable(
         find_property(request->configuration(), MD_PROP_DATABASE);
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name);
+    mdlog::info("Endpoint <DescribeTable>: got connection");
     table_def table_name{db_name, get_schema_name(request),
                          get_table_name(request)};
 
+    mdlog::info("Endpoint <DescribeTable>: schema name <" +
+                table_name.schema_name + ">");
+    mdlog::info("Endpoint <DescribeTable>: table name <" +
+                table_name.table_name + ">");
     if (!table_exists(*con, table_name)) {
+      mdlog::info("Endpoint <DescribeTable>: table not found");
       response->set_not_found(true);
       return ::grpc::Status(::grpc::StatusCode::OK, "");
     }
