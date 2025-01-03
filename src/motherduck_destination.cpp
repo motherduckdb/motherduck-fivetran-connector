@@ -42,18 +42,7 @@ void download_motherduck_extension() {
 }
 
 void logCrash(int sig) {
-  void *array[512];
-  size_t size = backtrace(array, 512);
-  char **strings = backtrace_symbols(array, size);
-
   std::cerr << "Crash signal " << sig << std::endl;
-  std::cerr << "Stack trace: " << std::endl;
-
-  for (size_t i = 0; i < size; i++) {
-    std::cerr << strings[i] << std::endl;
-  }
-
-  free(strings);
   std::exit(sig);
 }
 
