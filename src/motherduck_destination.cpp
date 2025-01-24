@@ -1,5 +1,7 @@
 #include "duckdb.hpp"
 #include "motherduck_destination_server.hpp"
+#include <csignal>
+#include <execinfo.h>
 #include <grpcpp/grpcpp.h>
 #include <string>
 
@@ -39,7 +41,15 @@ void download_motherduck_extension() {
   }
 }
 
+void logCrash(int sig) {
+  std::cerr << "Crash signal " << sig << std::endl;
+  std::exit(sig);
+}
+
 int main(int argc, char **argv) {
+  std::signal(SIGSEGV, logCrash);
+  std::signal(SIGABRT, logCrash);
+
   std::string port = "50052";
   for (auto i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--port") == 0) {

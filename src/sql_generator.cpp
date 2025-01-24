@@ -109,6 +109,7 @@ bool MdSqlGenerator::table_exists(duckdb::Connection &con,
   const std::string err =
       "Could not find whether table <" + table.to_escaped_string() + "> exists";
   auto statement = con.Prepare(query);
+  logger->info("    prepared table_exists query for table " + table.table_name);
   if (statement->HasError()) {
     throw std::runtime_error(err + " (at bind step): " + statement->GetError());
   }
@@ -116,12 +117,15 @@ bool MdSqlGenerator::table_exists(duckdb::Connection &con,
                                           duckdb::Value(table.schema_name),
                                           duckdb::Value(table.table_name)};
   auto result = statement->Execute(params, false);
+  logger->info("    executed table_exists query for table " + table.table_name);
 
   if (result->HasError()) {
     throw std::runtime_error(err + ": " + result->GetError());
   }
   auto materialized_result = duckdb::unique_ptr_cast<
       duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
+  logger->info("    materialized table_exists results for table " +
+               table.table_name);
   return materialized_result->RowCount() > 0;
 }
 
