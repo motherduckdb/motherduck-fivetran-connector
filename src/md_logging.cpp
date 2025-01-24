@@ -12,15 +12,21 @@ std::string escape_char(const std::string &str, const char &c) {
   return result;
 }
 
-void log(const std::string &level, const std::string &message) {
+void MdLog::log(const std::string &level, const std::string &message) {
   std::cout << "{\"level\":\"" << escape_char(level, '"') << "\","
-            << "\"message\":\"" << escape_char(message, '"') << "\","
+            << "\"message\":\"" << escape_char(message, '"') << ", duckdb_id=<"
+            << duckdb_id << ">\","
             << "\"message-origin\":\"sdk_destination\"}" << std::endl;
 }
 
-void info(const std::string &message) { log("INFO", message); }
+void MdLog::info(const std::string &message) { log("INFO", message); }
 
-void warning(const std::string &message) { log("WARNING", message); }
+void MdLog::warning(const std::string &message) { log("WARNING", message); }
 
-void severe(const std::string &message) { log("SEVERE", message); }
+void MdLog::severe(const std::string &message) { log("SEVERE", message); }
+
+void MdLog::set_duckdb_id(const std::string &duckdb_id_) {
+  duckdb_id = duckdb_id_;
+}
+
 } // namespace mdlog
