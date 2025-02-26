@@ -51,7 +51,7 @@ template <typename T> std::string get_table_name(const T *request) {
 }
 
 std::vector<column_def> get_duckdb_columns(
-    const google::protobuf::RepeatedPtrField<fivetran_sdk::Column>
+    const google::protobuf::RepeatedPtrField<fivetran_sdk::v2::Column>
         &fivetran_columns) {
   std::vector<column_def> duckdb_columns;
   for (auto &col : fivetran_columns) {
@@ -62,10 +62,10 @@ std::vector<column_def> get_duckdb_columns(
                                   DataType_Name(col.type()) + "> for column <" +
                                   col.name() + "> to a DuckDB type");
     }
-    auto precision = col.has_decimal() ? col.decimal().precision()
+    auto precision = col.has_params() && col.params().has_decimal() ? col.params().decimal().precision()
                                        : DUCKDB_DEFAULT_PRECISION;
     auto scale =
-        col.has_decimal() ? col.decimal().scale() : DUCKDB_DEFAULT_SCALE;
+				col.has_params() && col.params().has_decimal() ? col.params().decimal().scale() : DUCKDB_DEFAULT_SCALE;
     duckdb_columns.push_back(
         column_def{col.name(), ddbtype, col.primary_key(), precision, scale});
   }
@@ -99,8 +99,8 @@ std::unique_ptr<duckdb::Connection> get_connection(
 const std::string
 get_encryption_key(const std::string &filename,
                    const google::protobuf::Map<std::string, std::string> &keys,
-                   ::fivetran_sdk::Encryption encryption) {
-  if (encryption == ::fivetran_sdk::Encryption::NONE) {
+                   ::fivetran_sdk::v2::Encryption encryption) {
+  if (encryption == ::fivetran_sdk::v2::Encryption::NONE) {
     return "";
   }
   auto encryption_key_it = keys.find(filename);
@@ -156,32 +156,32 @@ void process_file(
 
 grpc::Status DestinationSdkImpl::ConfigurationForm(
     ::grpc::ServerContext *context,
-    const ::fivetran_sdk::ConfigurationFormRequest *request,
-    ::fivetran_sdk::ConfigurationFormResponse *response) {
+    const ::fivetran_sdk::v2::ConfigurationFormRequest *request,
+    ::fivetran_sdk::v2::ConfigurationFormResponse *response) {
 
   response->set_schema_selection_supported(true);
   response->set_table_selection_supported(true);
 
-  fivetran_sdk::FormField token_field;
+  fivetran_sdk::v2::FormField token_field;
   token_field.set_name(MD_PROP_TOKEN);
   token_field.set_label("Authentication Token");
   token_field.set_description(
       "Please get your authentication token from app.motherduck.com");
-  token_field.set_text_field(fivetran_sdk::Password);
+  token_field.set_text_field(fivetran_sdk::v2::Password);
   token_field.set_required(true);
 
   response->add_fields()->CopyFrom(token_field);
 
-  fivetran_sdk::FormField db_field;
+  fivetran_sdk::v2::FormField db_field;
   db_field.set_name(MD_PROP_DATABASE);
   db_field.set_label("Database Name");
   db_field.set_description("The database to work in");
-  db_field.set_text_field(fivetran_sdk::PlainText);
+  db_field.set_text_field(fivetran_sdk::v2::PlainText);
   db_field.set_required(true);
 
   response->add_fields()->CopyFrom(db_field);
 
-  fivetran_sdk::FormField block_size_field;
+  fivetran_sdk::v2::FormField block_size_field;
   block_size_field.set_name(MD_PROP_CSV_BLOCK_SIZE);
   block_size_field.set_label(
       "Maximum individual value size, in megabytes (default 1 MB)");
@@ -189,7 +189,7 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
       "This field limits the maximum length of a single field value coming "
       "from the input source."
       "Must be a valid numeric value");
-  block_size_field.set_text_field(fivetran_sdk::PlainText);
+  block_size_field.set_text_field(fivetran_sdk::v2::PlainText);
   block_size_field.set_required(false);
   response->add_fields()->CopyFrom(block_size_field);
 
@@ -206,8 +206,8 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
 
 grpc::Status DestinationSdkImpl::DescribeTable(
     ::grpc::ServerContext *context,
-    const ::fivetran_sdk::DescribeTableRequest *request,
-    ::fivetran_sdk::DescribeTableResponse *response) {
+    const ::fivetran_sdk::v2::DescribeTableRequest *request,
+    ::fivetran_sdk::v2::DescribeTableResponse *response) {
   auto logger = std::make_shared<mdlog::MdLog>();
   try {
     logger->info("Endpoint <DescribeTable>: started");
@@ -233,21 +233,21 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     auto duckdb_columns = sql_generator->describe_table(*con, table_name);
     logger->info("Endpoint <DescribeTable>: got columns");
 
-    fivetran_sdk::Table *table = response->mutable_table();
+    fivetran_sdk::v2::Table *table = response->mutable_table();
     table->set_name(get_table_name(request));
 
     for (auto &col : duckdb_columns) {
       logger->info("Endpoint <DescribeTable>:   processing column " + col.name);
-      fivetran_sdk::Column *ft_col = table->mutable_columns()->Add();
+      fivetran_sdk::v2::Column *ft_col = table->mutable_columns()->Add();
       ft_col->set_name(col.name);
       const auto fivetran_type = get_fivetran_type(col.type);
       logger->info("Endpoint <DescribeTable>:   column type = " +
                    std::to_string(fivetran_type));
       ft_col->set_type(fivetran_type);
       ft_col->set_primary_key(col.primary_key);
-      if (fivetran_type == fivetran_sdk::DECIMAL) {
-        ft_col->mutable_decimal()->set_precision(col.width);
-        ft_col->mutable_decimal()->set_scale(col.scale);
+      if (fivetran_type == fivetran_sdk::v2::DECIMAL) {
+        ft_col->mutable_params()->mutable_decimal()->set_precision(col.width);
+        ft_col->mutable_params()->mutable_decimal()->set_scale(col.scale);
       }
     }
 
@@ -255,7 +255,7 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     logger->severe("DescribeTable endpoint failed for schema <" +
                    request->schema_name() + ">, table <" +
                    request->table_name() + ">:" + std::string(e.what()));
-    response->set_failure(e.what());
+    response->mutable_task()->set_message(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
 
@@ -265,8 +265,8 @@ grpc::Status DestinationSdkImpl::DescribeTable(
 
 grpc::Status DestinationSdkImpl::CreateTable(
     ::grpc::ServerContext *context,
-    const ::fivetran_sdk::CreateTableRequest *request,
-    ::fivetran_sdk::CreateTableResponse *response) {
+    const ::fivetran_sdk::v2::CreateTableRequest *request,
+    ::fivetran_sdk::v2::CreateTableResponse *response) {
 
   auto logger = std::make_shared<mdlog::MdLog>();
   try {
@@ -290,7 +290,7 @@ grpc::Status DestinationSdkImpl::CreateTable(
     logger->severe("CreateTable endpoint failed for schema <" +
                    request->schema_name() + ">, table <" +
                    request->table().name() + ">:" + std::string(e.what()));
-    response->set_failure(e.what());
+    response->mutable_task()->set_message(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
 
@@ -299,8 +299,8 @@ grpc::Status DestinationSdkImpl::CreateTable(
 
 grpc::Status
 DestinationSdkImpl::AlterTable(::grpc::ServerContext *context,
-                               const ::fivetran_sdk::AlterTableRequest *request,
-                               ::fivetran_sdk::AlterTableResponse *response) {
+                               const ::fivetran_sdk::v2::AlterTableRequest *request,
+                               ::fivetran_sdk::v2::AlterTableResponse *response) {
   auto logger = std::make_shared<mdlog::MdLog>();
   try {
     std::string db_name =
@@ -319,7 +319,7 @@ DestinationSdkImpl::AlterTable(::grpc::ServerContext *context,
     logger->severe("AlterTable endpoint failed for schema <" +
                    request->schema_name() + ">, table <" +
                    request->table().name() + ">:" + std::string(e.what()));
-    response->set_failure(e.what());
+    response->mutable_task()->set_message(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
 
@@ -328,8 +328,8 @@ DestinationSdkImpl::AlterTable(::grpc::ServerContext *context,
 
 grpc::Status
 DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
-                             const ::fivetran_sdk::TruncateRequest *request,
-                             ::fivetran_sdk::TruncateResponse *response) {
+                             const ::fivetran_sdk::v2::TruncateRequest *request,
+                             ::fivetran_sdk::v2::TruncateResponse *response) {
 
   auto logger = std::make_shared<mdlog::MdLog>();
   try {
@@ -365,7 +365,7 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
     logger->severe("Truncate endpoint failed for schema <" +
                    request->schema_name() + ">, table <" +
                    request->table_name() + ">:" + std::string(e.what()));
-    response->set_failure(e.what());
+    response->mutable_task()->set_message(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
   return ::grpc::Status(::grpc::StatusCode::OK, "");
@@ -373,8 +373,8 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
 
 grpc::Status
 DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
-                               const ::fivetran_sdk::WriteBatchRequest *request,
-                               ::fivetran_sdk::WriteBatchResponse *response) {
+                               const ::fivetran_sdk::v2::WriteBatchRequest *request,
+                               ::fivetran_sdk::v2::WriteBatchResponse *response) {
 
   auto logger = std::make_shared<mdlog::MdLog>();
   try {
@@ -418,10 +418,11 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
     for (auto &filename : request->replace_files()) {
       logger->info("Processing replace file " + filename);
       const auto decryption_key = get_encryption_key(
-          filename, request->keys(), request->csv().encryption());
+          filename, request->keys(), request->file_params().encryption());
 
+			// TODO: watch out for optional() they can segfault; make sure they did not make more things optional
       IngestProperties props(filename, decryption_key, column_names,
-                             request->csv().null_string(), csv_block_size);
+                             request->file_params().null_string(), csv_block_size);
 
       process_file(*con, props, logger, [&](const std::string &view_name) {
         sql_generator->upsert(*con, table_name, view_name, columns_pk,
@@ -431,23 +432,23 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
     for (auto &filename : request->update_files()) {
       logger->info("Processing update file " + filename);
       auto decryption_key = get_encryption_key(filename, request->keys(),
-                                               request->csv().encryption());
+                                               request->file_params().encryption());
       IngestProperties props(filename, decryption_key, column_names,
-                             request->csv().null_string(), csv_block_size);
+                             request->file_params().null_string(), csv_block_size);
 
       process_file(*con, props, logger, [&](const std::string &view_name) {
         sql_generator->update_values(*con, table_name, view_name, columns_pk,
                                      columns_regular,
-                                     request->csv().unmodified_string());
+                                     request->file_params().unmodified_string());
       });
     }
     for (auto &filename : request->delete_files()) {
       logger->info("Processing delete file " + filename);
       auto decryption_key = get_encryption_key(filename, request->keys(),
-                                               request->csv().encryption());
+                                               request->file_params().encryption());
       std::vector<std::string> empty;
       IngestProperties props(filename, decryption_key, empty,
-                             request->csv().null_string(), csv_block_size);
+                             request->file_params().null_string(), csv_block_size);
 
       process_file(*con, props, logger, [&](const std::string &view_name) {
         sql_generator->delete_rows(*con, table_name, view_name, columns_pk);
@@ -460,7 +461,7 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
                      request->schema_name() + ">, table <" +
                      request->table().name() + ">:" + std::string(e.what());
     logger->severe(msg);
-    response->set_failure(msg);
+    response->mutable_task()->set_message(msg);
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, msg);
   }
 
@@ -482,8 +483,8 @@ void check_csv_block_size_is_numeric(
 
 grpc::Status
 DestinationSdkImpl::Test(::grpc::ServerContext *context,
-                         const ::fivetran_sdk::TestRequest *request,
-                         ::fivetran_sdk::TestResponse *response) {
+                         const ::fivetran_sdk::v2::TestRequest *request,
+                         ::fivetran_sdk::v2::TestResponse *response) {
 
   auto logger = std::make_shared<mdlog::MdLog>();
   std::string db_name;

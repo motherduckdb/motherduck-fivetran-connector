@@ -86,8 +86,9 @@ get_duckdb:
 
 get_fivetran_protos:
 	mkdir -p protos
-	curl -o protos/destination_sdk.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/production/destination_sdk.proto
-	curl -o protos/common.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/production/common.proto
+	# TBD: might need to update to `production` before merging
+	curl -o protos/destination_sdk.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/v2/destination_sdk.proto
+	curl -o protos/common.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/v2/common.proto
 
 build_dependencies: get_duckdb build_openssl_native build_grpc build_arrow build_test_dependencies
 
