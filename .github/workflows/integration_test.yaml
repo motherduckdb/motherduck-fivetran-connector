@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: "15 3 * * *" # run nightly at 3:15am
 
 jobs:
 
