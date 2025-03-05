@@ -145,7 +145,7 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable",
       REQUIRE(response.table().columns(0).name() == "id");
       REQUIRE(response.table().columns(0).type() ==
               ::fivetran_sdk::v2::DataType::STRING);
-			REQUIRE_FALSE(response.table().columns(0).has_params());
+      REQUIRE_FALSE(response.table().columns(0).has_params());
       REQUIRE_FALSE(response.table().columns(0).params().has_decimal());
     }
   }
@@ -416,8 +416,10 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
     (*request.mutable_configuration())["motherduck_token"] = token;
     (*request.mutable_configuration())["motherduck_database"] =
         TEST_DATABASE_NAME;
-    request.mutable_file_params()->set_encryption(::fivetran_sdk::v2::Encryption::AES);
-    request.mutable_file_params()->set_compression(::fivetran_sdk::v2::Compression::ZSTD);
+    request.mutable_file_params()->set_encryption(
+        ::fivetran_sdk::v2::Encryption::AES);
+    request.mutable_file_params()->set_compression(
+        ::fivetran_sdk::v2::Compression::ZSTD);
     define_test_table(request, table_name);
     const std::string filename = "books_batch_1_insert.csv.zst.aes";
     const std::string filepath = TEST_RESOURCES_DIR + filename;
@@ -761,7 +763,8 @@ TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
     (*request.mutable_configuration())["motherduck_token"] = token;
     (*request.mutable_configuration())["motherduck_database"] =
         TEST_DATABASE_NAME;
-    request.mutable_file_params()->set_unmodified_string("magic-unmodified-value");
+    request.mutable_file_params()->set_unmodified_string(
+        "magic-unmodified-value");
     request.mutable_file_params()->set_null_string("magic-nullvalue");
     define_test_multikey_table(request, table_name);
     const std::string filename = "multikey_table_update.csv";
@@ -1058,8 +1061,10 @@ TEST_CASE("reading inaccessible or nonexistent files fails") {
   (*request.mutable_configuration())["motherduck_token"] = token;
   (*request.mutable_configuration())["motherduck_database"] =
       TEST_DATABASE_NAME;
-  request.mutable_file_params()->set_encryption(::fivetran_sdk::v2::Encryption::AES);
-  request.mutable_file_params()->set_compression(::fivetran_sdk::v2::Compression::ZSTD);
+  request.mutable_file_params()->set_encryption(
+      ::fivetran_sdk::v2::Encryption::AES);
+  request.mutable_file_params()->set_compression(
+      ::fivetran_sdk::v2::Compression::ZSTD);
   define_test_table(request, "unused_table");
 
   request.add_replace_files(bad_file_name);
@@ -1167,7 +1172,7 @@ TEST_CASE("Test all types with create and describe table") {
     REQUIRE(response.table().columns(2).type() ==
             ::fivetran_sdk::v2::DataType::DECIMAL);
     REQUIRE(response.table().columns(2).has_params());
-		REQUIRE(response.table().columns(2).params().has_decimal());
+    REQUIRE(response.table().columns(2).params().has_decimal());
 
     REQUIRE(response.table().columns(2).params().decimal().scale() == 11);
     REQUIRE(response.table().columns(2).params().decimal().precision() == 20);
@@ -1222,8 +1227,8 @@ void add_config(T &request, const std::string &token,
 }
 
 template <typename T>
-void add_col(T &request, const std::string &name, ::fivetran_sdk::v2::DataType type,
-             bool is_primary_key) {
+void add_col(T &request, const std::string &name,
+             ::fivetran_sdk::v2::DataType type, bool is_primary_key) {
   auto col = request.mutable_table()->add_columns();
   col->set_name(name);
   col->set_type(type);
@@ -1574,4 +1579,15 @@ TEST_CASE("Invalid truncate with nonexisting delete column",
         Catch::Matchers::ContainsSubstring(
             "Referenced column \"_fivetran_synced\" not found in FROM clause"));
   }
+}
+
+TEST_CASE("Capabilities", "[integration]") {
+  DestinationSdkImpl service;
+  ::fivetran_sdk::v2::CapabilitiesRequest request;
+  ::fivetran_sdk::v2::CapabilitiesResponse response;
+
+  auto status = service.Capabilities(nullptr, &request, &response);
+  REQUIRE_NO_FAIL(status);
+
+  REQUIRE(response.batch_file_format() == ::fivetran_sdk::v2::CSV);
 }

@@ -62,10 +62,12 @@ std::vector<column_def> get_duckdb_columns(
                                   DataType_Name(col.type()) + "> for column <" +
                                   col.name() + "> to a DuckDB type");
     }
-    auto precision = col.has_params() && col.params().has_decimal() ? col.params().decimal().precision()
-                                       : DUCKDB_DEFAULT_PRECISION;
-    auto scale =
-				col.has_params() && col.params().has_decimal() ? col.params().decimal().scale() : DUCKDB_DEFAULT_SCALE;
+    auto precision = col.has_params() && col.params().has_decimal()
+                         ? col.params().decimal().precision()
+                         : DUCKDB_DEFAULT_PRECISION;
+    auto scale = col.has_params() && col.params().has_decimal()
+                     ? col.params().decimal().scale()
+                     : DUCKDB_DEFAULT_SCALE;
     duckdb_columns.push_back(
         column_def{col.name(), ddbtype, col.primary_key(), precision, scale});
   }
@@ -204,6 +206,14 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
+grpc::Status DestinationSdkImpl::Capabilities(
+    ::grpc::ServerContext *context,
+    const ::fivetran_sdk::v2::CapabilitiesRequest *request,
+    ::fivetran_sdk::v2::CapabilitiesResponse *response) {
+  response->set_batch_file_format(::fivetran_sdk::v2::CSV);
+  return ::grpc::Status(::grpc::StatusCode::OK, "");
+}
+
 grpc::Status DestinationSdkImpl::DescribeTable(
     ::grpc::ServerContext *context,
     const ::fivetran_sdk::v2::DescribeTableRequest *request,
@@ -297,10 +307,10 @@ grpc::Status DestinationSdkImpl::CreateTable(
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
-grpc::Status
-DestinationSdkImpl::AlterTable(::grpc::ServerContext *context,
-                               const ::fivetran_sdk::v2::AlterTableRequest *request,
-                               ::fivetran_sdk::v2::AlterTableResponse *response) {
+grpc::Status DestinationSdkImpl::AlterTable(
+    ::grpc::ServerContext *context,
+    const ::fivetran_sdk::v2::AlterTableRequest *request,
+    ::fivetran_sdk::v2::AlterTableResponse *response) {
   auto logger = std::make_shared<mdlog::MdLog>();
   try {
     std::string db_name =
@@ -371,10 +381,10 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
-grpc::Status
-DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
-                               const ::fivetran_sdk::v2::WriteBatchRequest *request,
-                               ::fivetran_sdk::v2::WriteBatchResponse *response) {
+grpc::Status DestinationSdkImpl::WriteBatch(
+    ::grpc::ServerContext *context,
+    const ::fivetran_sdk::v2::WriteBatchRequest *request,
+    ::fivetran_sdk::v2::WriteBatchResponse *response) {
 
   auto logger = std::make_shared<mdlog::MdLog>();
   try {
@@ -420,9 +430,11 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
       const auto decryption_key = get_encryption_key(
           filename, request->keys(), request->file_params().encryption());
 
-			// TODO: watch out for optional() they can segfault; make sure they did not make more things optional
+      // TODO: watch out for optional() they can segfault; make sure they did
+      // not make more things optional
       IngestProperties props(filename, decryption_key, column_names,
-                             request->file_params().null_string(), csv_block_size);
+                             request->file_params().null_string(),
+                             csv_block_size);
 
       process_file(*con, props, logger, [&](const std::string &view_name) {
         sql_generator->upsert(*con, table_name, view_name, columns_pk,
@@ -431,24 +443,26 @@ DestinationSdkImpl::WriteBatch(::grpc::ServerContext *context,
     }
     for (auto &filename : request->update_files()) {
       logger->info("Processing update file " + filename);
-      auto decryption_key = get_encryption_key(filename, request->keys(),
-                                               request->file_params().encryption());
+      auto decryption_key = get_encryption_key(
+          filename, request->keys(), request->file_params().encryption());
       IngestProperties props(filename, decryption_key, column_names,
-                             request->file_params().null_string(), csv_block_size);
+                             request->file_params().null_string(),
+                             csv_block_size);
 
       process_file(*con, props, logger, [&](const std::string &view_name) {
-        sql_generator->update_values(*con, table_name, view_name, columns_pk,
-                                     columns_regular,
-                                     request->file_params().unmodified_string());
+        sql_generator->update_values(
+            *con, table_name, view_name, columns_pk, columns_regular,
+            request->file_params().unmodified_string());
       });
     }
     for (auto &filename : request->delete_files()) {
       logger->info("Processing delete file " + filename);
-      auto decryption_key = get_encryption_key(filename, request->keys(),
-                                               request->file_params().encryption());
+      auto decryption_key = get_encryption_key(
+          filename, request->keys(), request->file_params().encryption());
       std::vector<std::string> empty;
       IngestProperties props(filename, decryption_key, empty,
-                             request->file_params().null_string(), csv_block_size);
+                             request->file_params().null_string(),
+                             csv_block_size);
 
       process_file(*con, props, logger, [&](const std::string &view_name) {
         sql_generator->delete_rows(*con, table_name, view_name, columns_pk);
