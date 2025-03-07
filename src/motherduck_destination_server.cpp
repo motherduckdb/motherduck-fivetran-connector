@@ -86,8 +86,10 @@ std::unique_ptr<duckdb::Connection> get_connection(
   config.SetOptionByName("old_implicit_casting", true);
   config.SetOptionByName("motherduck_attach_mode", "single");
 
-  duckdb::DuckDB db("md:" + db_name, &config);
+	duckdb::DuckDB db("md:" + db_name, &config);
+
   auto con = std::make_unique<duckdb::Connection>(db);
+
   auto result = con->Query("SELECT md_current_client_duckdb_id()");
   if (result->HasError()) {
     logger->warning("Could not retrieve the current duckdb ID: " +
@@ -483,6 +485,137 @@ grpc::Status DestinationSdkImpl::WriteBatch(
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
+::grpc::Status DestinationSdkImpl::WriteHistoryBatch(::grpc::ServerContext *context,
+																										 const ::fivetran_sdk::v2::WriteHistoryBatchRequest *request,
+																										 ::fivetran_sdk::v2::WriteBatchResponse *response) {
+
+	auto logger = std::make_shared<mdlog::MdLog>();
+	try {
+		logger->info("Endpoint <WriteHistoryBatch>: started");
+		auto schema_name = get_schema_name(request);
+
+		const std::string db_name =
+				find_property(request->configuration(), MD_PROP_DATABASE);
+		const int csv_block_size = find_optional_property(
+				request->configuration(), MD_PROP_CSV_BLOCK_SIZE, 1,
+				[&](const std::string &val) -> int { return std::stoi(val); });
+		logger->info("CSV BLOCK SIZE = " + std::to_string(csv_block_size));
+
+		table_def table_name{db_name, get_schema_name(request),
+												 request->table().name()};
+		std::unique_ptr<duckdb::Connection> con =
+				get_connection(request->configuration(), db_name, logger);
+		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
+
+		// Use local memory by default to prevent Arrow-based VIEW from traveling
+		// up to the cloud
+		con->Query("ATTACH ':memory:' as localmem");
+		con->Query("USE localmem");
+
+		const auto cols = get_duckdb_columns(request->table().columns());
+		std::vector<const column_def *> columns_pk;
+		std::vector<const column_def *> columns_regular;
+		find_primary_keys(cols, columns_pk, &columns_regular);
+
+		if (columns_pk.empty()) {
+			throw std::invalid_argument("No primary keys found");
+		}
+
+		// update file fields have to be read in as strings to allow
+		// "unmodified_string"/"null_string". Replace (upsert) files have to be read
+		// in as strings to allow "null_string".
+		std::vector<std::string> column_names(cols.size());
+		std::transform(cols.begin(), cols.end(), column_names.begin(),
+									 [](const column_def &col) { return col.name; });
+
+		// delete overlapping records
+		for (auto &filename : request->earliest_start_files()) {
+			logger->info("Processing earliest start file " + filename);
+			const auto decryption_key = get_encryption_key(
+					filename, request->keys(), request->file_params().encryption());
+
+			IngestProperties props(filename, decryption_key, column_names,
+														 request->file_params().null_string(),
+														 csv_block_size);
+
+			process_file(*con, props, logger, [&](const std::string &view_name) {
+					sql_generator->deactivate_historical_records(*con, table_name, view_name, columns_pk);
+			});
+
+			printf("**** DELETE EARLIEST FILE; file = %s\n", filename.c_str());
+		}
+
+		for (auto &filename : request->replace_files()) {
+			printf("**** REPLACE; file = %s\n", filename.c_str());
+		}
+
+		for (auto &filename : request->update_files()) {
+			printf("**** UPDATE; file = %s\n", filename.c_str());
+		}
+
+		for (auto &filename : request->delete_files()) {
+			printf("**** DELETE; file = %s\n", filename.c_str());
+		}
+/*
+
+		for (auto &filename : request->replace_files()) {
+			logger->info("Processing replace file " + filename);
+			const auto decryption_key = get_encryption_key(
+					filename, request->keys(), request->file_params().encryption());
+
+			// TODO: watch out for optional() they can segfault; make sure they did
+			// not make more things optional
+			IngestProperties props(filename, decryption_key, column_names,
+														 request->file_params().null_string(),
+														 csv_block_size);
+
+			process_file(*con, props, logger, [&](const std::string &view_name) {
+					sql_generator->upsert(*con, table_name, view_name, columns_pk,
+																columns_regular);
+			});
+		}
+		for (auto &filename : request->update_files()) {
+			logger->info("Processing update file " + filename);
+			auto decryption_key = get_encryption_key(
+					filename, request->keys(), request->file_params().encryption());
+			IngestProperties props(filename, decryption_key, column_names,
+														 request->file_params().null_string(),
+														 csv_block_size);
+
+			process_file(*con, props, logger, [&](const std::string &view_name) {
+					sql_generator->update_values(
+							*con, table_name, view_name, columns_pk, columns_regular,
+							request->file_params().unmodified_string());
+			});
+		}
+		for (auto &filename : request->delete_files()) {
+			logger->info("Processing delete file " + filename);
+			auto decryption_key = get_encryption_key(
+					filename, request->keys(), request->file_params().encryption());
+			std::vector<std::string> empty;
+			IngestProperties props(filename, decryption_key, empty,
+														 request->file_params().null_string(),
+														 csv_block_size);
+
+			process_file(*con, props, logger, [&](const std::string &view_name) {
+					sql_generator->delete_rows(*con, table_name, view_name, columns_pk);
+			});
+		}*/
+
+	} catch (const std::exception &e) {
+
+		auto const msg = "WriteBatch endpoint failed for schema <" +
+										 request->schema_name() + ">, table <" +
+										 request->table().name() + ">:" + std::string(e.what());
+		logger->severe(msg);
+		response->mutable_task()->set_message(msg);
+		return ::grpc::Status(::grpc::StatusCode::INTERNAL, msg);
+	}
+
+	logger->info("Endpoint <WriteBatch>: ended");
+	return ::grpc::Status(::grpc::StatusCode::OK, "");
+}
+
 void check_csv_block_size_is_numeric(
     const google::protobuf::Map<std::string, std::string> &config) {
   auto token_it = config.find(MD_PROP_CSV_BLOCK_SIZE);
@@ -504,6 +637,7 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
   std::string db_name;
   try {
     db_name = find_property(request->configuration(), MD_PROP_DATABASE);
+		printf("*** DB NAME = %s\n", db_name.c_str());
   } catch (const std::exception &e) {
     auto msg = "Test endpoint failed; could not retrieve database name: " +
                std::string(e.what());

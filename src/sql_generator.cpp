@@ -506,6 +506,68 @@ void MdSqlGenerator::delete_rows(duckdb::Connection &con,
   }
 }
 
+void MdSqlGenerator::deactivate_historical_records(duckdb::Connection &con, const table_def &table,
+																const std::string &staging_table_name,
+																std::vector<const column_def *> &columns_pk) {
+
+/*	printf("WHY IS THIS NOT HAPPENING\n");
+	auto r = con.Query("CREATE TABLE " + table.db_name + ".tmp_arrow AS SELECT * FROM " + staging_table_name);
+	if (r->HasError()) {
+		printf("shenanigans failed: %s", r->GetError().c_str());
+	}*/
+
+	const std::string absolute_table_name = table.to_escaped_string();
+	const std::string short_table_name = KeywordHelper::WriteQuoted(table.table_name, '"');
+
+	// primary keys condition
+	std::ostringstream primary_key_join_condition_stream;
+	write_joined(
+			primary_key_join_condition_stream, columns_pk,
+			[&](const std::string &quoted_col, std::ostringstream &out) {
+					out << short_table_name << "."
+							<< quoted_col << " = " << staging_table_name << "." << quoted_col;
+			},
+			" AND ");
+	std::string primary_key_join_condition = primary_key_join_condition_stream.str();
+
+	{
+		// delete overlapping records
+		std::ostringstream sql;
+		sql << "DELETE FROM " + absolute_table_name << " USING " << staging_table_name
+				<< " WHERE ";
+		sql << primary_key_join_condition;
+		sql << " AND " << short_table_name << "._fivetran_start >= " << staging_table_name << "._fivetran_start";
+
+		auto query = sql.str();
+		logger->info("delete_overlapping_records: " + query);
+		auto result = con.Query(query);
+		if (result->HasError()) {
+			throw std::runtime_error("Error deleting overlapping records from table <" +
+															 absolute_table_name + ">:" + result->GetError());
+		}
+	}
+
+	{
+		// mark existing records inactive
+		std::ostringstream sql;
+		sql << "UPDATE " + absolute_table_name << " SET _fivetran_active = FALSE, ";
+		sql << "_fivetran_end = " << staging_table_name << "._fivetran_start"; // TBD subtract a millisecond
+		sql << " FROM " << staging_table_name;
+		sql << " WHERE " << short_table_name << "._fivetran_active = TRUE AND ";
+		sql << primary_key_join_condition;
+
+		auto query = sql.str();
+		logger->info("deactivate records: " + query);
+		auto result = con.Query(query);
+		if (result->HasError()) {
+			throw std::runtime_error("Error deactivating records <" +
+															 absolute_table_name + ">:" + result->GetError());
+		}
+	}
+
+
+}
+
 void MdSqlGenerator::truncate_table(duckdb::Connection &con,
                                     const table_def &table,
                                     const std::string &synced_column,

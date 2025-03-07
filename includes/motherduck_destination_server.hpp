@@ -56,4 +56,7 @@ public:
   WriteBatch(::grpc::ServerContext *context,
              const ::fivetran_sdk::v2::WriteBatchRequest *request,
              ::fivetran_sdk::v2::WriteBatchResponse *response) override;
+	::grpc::Status WriteHistoryBatch(::grpc::ServerContext *context,
+																												 const ::fivetran_sdk::v2::WriteHistoryBatchRequest *request,
+																												 ::fivetran_sdk::v2::WriteBatchResponse *response) override;
 };

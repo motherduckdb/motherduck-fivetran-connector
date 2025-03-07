@@ -352,6 +352,43 @@ void define_test_table(T &request, const std::string &table_name) {
 }
 
 template <typename T>
+void define_history_test_table(T &request, const std::string &table_name) {
+	request.mutable_table()->set_name(table_name);
+	auto col1 = request.mutable_table()->add_columns();
+	col1->set_name("id");
+	col1->set_type(::fivetran_sdk::v2::DataType::INT);
+	col1->set_primary_key(true);
+
+	auto col2 = request.mutable_table()->add_columns();
+	col2->set_name("title");
+	col2->set_type(::fivetran_sdk::v2::DataType::STRING);
+
+	auto col3 = request.mutable_table()->add_columns();
+	col3->set_name("magic_number");
+	col3->set_type(::fivetran_sdk::v2::DataType::INT);
+
+	auto col4 = request.mutable_table()->add_columns();
+	col4->set_name("_fivetran_deleted");
+	col4->set_type(::fivetran_sdk::v2::DataType::BOOLEAN);
+
+	auto col5 = request.mutable_table()->add_columns();
+	col5->set_name("_fivetran_synced");
+	col5->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
+
+	auto col6 = request.mutable_table()->add_columns();
+	col6->set_name("_fivetran_active");
+	col6->set_type(::fivetran_sdk::v2::DataType::BOOLEAN);
+
+	auto col7 = request.mutable_table()->add_columns();
+	col7->set_name("_fivetran_start");
+	col7->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
+
+	auto col8 = request.mutable_table()->add_columns();
+	col8->set_name("_fivetran_end");
+	col8->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
+}
+
+template <typename T>
 void define_test_multikey_table(T &request, const std::string &table_name) {
   request.mutable_table()->set_name(table_name);
   auto col1 = request.mutable_table()->add_columns();
@@ -407,8 +444,6 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
     REQUIRE_NO_FAIL(status);
   }
 
-  // test connection needs to be created after table creation to avoid stale
-  // catalog
   auto con = get_test_connection(token);
   {
     // insert rows from encrypted / compressed file
@@ -1590,4 +1625,85 @@ TEST_CASE("Capabilities", "[integration]") {
   REQUIRE_NO_FAIL(status);
 
   REQUIRE(response.batch_file_format() == ::fivetran_sdk::v2::CSV);
+}
+
+
+TEST_CASE("WriteBatchHistory", "[integration][write-batch]") {
+	DestinationSdkImpl service;
+
+	// Schema will be main
+	const std::string table_name = "books" + std::to_string(Catch::rngSeed());
+
+	auto token = std::getenv("motherduck_token");
+	REQUIRE(token);
+
+	{
+		// Create Table
+		::fivetran_sdk::v2::CreateTableRequest request;
+		(*request.mutable_configuration())["motherduck_token"] = token;
+		(*request.mutable_configuration())["motherduck_database"] =
+				TEST_DATABASE_NAME;
+		define_history_test_table(request, table_name);
+
+		::fivetran_sdk::v2::CreateTableResponse response;
+		auto status = service.CreateTable(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+	}
+
+	{
+		// upsert some data, so that delete-earliest has something to delete
+		::fivetran_sdk::v2::WriteBatchRequest request;
+		(*request.mutable_configuration())["motherduck_token"] = token;
+		(*request.mutable_configuration())["motherduck_database"] =
+				TEST_DATABASE_NAME;
+		define_history_test_table(request, table_name);
+		request.mutable_file_params()->set_null_string("magic-nullvalue");
+		const std::string filename = "books_history_upsert.csv";
+		const std::string filepath = TEST_RESOURCES_DIR + filename;
+
+		request.add_replace_files(filepath);
+
+		::fivetran_sdk::v2::WriteBatchResponse response;
+		auto status = service.WriteBatch(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+	}
+
+	{
+		// insert rows from CSV file
+		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
+		(*request.mutable_configuration())["motherduck_token"] = token;
+		(*request.mutable_configuration())["motherduck_database"] =
+				TEST_DATABASE_NAME;
+		request.mutable_file_params()->set_encryption(::fivetran_sdk::v2::Encryption::NONE);
+		request.mutable_file_params()->set_compression(::fivetran_sdk::v2::Compression::OFF);
+		define_test_table(request, table_name);
+		const std::string filename = "books_history_earliest.csv";
+		const std::string filepath = TEST_RESOURCES_DIR + filename;
+
+		request.add_earliest_start_files(filepath);
+
+		::fivetran_sdk::v2::WriteBatchResponse response;
+		auto status = service.WriteHistoryBatch(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+	}
+
+	auto con = get_test_connection(token);
+	{
+		// check that id=2 ("The Two Towers") got deleted because it's newer than the date in books_history_earliest.csv
+		auto res = con->Query("SELECT id, title, magic_number, _fivetran_deleted, _fivetran_synced, _fivetran_active, _fivetran_start, _fivetran_end"
+													" FROM " + table_name +
+													" ORDER BY id");
+		REQUIRE_NO_FAIL(res);
+		REQUIRE(res->RowCount() == 2);
+		REQUIRE(res->GetValue(0, 0) == 3);
+		REQUIRE(res->GetValue(1, 0) == "The Hobbit");
+		REQUIRE(res->GetValue(2, 0) == 14);
+		REQUIRE(res->GetValue(3, 0) == false);	// deleted
+		REQUIRE(res->GetValue(4, 0) == "2024-01-09 04:10:19.156057+00");	// synced
+		REQUIRE(res->GetValue(5, 0) == false);	// no longer active
+
+		REQUIRE(res->GetValue(0, 1) == 99);
+		REQUIRE(res->GetValue(5, 1) == true);	// this primary key was not in the incoming batch, so not deactivated
+	}
+
 }

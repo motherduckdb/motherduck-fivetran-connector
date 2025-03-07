@@ -66,6 +66,10 @@ public:
                    const std::string &staging_table_name,
                    std::vector<const column_def *> &columns_pk);
 
+	void deactivate_historical_records(duckdb::Connection &con, const table_def &table,
+																	const std::string &staging_table_name,
+																	std::vector<const column_def *> &columns_pk);
+
   void check_connection(duckdb::Connection &con);
 
 private:
