@@ -556,6 +556,19 @@ void MdSqlGenerator::delete_rows(duckdb::Connection &con,
   }
 }
 
+const std::string primary_key_join(std::vector<const column_def *> &columns_pk,
+																				 const std::string tbl1, const std::string tbl2) {
+	std::ostringstream primary_key_join_condition_stream;
+	write_joined(
+			primary_key_join_condition_stream, columns_pk,
+			[&](const std::string &quoted_col, std::ostringstream &out) {
+					out << tbl1 << "."
+							<< quoted_col << " = " << tbl2 << "." << quoted_col;
+			},
+			" AND ");
+	return primary_key_join_condition_stream.str();
+}
+
 void MdSqlGenerator::deactivate_historical_records(duckdb::Connection &con, const table_def &table,
 																const std::string &staging_table_name,
 																std::vector<const column_def *> &columns_pk) {
@@ -568,15 +581,7 @@ void MdSqlGenerator::deactivate_historical_records(duckdb::Connection &con, cons
 	con.Query("CREATE TABLE " + temp_earliest_table_name + " AS SELECT * FROM " + staging_table_name);	// TBD: unique name
 
 	// primary keys condition (list of primary keys already excludes _fivetran_start)
-	std::ostringstream primary_key_join_condition_stream;
-	write_joined(
-			primary_key_join_condition_stream, columns_pk,
-			[&](const std::string &quoted_col, std::ostringstream &out) {
-					out << short_table_name << "."
-							<< quoted_col << " = " << temp_earliest_table_name << "." << quoted_col;
-			},
-			" AND ");
-	std::string primary_key_join_condition = primary_key_join_condition_stream.str();
+	std::string primary_key_join_condition = primary_key_join(columns_pk, short_table_name, temp_earliest_table_name );
 
 	{
 		// delete overlapping records
@@ -641,6 +646,33 @@ void MdSqlGenerator::deactivate_historical_records(duckdb::Connection &con, cons
 		}
 	}
 
+}
+
+void MdSqlGenerator::delete_historical_rows(duckdb::Connection &con,
+																 const table_def &table,
+																 const std::string &staging_table_name,
+																 std::vector<const column_def *> &columns_pk) {
+
+	const std::string absolute_table_name = table.to_escaped_string();
+	const std::string short_table_name = KeywordHelper::WriteQuoted(table.table_name, '"');
+
+	std::string primary_key_join_condition = primary_key_join(columns_pk, short_table_name, staging_table_name );
+
+	std::ostringstream sql;
+
+	sql << "UPDATE " + absolute_table_name << " SET _fivetran_active = FALSE, ";
+	sql << "_fivetran_end = " << staging_table_name << "._fivetran_end";
+	sql << " FROM " << staging_table_name;
+	sql << " WHERE " << short_table_name << "._fivetran_active = TRUE AND ";
+	sql << primary_key_join_condition;
+
+	auto query = sql.str();
+	logger->info("delete historical records: " + query);
+	auto result = con.Query(query);
+	if (result->HasError()) {
+		throw std::runtime_error("Error deleting historical records <" +
+														 absolute_table_name + ">:" + result->GetError());
+	}
 }
 
 void MdSqlGenerator::truncate_table(duckdb::Connection &con,

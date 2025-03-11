@@ -1637,7 +1637,7 @@ TEST_CASE("Capabilities", "[integration]") {
 }
 
 
-TEST_CASE("WriteBatchHistory", "[integration][write-batch]") {
+TEST_CASE("WriteBatchHistory with update files", "[integration][write-batch]") {
 	DestinationSdkImpl service;
 
 	// Schema will be main
@@ -1723,7 +1723,7 @@ TEST_CASE("WriteBatchHistory", "[integration][write-batch]") {
 	}
 
 	{
-		// a WriteHistoryBatchRequest with the same earliest files as before, plus update/upsert files
+		// a WriteHistoryBatchRequest with the same earliest files as before, plus update files
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
 		set_up_plain_write_request(request, token, TEST_DATABASE_NAME);
 		// TBD: check what happens when unmodified string is not set - it seems to be blank but shoudl it fail instead?
@@ -1798,4 +1798,100 @@ TEST_CASE("WriteBatchHistory", "[integration][write-batch]") {
 		REQUIRE(res->GetValue(7, 4) == "9999-01-09 04:10:19.156057+00");	// _fivetran_end, no change
 
 	}
+}
+
+
+TEST_CASE("WriteBatchHistory upsert and delete", "[integration][write-batch]") {
+	DestinationSdkImpl service;
+
+	// Schema will be main
+	const std::string table_name = "books" + std::to_string(Catch::rngSeed());
+
+	auto token = std::getenv("motherduck_token");
+	REQUIRE(token);
+
+	{
+		// Create Table
+		::fivetran_sdk::v2::CreateTableRequest request;
+		set_up_plain_write_request(request, token, TEST_DATABASE_NAME);
+		define_history_test_table(request, table_name);
+
+		::fivetran_sdk::v2::CreateTableResponse response;
+		auto status = service.CreateTable(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+	}
+
+	{
+		// history write with the earliest file (that does not affect anything because there is no data), plus upsert file
+		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
+		set_up_plain_write_request(request, token, TEST_DATABASE_NAME);
+		request.mutable_file_params()->set_unmodified_string(
+				"unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
+		request.mutable_file_params()->set_null_string("magic-nullvalue");
+
+		define_history_test_table(request, table_name);
+
+		request.add_earliest_start_files(TEST_RESOURCES_DIR + "books_history_earliest.csv");
+		request.add_update_files(TEST_RESOURCES_DIR + "books_history_upsert.csv");
+
+		::fivetran_sdk::v2::WriteBatchResponse response;
+		auto status = service.WriteHistoryBatch(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+	}
+
+	auto con = get_test_connection(token);
+	{
+		auto res = con->Query("SELECT id, title, magic_number, _fivetran_deleted, _fivetran_synced, _fivetran_active, _fivetran_start, _fivetran_end"
+													" FROM " + table_name +
+													" ORDER BY id, _fivetran_start");
+		REQUIRE_NO_FAIL(res);
+		REQUIRE(res->RowCount() == 1);
+
+		// record inserted as is
+		REQUIRE(res->GetValue(0, 0) == 3);
+		REQUIRE(res->GetValue(1, 0) == "The Hobbit");
+		REQUIRE(res->GetValue(2, 0) == 14);
+		REQUIRE(res->GetValue(3, 0) == false);	// deleted
+		REQUIRE(res->GetValue(4, 0) == "2024-01-09 04:10:19.156057+00");	// synced
+		REQUIRE(res->GetValue(5, 0) == true);	// active, per file
+		REQUIRE(res->GetValue(6, 0) == "2024-01-09 04:10:19.156057+00");	// _fivetran_start
+		REQUIRE(res->GetValue(7, 0) == "9999-01-09 04:10:19.156057+00");	// _fivetran_end
+	}
+
+	{
+		// history write with just the delete file (for testing; normally there would also be the earliest start file)
+		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
+		set_up_plain_write_request(request, token, TEST_DATABASE_NAME);
+		request.mutable_file_params()->set_unmodified_string(
+				"unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
+		request.mutable_file_params()->set_null_string("magic-nullvalue");
+
+		define_history_test_table(request, table_name);
+
+		request.add_delete_files(TEST_RESOURCES_DIR + "books_history_delete.csv");
+
+		::fivetran_sdk::v2::WriteBatchResponse response;
+		auto status = service.WriteHistoryBatch(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+	}
+
+	{
+		// check that id=2 ("The Two Towers") got deleted because it's newer than the date in books_history_earliest.csv
+		auto res = con->Query("SELECT id, title, magic_number, _fivetran_deleted, _fivetran_synced, _fivetran_active, _fivetran_start, _fivetran_end"
+													" FROM " + table_name +
+													" ORDER BY id, _fivetran_start");
+		REQUIRE_NO_FAIL(res);
+		REQUIRE(res->RowCount() == 1);
+
+		// record inserted as is
+		REQUIRE(res->GetValue(0, 0) == 3);
+		REQUIRE(res->GetValue(1, 0) == "The Hobbit");
+		REQUIRE(res->GetValue(2, 0) == 14);
+		REQUIRE(res->GetValue(3, 0) == false);	// deleted
+		REQUIRE(res->GetValue(4, 0) == "2024-01-09 04:10:19.156057+00");	// synced
+		REQUIRE(res->GetValue(5, 0) == false);	// no longer active
+		REQUIRE(res->GetValue(6, 0) == "2024-01-09 04:10:19.156057+00");	// _fivetran_start
+		REQUIRE(res->GetValue(7, 0) == "2025-03-09 04:10:19.156057+00");	// _fivetran_end updated per delete file
+	}
+
 }

@@ -560,64 +560,22 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
 		// upsert files
 		for (auto &filename : request->replace_files()) {
-			logger->info("replace file " + filename);
-/*			IngestProperties props = create_ingest_props(filename, request, column_names, csv_block_size);
-
-			process_file(*con, props, logger, [&](const std::string &view_name) {
-					sql_generator->add_partial_historical_values(
-							*con, table_name, view_name, columns_pk, columns_regular,
-							request->file_params().unmodified_string());
-			});*/
-		}
-
-		for (auto &filename : request->delete_files()) {
-			printf("**** DELETE; file = %s\n", filename.c_str());
-		}
-/*
-
-		for (auto &filename : request->replace_files()) {
-			logger->info("Processing replace file " + filename);
-			const auto decryption_key = get_encryption_key(
-					filename, request->keys(), request->file_params().encryption());
-
-			// TODO: watch out for optional() they can segfault; make sure they did
-			// not make more things optional
-			IngestProperties props(filename, decryption_key, column_names,
-														 request->file_params().null_string(),
-														 csv_block_size);
-
+			logger->info("replace/upsert file " + filename);
+			IngestProperties props = create_ingest_props(filename, request, column_names, csv_block_size);
 			process_file(*con, props, logger, [&](const std::string &view_name) {
 					sql_generator->upsert(*con, table_name, view_name, columns_pk,
 																columns_regular);
 			});
 		}
-		for (auto &filename : request->update_files()) {
-			logger->info("Processing update file " + filename);
-			auto decryption_key = get_encryption_key(
-					filename, request->keys(), request->file_params().encryption());
-			IngestProperties props(filename, decryption_key, column_names,
-														 request->file_params().null_string(),
-														 csv_block_size);
+
+		for (auto &filename : request->delete_files()) {
+			logger->info("delete file " + filename);
+			IngestProperties props = create_ingest_props(filename, request, column_names, csv_block_size);
 
 			process_file(*con, props, logger, [&](const std::string &view_name) {
-					sql_generator->update_values(
-							*con, table_name, view_name, columns_pk, columns_regular,
-							request->file_params().unmodified_string());
+					sql_generator->delete_historical_rows(*con, table_name, view_name, columns_pk);
 			});
 		}
-		for (auto &filename : request->delete_files()) {
-			logger->info("Processing delete file " + filename);
-			auto decryption_key = get_encryption_key(
-					filename, request->keys(), request->file_params().encryption());
-			std::vector<std::string> empty;
-			IngestProperties props(filename, decryption_key, empty,
-														 request->file_params().null_string(),
-														 csv_block_size);
-
-			process_file(*con, props, logger, [&](const std::string &view_name) {
-					sql_generator->delete_rows(*con, table_name, view_name, columns_pk);
-			});
-		}*/
 
 	} catch (const std::exception &e) {
 
