@@ -116,6 +116,15 @@ get_encryption_key(const std::string &filename,
   return encryption_key_it->second;
 }
 
+template <typename T>
+IngestProperties create_ingest_props(const std::string &filename, const T &request, const std::vector<std::string> &column_names, int csv_block_size) {
+	const std::string decryption_key = get_encryption_key(
+			filename, request->keys(), request->file_params().encryption());
+	return IngestProperties(filename, decryption_key, column_names,
+													request->file_params().null_string(),
+													csv_block_size);
+}
+
 void validate_file(const std::string &file_path) {
   std::ifstream fs(file_path.c_str());
   if (fs.good()) {
@@ -127,7 +136,7 @@ void validate_file(const std::string &file_path) {
 }
 
 void process_file(
-    duckdb::Connection &con, IngestProperties &props,
+    duckdb::Connection &con, const IngestProperties &props,
     std::shared_ptr<mdlog::MdLog> &logger,
     const std::function<void(const std::string &view_name)> &process_view) {
 
@@ -485,15 +494,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
-template <typename T>
-IngestProperties create_ingest_props(const std::string &filename, const T &request, const std::vector<std::string> &column_names, int csv_block_size) {
-	auto decryption_key = get_encryption_key(
-			filename, request->keys(), request->file_params().encryption());
-	return IngestProperties(filename, decryption_key, column_names,
-												 request->file_params().null_string(),
-												 csv_block_size);
-}
-
 ::grpc::Status DestinationSdkImpl::WriteHistoryBatch(::grpc::ServerContext *context,
 																										 const ::fivetran_sdk::v2::WriteHistoryBatchRequest *request,
 																										 ::fivetran_sdk::v2::WriteBatchResponse *response) {
@@ -547,6 +547,18 @@ IngestProperties create_ingest_props(const std::string &filename, const T &reque
 			});
 		}
 
+		for (auto &filename : request->update_files()) {
+			logger->info("update file " + filename);
+			IngestProperties props = create_ingest_props(filename, request, column_names, csv_block_size);
+
+			process_file(*con, props, logger, [&](const std::string &view_name) {
+					sql_generator->add_partial_historical_values(
+							*con, table_name, view_name, columns_pk, columns_regular,
+							request->file_params().unmodified_string());
+			});
+		}
+
+		// upsert files
 		for (auto &filename : request->replace_files()) {
 			logger->info("replace file " + filename);
 /*			IngestProperties props = create_ingest_props(filename, request, column_names, csv_block_size);
@@ -556,18 +568,6 @@ IngestProperties create_ingest_props(const std::string &filename, const T &reque
 							*con, table_name, view_name, columns_pk, columns_regular,
 							request->file_params().unmodified_string());
 			});*/
-		}
-
-		for (auto &filename : request->update_files()) {
-			printf("**** UPDATE; file = %s\n", filename.c_str());
-			logger->info("update file " + filename);
-			IngestProperties props = create_ingest_props(filename, request, column_names, csv_block_size);
-
-			process_file(*con, props, logger, [&](const std::string &view_name) {
-					sql_generator->add_partial_historical_values(
-							*con, table_name, view_name, columns_pk, columns_regular,
-							request->file_params().unmodified_string());
-			});
 		}
 
 		for (auto &filename : request->delete_files()) {
@@ -654,7 +654,6 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
   std::string db_name;
   try {
     db_name = find_property(request->configuration(), MD_PROP_DATABASE);
-		printf("*** DB NAME = %s\n", db_name.c_str());
   } catch (const std::exception &e) {
     auto msg = "Test endpoint failed; could not retrieve database name: " +
                std::string(e.what());
