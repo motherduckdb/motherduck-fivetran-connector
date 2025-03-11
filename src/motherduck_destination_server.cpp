@@ -443,8 +443,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       const auto decryption_key = get_encryption_key(
           filename, request->keys(), request->file_params().encryption());
 
-      // TODO: watch out for optional() they can segfault; make sure they did
-      // not make more things optional
       IngestProperties props(filename, decryption_key, column_names,
                              request->file_params().null_string(),
                              csv_block_size);

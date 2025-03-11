@@ -39,14 +39,6 @@ void download_motherduck_extension() {
           "Could not load motherduck extension prior to gRPC server startup");
     }
   }
-  // pre-install ICU. It will get loaded for history mode only.
-  /*{
-          auto result = con.Query("INSTALL icu");
-          if (result->HasError()) {
-                  throw std::runtime_error("Could not install icu extension
-  prior " "to gRPC server startup");
-          }
-  }*/
 }
 
 void logCrash(int sig) {

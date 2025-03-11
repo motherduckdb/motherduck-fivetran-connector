@@ -621,7 +621,10 @@ void MdSqlGenerator::deactivate_historical_records(
       absolute_table_name + ") LIMIT 0");
 
   {
-    // store latest active records before they get deactivated
+    // store latest versions of records before they get deactivated
+		// per spec, this should be limited to _fivetran_active = TRUE but it's safer
+		// to get all latest versions even if deactivated to prevent null values in  a
+		// partially successful batch.
     std::ostringstream sql;
     sql << "WITH ranked_records AS (SELECT " << short_table_name << ".*,";
     sql << " row_number() OVER (PARTITION BY ";
