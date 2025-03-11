@@ -485,6 +485,15 @@ grpc::Status DestinationSdkImpl::WriteBatch(
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
+template <typename T>
+IngestProperties create_ingest_props(const std::string &filename, const T &request, const std::vector<std::string> &column_names, int csv_block_size) {
+	auto decryption_key = get_encryption_key(
+			filename, request->keys(), request->file_params().encryption());
+	return IngestProperties(filename, decryption_key, column_names,
+												 request->file_params().null_string(),
+												 csv_block_size);
+}
+
 ::grpc::Status DestinationSdkImpl::WriteHistoryBatch(::grpc::ServerContext *context,
 																										 const ::fivetran_sdk::v2::WriteHistoryBatchRequest *request,
 																										 ::fivetran_sdk::v2::WriteBatchResponse *response) {
@@ -515,7 +524,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 		const auto cols = get_duckdb_columns(request->table().columns());
 		std::vector<const column_def *> columns_pk;
 		std::vector<const column_def *> columns_regular;
-		find_primary_keys(cols, columns_pk, &columns_regular);
+		find_primary_keys(cols, columns_pk, &columns_regular,"_fivetran_start");
 
 		if (columns_pk.empty()) {
 			throw std::invalid_argument("No primary keys found");
@@ -531,26 +540,34 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 		// delete overlapping records
 		for (auto &filename : request->earliest_start_files()) {
 			logger->info("Processing earliest start file " + filename);
-			const auto decryption_key = get_encryption_key(
-					filename, request->keys(), request->file_params().encryption());
-
-			IngestProperties props(filename, decryption_key, column_names,
-														 request->file_params().null_string(),
-														 csv_block_size);
+			IngestProperties props = create_ingest_props(filename, request, column_names, csv_block_size);
 
 			process_file(*con, props, logger, [&](const std::string &view_name) {
 					sql_generator->deactivate_historical_records(*con, table_name, view_name, columns_pk);
 			});
-
-			printf("**** DELETE EARLIEST FILE; file = %s\n", filename.c_str());
 		}
 
 		for (auto &filename : request->replace_files()) {
-			printf("**** REPLACE; file = %s\n", filename.c_str());
+			logger->info("replace file " + filename);
+/*			IngestProperties props = create_ingest_props(filename, request, column_names, csv_block_size);
+
+			process_file(*con, props, logger, [&](const std::string &view_name) {
+					sql_generator->add_partial_historical_values(
+							*con, table_name, view_name, columns_pk, columns_regular,
+							request->file_params().unmodified_string());
+			});*/
 		}
 
 		for (auto &filename : request->update_files()) {
 			printf("**** UPDATE; file = %s\n", filename.c_str());
+			logger->info("update file " + filename);
+			IngestProperties props = create_ingest_props(filename, request, column_names, csv_block_size);
+
+			process_file(*con, props, logger, [&](const std::string &view_name) {
+					sql_generator->add_partial_historical_values(
+							*con, table_name, view_name, columns_pk, columns_regular,
+							request->file_params().unmodified_string());
+			});
 		}
 
 		for (auto &filename : request->delete_files()) {

@@ -1,0 +1,3 @@
+id,title,magic_number,_fivetran_deleted,_fivetran_synced,_fivetran_start,_fivetran_end,_fivetran_active
+3,"unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3",123,false,"2025-02-08T12:00:00.000Z","2025-02-08T12:00:00.000Z","9999-02-08T12:00:00.000Z",true
+2,"The empire strikes back","unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3",false,"2025-02-08T12:00:00.000Z","2025-02-08T12:00:00.000Z","9999-02-08T12:00:00.000Z",true
