@@ -21,7 +21,8 @@ struct table_def {
 void find_primary_keys(
     const std::vector<column_def> &cols,
     std::vector<const column_def *> &columns_pk,
-    std::vector<const column_def *> *columns_regular = nullptr);
+    std::vector<const column_def *> *columns_regular = nullptr,
+    const std::string &ignored_primary_key = "");
 
 class MdSqlGenerator {
 
@@ -57,6 +58,13 @@ public:
                      std::vector<const column_def *> &columns_regular,
                      const std::string &unmodified_string);
 
+  void add_partial_historical_values(
+      duckdb::Connection &con, const table_def &table,
+      const std::string &staging_table_name,
+      std::vector<const column_def *> &columns_pk,
+      std::vector<const column_def *> &columns_regular,
+      const std::string &unmodified_string);
+
   void truncate_table(duckdb::Connection &con, const table_def &table,
                       const std::string &synced_column,
                       std::chrono::nanoseconds &cutoff_ns,
@@ -65,6 +73,15 @@ public:
   void delete_rows(duckdb::Connection &con, const table_def &table,
                    const std::string &staging_table_name,
                    std::vector<const column_def *> &columns_pk);
+
+  void
+  deactivate_historical_records(duckdb::Connection &con, const table_def &table,
+                                const std::string &staging_table_name,
+                                std::vector<const column_def *> &columns_pk);
+
+  void delete_historical_rows(duckdb::Connection &con, const table_def &table,
+                              const std::string &staging_table_name,
+                              std::vector<const column_def *> &columns_pk);
 
   void check_connection(duckdb::Connection &con);
 
