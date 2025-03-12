@@ -75,6 +75,17 @@ const std::string primary_key_join(std::vector<const column_def *> &columns_pk,
 	return primary_key_join_condition_stream.str();
 }
 
+/*
+ * create an empty table structure in-memory to store latest active records.
+ * this will not be cleaned up manually just in case further update files need
+ * to refer to the latest values.
+ */
+void create_latest_active_records_table(duckdb::Connection &con, const std::string &absolute_table_name) {
+	con.Query(
+			"CREATE TABLE IF NOT EXISTS latest_active_records AS (SELECT * FROM " +
+			absolute_table_name + ") LIMIT 0");
+}
+
 MdSqlGenerator::MdSqlGenerator(std::shared_ptr<mdlog::MdLog> &logger_)
     : logger(logger_) {}
 
@@ -502,6 +513,9 @@ void MdSqlGenerator::add_partial_historical_values(
   std::ostringstream sql;
   auto absolute_table_name = table.to_escaped_string();
 
+	// create empty table structure just in case there were not any earliest files that would have created it
+	create_latest_active_records_table(con, absolute_table_name);
+
   sql << "INSERT INTO " << absolute_table_name << " ( SELECT ";
 
   // use primary keys as is, without checking for unmodified value
@@ -572,19 +586,17 @@ void MdSqlGenerator::deactivate_historical_records(
     std::vector<const column_def *> &columns_pk) {
 
   const std::string absolute_table_name = table.to_escaped_string();
-  const std::string short_table_name =
-      KeywordHelper::WriteQuoted(table.table_name, '"');
 
   // persist the data (it's only 2 columns) because Arrow streams can only be
   // read once
   const std::string temp_earliest_table_name = "local_earliest_file";
   con.Query("CREATE TABLE " + temp_earliest_table_name + " AS SELECT * FROM " +
-            staging_table_name); // TBD: unique name
+            staging_table_name);
 
   // primary keys condition (list of primary keys already excludes
   // _fivetran_start)
   std::string primary_key_join_condition =
-      primary_key_join(columns_pk, short_table_name, temp_earliest_table_name);
+      primary_key_join(columns_pk, absolute_table_name, temp_earliest_table_name);
 
   {
     // delete overlapping records
@@ -592,7 +604,7 @@ void MdSqlGenerator::deactivate_historical_records(
     sql << "DELETE FROM " + absolute_table_name << " USING "
         << temp_earliest_table_name << " WHERE ";
     sql << primary_key_join_condition;
-    sql << " AND " << short_table_name
+    sql << " AND " << absolute_table_name
         << "._fivetran_start >= " << temp_earliest_table_name
         << "._fivetran_start";
 
@@ -606,12 +618,7 @@ void MdSqlGenerator::deactivate_historical_records(
     }
   }
 
-  // create an empty table structure in-memory to store latest active records
-  // this will not be cleaned up manually just in case further update files need
-  // to refer to the latest values
-  con.Query(
-      "CREATE TABLE IF NOT EXISTS latest_active_records AS (SELECT * FROM " +
-      absolute_table_name + ") LIMIT 0");
+  create_latest_active_records_table(con, absolute_table_name);
 
   {
     // store latest versions of records before they get deactivated
@@ -619,13 +626,15 @@ void MdSqlGenerator::deactivate_historical_records(
     // safer to get all latest versions even if deactivated to prevent null
     // values in  a partially successful batch.
     std::ostringstream sql;
+		const std::string short_table_name =
+				KeywordHelper::WriteQuoted(table.table_name, '"');
     sql << "WITH ranked_records AS (SELECT " << short_table_name << ".*,";
     sql << " row_number() OVER (PARTITION BY ";
     write_joined(sql, columns_pk,
                  [&](const std::string &quoted_col, std::ostringstream &out) {
-                   out << short_table_name << "." << quoted_col;
+                   out << absolute_table_name << "." << quoted_col;
                  });
-    sql << " ORDER BY " << short_table_name
+    sql << " ORDER BY " << absolute_table_name
         << "._fivetran_start DESC) as row_num FROM " << absolute_table_name;
     // inner join to earliest table to only select rows that are in this batch
     sql << " INNER JOIN " << temp_earliest_table_name << " ON "
@@ -651,7 +660,7 @@ void MdSqlGenerator::deactivate_historical_records(
     sql << "_fivetran_end = (" << temp_earliest_table_name
         << "._fivetran_start::TIMESTAMP - (INTERVAL '1 millisecond'))";
     sql << " FROM " << temp_earliest_table_name;
-    sql << " WHERE " << short_table_name << "._fivetran_active = TRUE AND ";
+    sql << " WHERE " << absolute_table_name << "._fivetran_active = TRUE AND ";
     sql << primary_key_join_condition;
 
     auto query = sql.str();
@@ -662,6 +671,11 @@ void MdSqlGenerator::deactivate_historical_records(
                                absolute_table_name + ">:" + result->GetError());
     }
   }
+
+	{
+		// clean up the temp in memory table, so it can get recreated by another earliest file
+		con.Query("DROP TABLE " + temp_earliest_table_name );
+	}
 }
 
 void MdSqlGenerator::delete_historical_rows(
@@ -670,18 +684,16 @@ void MdSqlGenerator::delete_historical_rows(
     std::vector<const column_def *> &columns_pk) {
 
   const std::string absolute_table_name = table.to_escaped_string();
-  const std::string short_table_name =
-      KeywordHelper::WriteQuoted(table.table_name, '"');
 
   std::string primary_key_join_condition =
-      primary_key_join(columns_pk, short_table_name, staging_table_name);
+      primary_key_join(columns_pk, absolute_table_name, staging_table_name);
 
   std::ostringstream sql;
 
   sql << "UPDATE " + absolute_table_name << " SET _fivetran_active = FALSE, ";
   sql << "_fivetran_end = " << staging_table_name << "._fivetran_end";
   sql << " FROM " << staging_table_name;
-  sql << " WHERE " << short_table_name << "._fivetran_active = TRUE AND ";
+  sql << " WHERE " << absolute_table_name << "._fivetran_active = TRUE AND ";
   sql << primary_key_join_condition;
 
   auto query = sql.str();
