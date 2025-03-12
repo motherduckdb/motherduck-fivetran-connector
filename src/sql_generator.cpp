@@ -63,16 +63,16 @@ make_full_column_list(const std::vector<const column_def *> &columns_pk,
 }
 
 const std::string primary_key_join(std::vector<const column_def *> &columns_pk,
-																	 const std::string tbl1,
-																	 const std::string tbl2) {
-	std::ostringstream primary_key_join_condition_stream;
-	write_joined(
-			primary_key_join_condition_stream, columns_pk,
-			[&](const std::string &quoted_col, std::ostringstream &out) {
-					out << tbl1 << "." << quoted_col << " = " << tbl2 << "." << quoted_col;
-			},
-			" AND ");
-	return primary_key_join_condition_stream.str();
+                                   const std::string tbl1,
+                                   const std::string tbl2) {
+  std::ostringstream primary_key_join_condition_stream;
+  write_joined(
+      primary_key_join_condition_stream, columns_pk,
+      [&](const std::string &quoted_col, std::ostringstream &out) {
+        out << tbl1 << "." << quoted_col << " = " << tbl2 << "." << quoted_col;
+      },
+      " AND ");
+  return primary_key_join_condition_stream.str();
 }
 
 /*
@@ -80,10 +80,11 @@ const std::string primary_key_join(std::vector<const column_def *> &columns_pk,
  * this will not be cleaned up manually just in case further update files need
  * to refer to the latest values.
  */
-void create_latest_active_records_table(duckdb::Connection &con, const std::string &absolute_table_name) {
-	con.Query(
-			"CREATE TABLE IF NOT EXISTS latest_active_records AS (SELECT * FROM " +
-			absolute_table_name + ") LIMIT 0");
+void create_latest_active_records_table(
+    duckdb::Connection &con, const std::string &absolute_table_name) {
+  con.Query(
+      "CREATE TABLE IF NOT EXISTS latest_active_records AS (SELECT * FROM " +
+      absolute_table_name + ") LIMIT 0");
 }
 
 MdSqlGenerator::MdSqlGenerator(std::shared_ptr<mdlog::MdLog> &logger_)
@@ -513,8 +514,9 @@ void MdSqlGenerator::add_partial_historical_values(
   std::ostringstream sql;
   auto absolute_table_name = table.to_escaped_string();
 
-	// create empty table structure just in case there were not any earliest files that would have created it
-	create_latest_active_records_table(con, absolute_table_name);
+  // create empty table structure just in case there were not any earliest files
+  // that would have created it
+  create_latest_active_records_table(con, absolute_table_name);
 
   sql << "INSERT INTO " << absolute_table_name << " ( SELECT ";
 
@@ -540,8 +542,7 @@ void MdSqlGenerator::add_partial_historical_values(
 
   sql << " FROM " << staging_table_name
       << " LEFT JOIN latest_active_records lar ON "
-			<< primary_key_join(columns_pk, "lar", staging_table_name)
-			<< ")";
+      << primary_key_join(columns_pk, "lar", staging_table_name) << ")";
 
   auto query = sql.str();
   logger->info("update (add partial historical values): " + query);
@@ -595,8 +596,8 @@ void MdSqlGenerator::deactivate_historical_records(
 
   // primary keys condition (list of primary keys already excludes
   // _fivetran_start)
-  std::string primary_key_join_condition =
-      primary_key_join(columns_pk, absolute_table_name, temp_earliest_table_name);
+  std::string primary_key_join_condition = primary_key_join(
+      columns_pk, absolute_table_name, temp_earliest_table_name);
 
   {
     // delete overlapping records
@@ -626,8 +627,8 @@ void MdSqlGenerator::deactivate_historical_records(
     // safer to get all latest versions even if deactivated to prevent null
     // values in  a partially successful batch.
     std::ostringstream sql;
-		const std::string short_table_name =
-				KeywordHelper::WriteQuoted(table.table_name, '"');
+    const std::string short_table_name =
+        KeywordHelper::WriteQuoted(table.table_name, '"');
     sql << "WITH ranked_records AS (SELECT " << short_table_name << ".*,";
     sql << " row_number() OVER (PARTITION BY ";
     write_joined(sql, columns_pk,
@@ -672,10 +673,11 @@ void MdSqlGenerator::deactivate_historical_records(
     }
   }
 
-	{
-		// clean up the temp in memory table, so it can get recreated by another earliest file
-		con.Query("DROP TABLE " + temp_earliest_table_name );
-	}
+  {
+    // clean up the temp in memory table, so it can get recreated by another
+    // earliest file
+    con.Query("DROP TABLE " + temp_earliest_table_name);
+  }
 }
 
 void MdSqlGenerator::delete_historical_rows(
