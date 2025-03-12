@@ -415,13 +415,12 @@ void define_test_multikey_table(T &request, const std::string &table_name) {
   col5->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
 }
 
+/* compression and encryption are off/none by default */
 template <typename T>
 void set_up_plain_write_request(T &request, const std::string &token,
                                 const std::string db_name) {
   (*request.mutable_configuration())["motherduck_token"] = token;
   (*request.mutable_configuration())["motherduck_database"] = db_name;
-  // request.mutable_file_params()->set_encryption(::fivetran_sdk::v2::Encryption::NONE);
-  // request.mutable_file_params()->set_compression(::fivetran_sdk::v2::Compression::OFF);
 }
 
 std::unique_ptr<duckdb::Connection> get_test_connection(char *token) {

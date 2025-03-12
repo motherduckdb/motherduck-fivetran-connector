@@ -62,6 +62,19 @@ make_full_column_list(const std::vector<const column_def *> &columns_pk,
   return full_column_list.str();
 }
 
+const std::string primary_key_join(std::vector<const column_def *> &columns_pk,
+																	 const std::string tbl1,
+																	 const std::string tbl2) {
+	std::ostringstream primary_key_join_condition_stream;
+	write_joined(
+			primary_key_join_condition_stream, columns_pk,
+			[&](const std::string &quoted_col, std::ostringstream &out) {
+					out << tbl1 << "." << quoted_col << " = " << tbl2 << "." << quoted_col;
+			},
+			" AND ");
+	return primary_key_join_condition_stream.str();
+}
+
 MdSqlGenerator::MdSqlGenerator(std::shared_ptr<mdlog::MdLog> &logger_)
     : logger(logger_) {}
 
@@ -512,16 +525,9 @@ void MdSqlGenerator::add_partial_historical_values(
                });
 
   sql << " FROM " << staging_table_name
-      << " LEFT JOIN latest_active_records lar ON ";
-
-  write_joined(
-      sql, columns_pk,
-      [&](const std::string &quoted_col, std::ostringstream &out) {
-        sql << "lar." << quoted_col << " = " << staging_table_name << "."
-            << quoted_col;
-      },
-      " AND ");
-  sql << ")";
+      << " LEFT JOIN latest_active_records lar ON "
+			<< primary_key_join(columns_pk, "lar", staging_table_name)
+			<< ")";
 
   auto query = sql.str();
   logger->info("update (add partial historical values): " + query);
@@ -558,19 +564,6 @@ void MdSqlGenerator::delete_rows(duckdb::Connection &con,
     throw std::runtime_error("Error deleting rows from table <" +
                              absolute_table_name + ">:" + result->GetError());
   }
-}
-
-const std::string primary_key_join(std::vector<const column_def *> &columns_pk,
-                                   const std::string tbl1,
-                                   const std::string tbl2) {
-  std::ostringstream primary_key_join_condition_stream;
-  write_joined(
-      primary_key_join_condition_stream, columns_pk,
-      [&](const std::string &quoted_col, std::ostringstream &out) {
-        out << tbl1 << "." << quoted_col << " = " << tbl2 << "." << quoted_col;
-      },
-      " AND ");
-  return primary_key_join_condition_stream.str();
 }
 
 void MdSqlGenerator::deactivate_historical_records(
@@ -637,8 +630,6 @@ void MdSqlGenerator::deactivate_historical_records(
     // inner join to earliest table to only select rows that are in this batch
     sql << " INNER JOIN " << temp_earliest_table_name << " ON "
         << primary_key_join_condition << ")\n";
-    // sql << " WHERE _fivetran_active = TRUE";	// if a previous run failed, the
-    // records will have been turned to FALSE already
 
     sql << "INSERT INTO latest_active_records SELECT * EXCLUDE (row_num) FROM "
            "ranked_records WHERE row_num = 1";
@@ -658,10 +649,7 @@ void MdSqlGenerator::deactivate_historical_records(
     // converting to TIMESTAMP with no timezone because otherwise ICU is
     // required to do TIMESTAMPZ math. Need to test this well.
     sql << "_fivetran_end = (" << temp_earliest_table_name
-        << "._fivetran_start::TIMESTAMP - (INTERVAL '1 millisecond'))"; // TBD
-                                                                        // subtract
-                                                                        // a
-                                                                        // millisecond
+        << "._fivetran_start::TIMESTAMP - (INTERVAL '1 millisecond'))";
     sql << " FROM " << temp_earliest_table_name;
     sql << " WHERE " << short_table_name << "._fivetran_active = TRUE AND ";
     sql << primary_key_join_condition;
