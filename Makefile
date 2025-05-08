@@ -13,7 +13,7 @@ INSTALL_DIR="${ROOT_DIR}/install"
 GRPC_VERSION=v1.59.1
 OPENSSL_VERSION=3.1.3
 ARROW_VERSION=15.0.2
-DUCKDB_VERSION=v1.1.3
+DUCKDB_VERSION=v1.2.2
 CATCH2_VERSION=v3.5.1
 
 info:
@@ -86,7 +86,6 @@ get_duckdb:
 
 get_fivetran_protos:
 	mkdir -p protos
-	# TBD: might need to update to `production` before merging
 	curl -o protos/destination_sdk.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/v2/destination_sdk.proto
 	curl -o protos/common.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/v2/common.proto
 

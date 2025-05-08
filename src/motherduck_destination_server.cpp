@@ -90,6 +90,14 @@ std::unique_ptr<duckdb::Connection> get_connection(
 
   auto con = std::make_unique<duckdb::Connection>(db);
 
+  {
+    auto result = con->Query("LOAD core_functions");
+    if (result->HasError()) {
+      throw std::runtime_error("Could not LOAD core_functions: " +
+                               result->GetError());
+    }
+  }
+
   auto result = con->Query("SELECT md_current_client_duckdb_id()");
   if (result->HasError()) {
     logger->warning("Could not retrieve the current duckdb ID: " +

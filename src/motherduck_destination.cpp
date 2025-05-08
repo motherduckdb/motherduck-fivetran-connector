@@ -1,4 +1,4 @@
-#include "duckdb.hpp"
+#include "extension_helper.hpp"
 #include "motherduck_destination_server.hpp"
 #include <csignal>
 #include <execinfo.h>
@@ -19,26 +19,6 @@ void RunServer(const std::string &port) {
   std::cout << "Server listening on " << server_address << std::endl;
 
   server->Wait();
-}
-
-void download_motherduck_extension() {
-  // create an in-memory DuckDB instance
-  duckdb::DuckDB db;
-  duckdb::Connection con(db);
-  {
-    auto result = con.Query("INSTALL motherduck");
-    if (result->HasError()) {
-      throw std::runtime_error("Could not install motherduck extension prior "
-                               "to gRPC server startup");
-    }
-  }
-  {
-    auto result = con.Query("LOAD motherduck");
-    if (result->HasError()) {
-      throw std::runtime_error(
-          "Could not load motherduck extension prior to gRPC server startup");
-    }
-  }
 }
 
 void logCrash(int sig) {
@@ -62,7 +42,7 @@ int main(int argc, char **argv) {
     std::cout << "argument: " << argv[i] << std::endl;
   }
 
-  download_motherduck_extension();
+  preload_extensions();
   RunServer(port);
   return 0;
 }

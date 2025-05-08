@@ -73,6 +73,7 @@ add_library(motherduck_destination_sources STATIC
         "src/csv_arrow_ingest.cpp"
         "src/fivetran_duckdb_interop.cpp"
         "src/md_logging.cpp"
+        "src/extension_helper.cpp"
         ${TARGET_ROOT}/cpp/destination_sdk.pb.cc
         ${TARGET_ROOT}/cpp/destination_sdk.grpc.pb.cc
         ${TARGET_ROOT}/cpp/common.pb.cc
