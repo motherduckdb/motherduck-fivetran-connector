@@ -86,7 +86,6 @@ get_duckdb:
 
 get_fivetran_protos:
 	mkdir -p protos
-	# TBD: might need to update to `production` before merging
 	curl -o protos/destination_sdk.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/v2/destination_sdk.proto
 	curl -o protos/common.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/v2/common.proto
 
