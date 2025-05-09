@@ -97,7 +97,6 @@ private:
   alter_table_in_place(duckdb::Connection &con,
                        const std::string &absolute_table_name,
                        const std::set<std::string> &added_columns,
-                       const std::set<std::string> &deleted_columns,
                        const std::set<std::string> &alter_types,
                        const std::map<std::string, column_def> &new_column_map);
 };

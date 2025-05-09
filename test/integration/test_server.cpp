@@ -1430,7 +1430,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
   }
 
   {
-    // Alter Table to drop a primary key column
+    // Alter Table to drop a primary key column -- should be a no-op as dropping columns is not allowed
     ::fivetran_sdk::v2::AlterTableRequest request;
 
     add_config(request, token, TEST_DATABASE_NAME, table_name);
@@ -1456,7 +1456,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
     REQUIRE(!response.not_found());
 
     REQUIRE(response.table().name() == table_name);
-    REQUIRE(response.table().columns_size() == 2);
+    REQUIRE(response.table().columns_size() == 3);
     REQUIRE(response.table().columns(0).name() == "id");
     REQUIRE(response.table().columns(0).type() ==
             ::fivetran_sdk::v2::DataType::STRING);
@@ -1466,6 +1466,11 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
     REQUIRE(response.table().columns(1).type() ==
             ::fivetran_sdk::v2::DataType::STRING);
     REQUIRE(response.table().columns(1).primary_key());
+
+		REQUIRE(response.table().columns(2).name() == "id_new");
+		REQUIRE(response.table().columns(2).type() ==
+						::fivetran_sdk::v2::DataType::INT);
+		REQUIRE(response.table().columns(2).primary_key());
   }
 
   {

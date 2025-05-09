@@ -324,7 +324,6 @@ void MdSqlGenerator::alter_table_recreate(
 void MdSqlGenerator::alter_table_in_place(
     duckdb::Connection &con, const std::string &absolute_table_name,
     const std::set<std::string> &added_columns,
-    const std::set<std::string> &deleted_columns,
     const std::set<std::string> &alter_types,
     const std::map<std::string, column_def> &new_column_map) {
   for (const auto &col_name : added_columns) {
@@ -337,17 +336,6 @@ void MdSqlGenerator::alter_table_in_place(
 
     run_query(con, "alter_table add", out.str(),
               "Could not add column <" + col_name + "> to table <" +
-                  absolute_table_name + ">");
-  }
-
-  for (const auto &col_name : deleted_columns) {
-    std::ostringstream out;
-    out << "ALTER TABLE " << absolute_table_name << " DROP COLUMN ";
-
-    out << KeywordHelper::WriteQuoted(col_name, '"');
-
-    run_query(con, "alter_table drop", out.str(),
-              "Could not drop column <" + col_name + "> from table <" +
                   absolute_table_name + ">");
   }
 
@@ -374,7 +362,6 @@ void MdSqlGenerator::alter_table(duckdb::Connection &con,
   auto absolute_table_name = table.to_escaped_string();
   std::set<std::string> alter_types;
   std::set<std::string> added_columns;
-  std::set<std::string> deleted_columns;
   std::set<std::string> common_columns;
 
   const auto &existing_columns = describe_table(con, table);
@@ -392,11 +379,10 @@ void MdSqlGenerator::alter_table(duckdb::Connection &con,
       common_columns.emplace(col.name);
     }
 
+		// TODO: what will happen if source connector asks to change primary key AND drop a column? Should readd the column?
     if (new_col_it == new_column_map.end()) {
-      deleted_columns.emplace(col.name);
-      if (col.primary_key) {
-        recreate_table = true;
-      }
+			logger->info("Source connector requested that table " + absolute_table_name + " column " + col.name
+				+ " be dropped, but dropping columns is not allowed");
     } else if (new_col_it->second.primary_key != col.primary_key) {
       logger->info("Altering primary key requested for column <" +
                    new_col_it->second.name + ">");
@@ -424,8 +410,7 @@ void MdSqlGenerator::alter_table(duckdb::Connection &con,
   if (recreate_table) {
     alter_table_recreate(con, table, columns, common_columns);
   } else {
-    alter_table_in_place(con, absolute_table_name, added_columns,
-                         deleted_columns, alter_types, new_column_map);
+    alter_table_in_place(con, absolute_table_name, added_columns, alter_types, new_column_map);
   }
 
   run_query(con, "commit alter table transaction", "END TRANSACTION",
