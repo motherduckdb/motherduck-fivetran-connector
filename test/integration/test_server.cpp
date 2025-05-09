@@ -1956,3 +1956,101 @@ TEST_CASE("WriteBatchHistory upsert and delete", "[integration][write-batch]") {
                                               // delete file
   }
 }
+
+
+TEST_CASE("AlterTable must not drop columns", "[integration]") {
+	DestinationSdkImpl service;
+
+	const std::string table_name =
+			"some_table" + std::to_string(Catch::rngSeed());
+	auto token = std::getenv("motherduck_token");
+	REQUIRE(token);
+
+	auto con = get_test_connection(token);
+
+	{
+		// Create Table
+		::fivetran_sdk::v2::CreateTableRequest request;
+		add_config(request, token, TEST_DATABASE_NAME, table_name);
+		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
+		add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, false);
+
+		::fivetran_sdk::v2::CreateTableResponse response;
+		auto status = service.CreateTable(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+	}
+
+	{
+		// Alter Table to drop a regular column -- no-op because columns must not be deleted
+		::fivetran_sdk::v2::AlterTableRequest request;
+
+		add_config(request, token, TEST_DATABASE_NAME, table_name);
+		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
+		// the second column is missing, but it should be retained
+
+		::fivetran_sdk::v2::AlterTableResponse response;
+		auto status = service.AlterTable(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+	}
+
+	auto verifyTableStructure = [&]() {
+			// Describe the altered table
+			::fivetran_sdk::v2::DescribeTableRequest request;
+			(*request.mutable_configuration())["motherduck_token"] = token;
+			(*request.mutable_configuration())["motherduck_database"] =
+					TEST_DATABASE_NAME;
+			request.set_table_name(table_name);
+
+			::fivetran_sdk::v2::DescribeTableResponse response;
+			auto status = service.DescribeTable(nullptr, &request, &response);
+			REQUIRE_NO_FAIL(status);
+			REQUIRE(!response.not_found());
+
+			REQUIRE(response.table().name() == table_name);
+			REQUIRE(response.table().columns_size() == 2);
+			REQUIRE(response.table().columns(0).name() == "id");
+			REQUIRE(response.table().columns(0).type() ==
+							::fivetran_sdk::v2::DataType::STRING);
+			REQUIRE(response.table().columns(0).primary_key());
+
+			REQUIRE(response.table().columns(1).name() == "name");
+			REQUIRE(response.table().columns(1).type() ==
+							::fivetran_sdk::v2::DataType::STRING);
+			REQUIRE_FALSE(response.table().columns(1).primary_key());
+	};
+
+	verifyTableStructure();
+
+	{
+		// Alter Table to drop a primary key column -- no-op because columns must not be deleted
+		::fivetran_sdk::v2::AlterTableRequest request;
+
+		add_config(request, token, TEST_DATABASE_NAME, table_name);
+		// the first column is missing, but it should be retained
+		add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, false);
+
+		::fivetran_sdk::v2::AlterTableResponse response;
+		auto status = service.AlterTable(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+	}
+
+	verifyTableStructure();
+
+	{
+		// Alter Table to change the type on a primary key column and drop the regular column
+		// Still no-op but needs a separate test because changing primary key status results in table recreation,
+		// so could accidentally cause a column to be dropped
+		::fivetran_sdk::v2::AlterTableRequest request;
+
+		add_config(request, token, TEST_DATABASE_NAME, table_name);
+		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, false);	// primary key to regular column
+		// the second column is missing, but it should be retained
+
+		::fivetran_sdk::v2::AlterTableResponse response;
+		auto status = service.AlterTable(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+	}
+
+	verifyTableStructure();
+
+}
