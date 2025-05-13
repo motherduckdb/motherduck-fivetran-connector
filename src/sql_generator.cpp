@@ -287,6 +287,7 @@ void MdSqlGenerator::alter_table_recreate(
                 KeywordHelper::WriteQuoted(temp_table.table_name, '"'),
             "Could not rename table <" + absolute_table_name + ">");
 
+  // new primary keys have to get a default value as they cannot be null
   std::set<std::string> new_primary_key_cols;
   for (const auto &col : all_columns) {
     if (col.primary_key &&
@@ -297,6 +298,7 @@ void MdSqlGenerator::alter_table_recreate(
 
   create_table(con, table, all_columns, new_primary_key_cols);
 
+  // reinsert the data from the old table
   std::ostringstream out_column_list;
   bool first = true;
   for (auto &col : common_columns) {
@@ -367,11 +369,13 @@ void MdSqlGenerator::alter_table(duckdb::Connection &con,
   const auto &existing_columns = describe_table(con, table);
   std::map<std::string, column_def> new_column_map;
 
+  // start by assuming all columns are new
   for (const auto &col : columns) {
     new_column_map.emplace(col.name, col);
     added_columns.emplace(col.name);
   }
 
+  // make added_columns correct by removing previously existing columns
   for (const auto &col : existing_columns) {
     const auto &new_col_it = new_column_map.find(col.name);
 
@@ -379,10 +383,10 @@ void MdSqlGenerator::alter_table(duckdb::Connection &con,
       common_columns.emplace(col.name);
     }
 
-		// TODO: what will happen if source connector asks to change primary key AND drop a column? Should readd the column?
     if (new_col_it == new_column_map.end()) {
-			logger->info("Source connector requested that table " + absolute_table_name + " column " + col.name
-				+ " be dropped, but dropping columns is not allowed");
+      logger->info("Source connector requested that table " +
+                   absolute_table_name + " column " + col.name +
+                   " be dropped, but dropping columns is not allowed");
     } else if (new_col_it->second.primary_key != col.primary_key) {
       logger->info("Altering primary key requested for column <" +
                    new_col_it->second.name + ">");
@@ -408,9 +412,29 @@ void MdSqlGenerator::alter_table(duckdb::Connection &con,
                 absolute_table_name + ">");
 
   if (recreate_table) {
-    alter_table_recreate(con, table, columns, common_columns);
+    // preserve the order of the original columns
+    auto all_columns = existing_columns;
+
+    // replace definitions of existing columns with the new ones if available
+    for (size_t i = 0; i < all_columns.size(); i++) {
+      const auto &new_col_it = new_column_map.find(all_columns[i].name);
+      if (new_col_it != new_column_map.end()) {
+        all_columns[i] = new_col_it->second;
+      }
+    }
+
+    // add new columns to the end of the column list in order
+    for (const auto &col : columns) {
+      const auto &new_col_it = added_columns.find(col.name);
+      if (new_col_it != added_columns.end()) {
+        all_columns.push_back(new_column_map[col.name]);
+      }
+    }
+
+    alter_table_recreate(con, table, all_columns, common_columns);
   } else {
-    alter_table_in_place(con, absolute_table_name, added_columns, alter_types, new_column_map);
+    alter_table_in_place(con, absolute_table_name, added_columns, alter_types,
+                         new_column_map);
   }
 
   run_query(con, "commit alter table transaction", "END TRANSACTION",

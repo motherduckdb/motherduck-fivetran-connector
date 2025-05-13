@@ -1430,7 +1430,8 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
   }
 
   {
-    // Alter Table to drop a primary key column -- should be a no-op as dropping columns is not allowed
+    // Alter Table to drop a primary key column -- should be a no-op as dropping
+    // columns is not allowed
     ::fivetran_sdk::v2::AlterTableRequest request;
 
     add_config(request, token, TEST_DATABASE_NAME, table_name);
@@ -1467,10 +1468,10 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
             ::fivetran_sdk::v2::DataType::STRING);
     REQUIRE(response.table().columns(1).primary_key());
 
-		REQUIRE(response.table().columns(2).name() == "id_new");
-		REQUIRE(response.table().columns(2).type() ==
-						::fivetran_sdk::v2::DataType::INT);
-		REQUIRE(response.table().columns(2).primary_key());
+    REQUIRE(response.table().columns(2).name() == "id_new");
+    REQUIRE(response.table().columns(2).type() ==
+            ::fivetran_sdk::v2::DataType::INT);
+    REQUIRE(response.table().columns(2).primary_key());
   }
 
   {
@@ -1491,7 +1492,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
     add_config(request, token, TEST_DATABASE_NAME, table_name);
     add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
     add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, true);
-
+    // id_new is missing but will not be dropped
     add_col(request, "id_int", ::fivetran_sdk::v2::DataType::INT, true);
     add_col(request, "id_varchar", ::fivetran_sdk::v2::DataType::STRING, true);
     add_col(request, "id_date", ::fivetran_sdk::v2::DataType::NAIVE_DATE, true);
@@ -1503,16 +1504,18 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
   }
 
   {
+
     // Make sure the defaults are set correctly
     auto res = con->Query("SELECT * FROM " + table_name);
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 2);
     REQUIRE(res->GetValue(0, 0) == "1");
     REQUIRE(res->GetValue(1, 0) == "one");
-    REQUIRE(res->GetValue(2, 0) == 0);
-    REQUIRE(res->GetValue(3, 0) == "");
-    REQUIRE(res->GetValue(4, 0) == "1970-01-01");
-    REQUIRE(res->GetValue(5, 0) == 0.0);
+    REQUIRE(res->GetValue(2, 0) == 0);  // id_new that did not get deleted
+    REQUIRE(res->GetValue(3, 0) == 0);  // id_int that got added
+    REQUIRE(res->GetValue(4, 0) == ""); // id_varchar that got added
+    REQUIRE(res->GetValue(5, 0) == "1970-01-01"); // id_date that got added
+    REQUIRE(res->GetValue(6, 0) == 0.0);          // id_float that got added
   }
 
   {
@@ -1547,7 +1550,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
     REQUIRE(!response.not_found());
 
     REQUIRE(response.table().name() == table_name);
-    REQUIRE(response.table().columns_size() == 6);
+    REQUIRE(response.table().columns_size() == 7);
     REQUIRE(response.table().columns(0).name() == "id");
     REQUIRE(response.table().columns(0).type() ==
             ::fivetran_sdk::v2::DataType::STRING);
@@ -1558,25 +1561,30 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
             ::fivetran_sdk::v2::DataType::STRING);
     REQUIRE(response.table().columns(1).primary_key());
 
-    REQUIRE(response.table().columns(2).name() == "id_int");
+    REQUIRE(response.table().columns(2).name() == "id_new");
     REQUIRE(response.table().columns(2).type() ==
-            ::fivetran_sdk::v2::DataType::LONG); // this type got updated
-    REQUIRE_FALSE(response.table().columns(2).primary_key());
+            ::fivetran_sdk::v2::DataType::INT);
+    REQUIRE(response.table().columns(2).primary_key());
 
-    REQUIRE(response.table().columns(3).name() == "id_varchar");
+    REQUIRE(response.table().columns(3).name() == "id_int");
     REQUIRE(response.table().columns(3).type() ==
-            ::fivetran_sdk::v2::DataType::STRING);
-    REQUIRE(response.table().columns(3).primary_key());
+            ::fivetran_sdk::v2::DataType::LONG); // this type got updated
+    REQUIRE_FALSE(response.table().columns(3).primary_key());
 
-    REQUIRE(response.table().columns(4).name() == "id_date");
+    REQUIRE(response.table().columns(4).name() == "id_varchar");
     REQUIRE(response.table().columns(4).type() ==
-            ::fivetran_sdk::v2::DataType::NAIVE_DATE);
+            ::fivetran_sdk::v2::DataType::STRING);
     REQUIRE(response.table().columns(4).primary_key());
 
-    REQUIRE(response.table().columns(5).name() == "id_float");
+    REQUIRE(response.table().columns(5).name() == "id_date");
     REQUIRE(response.table().columns(5).type() ==
-            ::fivetran_sdk::v2::DataType::FLOAT);
+            ::fivetran_sdk::v2::DataType::NAIVE_DATE);
     REQUIRE(response.table().columns(5).primary_key());
+
+    REQUIRE(response.table().columns(6).name() == "id_float");
+    REQUIRE(response.table().columns(6).type() ==
+            ::fivetran_sdk::v2::DataType::FLOAT);
+    REQUIRE(response.table().columns(6).primary_key());
   }
 
   {
@@ -1587,9 +1595,10 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
     REQUIRE(res->GetValue(0, 0) == "1");
     REQUIRE(res->GetValue(1, 0) == "one");
     REQUIRE(res->GetValue(2, 0) == 0);
-    REQUIRE(res->GetValue(3, 0) == "");
-    REQUIRE(res->GetValue(4, 0) == "1970-01-01");
-    REQUIRE(res->GetValue(5, 0) == 0.0);
+    REQUIRE(res->GetValue(3, 0) == 0);
+    REQUIRE(res->GetValue(4, 0) == "");
+    REQUIRE(res->GetValue(5, 0) == "1970-01-01");
+    REQUIRE(res->GetValue(6, 0) == 0.0);
   }
 }
 
@@ -1957,100 +1966,103 @@ TEST_CASE("WriteBatchHistory upsert and delete", "[integration][write-batch]") {
   }
 }
 
-
 TEST_CASE("AlterTable must not drop columns", "[integration]") {
-	DestinationSdkImpl service;
+  DestinationSdkImpl service;
 
-	const std::string table_name =
-			"some_table" + std::to_string(Catch::rngSeed());
-	auto token = std::getenv("motherduck_token");
-	REQUIRE(token);
+  const std::string table_name =
+      "some_table" + std::to_string(Catch::rngSeed());
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
 
-	auto con = get_test_connection(token);
+  auto con = get_test_connection(token);
 
-	{
-		// Create Table
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, token, TEST_DATABASE_NAME, table_name);
-		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
-		add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, false);
+  {
+    // Create Table
+    ::fivetran_sdk::v2::CreateTableRequest request;
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
+    add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, false);
 
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
+    ::fivetran_sdk::v2::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
 
-	{
-		// Alter Table to drop a regular column -- no-op because columns must not be deleted
-		::fivetran_sdk::v2::AlterTableRequest request;
+  {
+    // Alter Table to drop a regular column -- no-op because columns must not be
+    // deleted
+    ::fivetran_sdk::v2::AlterTableRequest request;
 
-		add_config(request, token, TEST_DATABASE_NAME, table_name);
-		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
-		// the second column is missing, but it should be retained
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
+    // the second column is missing, but it should be retained
 
-		::fivetran_sdk::v2::AlterTableResponse response;
-		auto status = service.AlterTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
+    ::fivetran_sdk::v2::AlterTableResponse response;
+    auto status = service.AlterTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
 
-	auto verifyTableStructure = [&]() {
-			// Describe the altered table
-			::fivetran_sdk::v2::DescribeTableRequest request;
-			(*request.mutable_configuration())["motherduck_token"] = token;
-			(*request.mutable_configuration())["motherduck_database"] =
-					TEST_DATABASE_NAME;
-			request.set_table_name(table_name);
+  auto verifyTableStructure = [&](bool id_is_primary_key) {
+    // Describe the altered table
+    ::fivetran_sdk::v2::DescribeTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.set_table_name(table_name);
 
-			::fivetran_sdk::v2::DescribeTableResponse response;
-			auto status = service.DescribeTable(nullptr, &request, &response);
-			REQUIRE_NO_FAIL(status);
-			REQUIRE(!response.not_found());
+    ::fivetran_sdk::v2::DescribeTableResponse response;
+    auto status = service.DescribeTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(!response.not_found());
 
-			REQUIRE(response.table().name() == table_name);
-			REQUIRE(response.table().columns_size() == 2);
-			REQUIRE(response.table().columns(0).name() == "id");
-			REQUIRE(response.table().columns(0).type() ==
-							::fivetran_sdk::v2::DataType::STRING);
-			REQUIRE(response.table().columns(0).primary_key());
+    REQUIRE(response.table().name() == table_name);
+    REQUIRE(response.table().columns_size() == 2);
+    REQUIRE(response.table().columns(0).name() == "id");
+    REQUIRE(response.table().columns(0).type() ==
+            ::fivetran_sdk::v2::DataType::STRING);
+    REQUIRE(response.table().columns(0).primary_key() == id_is_primary_key);
 
-			REQUIRE(response.table().columns(1).name() == "name");
-			REQUIRE(response.table().columns(1).type() ==
-							::fivetran_sdk::v2::DataType::STRING);
-			REQUIRE_FALSE(response.table().columns(1).primary_key());
-	};
+    REQUIRE(response.table().columns(1).name() == "name");
+    REQUIRE(response.table().columns(1).type() ==
+            ::fivetran_sdk::v2::DataType::STRING);
+    REQUIRE_FALSE(response.table().columns(1).primary_key());
+  };
 
-	verifyTableStructure();
+  verifyTableStructure(true);
 
-	{
-		// Alter Table to drop a primary key column -- no-op because columns must not be deleted
-		::fivetran_sdk::v2::AlterTableRequest request;
+  {
+    // Alter Table to drop a primary key column -- no-op because columns must
+    // not be deleted
+    ::fivetran_sdk::v2::AlterTableRequest request;
 
-		add_config(request, token, TEST_DATABASE_NAME, table_name);
-		// the first column is missing, but it should be retained
-		add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, false);
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    // the first column is missing, but it should be retained
+    add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, false);
 
-		::fivetran_sdk::v2::AlterTableResponse response;
-		auto status = service.AlterTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
+    ::fivetran_sdk::v2::AlterTableResponse response;
+    auto status = service.AlterTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
 
-	verifyTableStructure();
+  verifyTableStructure(true);
 
-	{
-		// Alter Table to change the type on a primary key column and drop the regular column
-		// Still no-op but needs a separate test because changing primary key status results in table recreation,
-		// so could accidentally cause a column to be dropped
-		::fivetran_sdk::v2::AlterTableRequest request;
+  {
+    // Alter Table to change the type on a primary key column and drop the
+    // regular column Still no-op but needs a separate test because changing
+    // primary key status results in table recreation, so could accidentally
+    // cause a column to be dropped
+    ::fivetran_sdk::v2::AlterTableRequest request;
 
-		add_config(request, token, TEST_DATABASE_NAME, table_name);
-		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, false);	// primary key to regular column
-		// the second column is missing, but it should be retained
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING,
+            false); // primary key to regular column
+    // the second column is missing, but it should be retained
 
-		::fivetran_sdk::v2::AlterTableResponse response;
-		auto status = service.AlterTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
+    ::fivetran_sdk::v2::AlterTableResponse response;
+    auto status = service.AlterTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
 
-	verifyTableStructure();
-
+  verifyTableStructure(
+      false); // "id" no longer a primary key; otherwise structure is the same
 }
