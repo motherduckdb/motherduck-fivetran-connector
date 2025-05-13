@@ -45,7 +45,7 @@ public:
                                          const table_def &table);
 
   void alter_table(duckdb::Connection &con, const table_def &table,
-                   const std::vector<column_def> &columns);
+                   const std::vector<column_def> &requested_columns);
 
   void upsert(duckdb::Connection &con, const table_def &table,
               const std::string &staging_table_name,

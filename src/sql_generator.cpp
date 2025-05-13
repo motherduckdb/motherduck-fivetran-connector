@@ -355,9 +355,9 @@ void MdSqlGenerator::alter_table_in_place(
   }
 }
 
-void MdSqlGenerator::alter_table(duckdb::Connection &con,
-                                 const table_def &table,
-                                 const std::vector<column_def> &columns) {
+void MdSqlGenerator::alter_table(
+    duckdb::Connection &con, const table_def &table,
+    const std::vector<column_def> &requested_columns) {
 
   bool recreate_table = false;
 
@@ -370,7 +370,7 @@ void MdSqlGenerator::alter_table(duckdb::Connection &con,
   std::map<std::string, column_def> new_column_map;
 
   // start by assuming all columns are new
-  for (const auto &col : columns) {
+  for (const auto &col : requested_columns) {
     new_column_map.emplace(col.name, col);
     added_columns.emplace(col.name);
   }
@@ -423,8 +423,9 @@ void MdSqlGenerator::alter_table(duckdb::Connection &con,
       }
     }
 
-    // add new columns to the end of the column list in order
-    for (const auto &col : columns) {
+    // add new columns to the end of the table, in order they appear in the
+    // request
+    for (const auto &col : requested_columns) {
       const auto &new_col_it = added_columns.find(col.name);
       if (new_col_it != added_columns.end()) {
         all_columns.push_back(new_column_map[col.name]);
