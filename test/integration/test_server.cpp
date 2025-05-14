@@ -2063,6 +2063,126 @@ TEST_CASE("AlterTable must not drop columns", "[integration]") {
     REQUIRE_NO_FAIL(status);
   }
 
-  verifyTableStructure(
-      false); // "id" no longer a primary key; otherwise structure is the same
+  verifyTableStructure(false); // "id" no longer a primary key; otherwise same
+
+  {
+    // Alter Table adding two columns and sending one of the two existing
+    // columns with primary key changed This exercises the recreate path.
+    ::fivetran_sdk::v2::AlterTableRequest request;
+
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    // one new column coming in before an existing column
+    add_col(request, "new_before", ::fivetran_sdk::v2::DataType::STRING, false);
+    // the first column is missing, but it should be retained
+    add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, true);
+    // one new column coming in after an existing column
+    add_col(request, "new_after", ::fivetran_sdk::v2::DataType::STRING, false);
+
+    ::fivetran_sdk::v2::AlterTableResponse response;
+    auto status = service.AlterTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // Describe the altered table
+    ::fivetran_sdk::v2::DescribeTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.set_table_name(table_name);
+
+    ::fivetran_sdk::v2::DescribeTableResponse response;
+    auto status = service.DescribeTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(!response.not_found());
+
+    REQUIRE(response.table().name() == table_name);
+    REQUIRE(response.table().columns_size() == 4);
+    REQUIRE(response.table().columns(0).name() == "id");
+    REQUIRE(response.table().columns(0).type() ==
+            ::fivetran_sdk::v2::DataType::STRING);
+    REQUIRE_FALSE(response.table().columns(0).primary_key());
+
+    REQUIRE(response.table().columns(1).name() == "name");
+    REQUIRE(response.table().columns(1).type() ==
+            ::fivetran_sdk::v2::DataType::STRING);
+    REQUIRE(response.table().columns(1).primary_key());
+
+    // both new columns are added to the end, in the order they were requested
+    REQUIRE(response.table().columns(2).name() == "new_before");
+    REQUIRE(response.table().columns(2).type() ==
+            ::fivetran_sdk::v2::DataType::STRING);
+    REQUIRE_FALSE(response.table().columns(2).primary_key());
+
+    REQUIRE(response.table().columns(3).name() == "new_after");
+    REQUIRE(response.table().columns(3).type() ==
+            ::fivetran_sdk::v2::DataType::STRING);
+    REQUIRE_FALSE(response.table().columns(3).primary_key());
+  }
+
+  {
+    // Alter Table adding two more columns and sending one of the two existing
+    // columns unchanged This exercises the in-place path.
+    ::fivetran_sdk::v2::AlterTableRequest request;
+
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    // one new column coming in before an existing column
+    add_col(request, "new_before2", ::fivetran_sdk::v2::DataType::STRING,
+            false);
+    // the first column is missing, but it should be retained
+    add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, true);
+    // one new column coming in after an existing column
+    add_col(request, "new_after2", ::fivetran_sdk::v2::DataType::STRING, false);
+
+    ::fivetran_sdk::v2::AlterTableResponse response;
+    auto status = service.AlterTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // Describe the altered table
+    ::fivetran_sdk::v2::DescribeTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.set_table_name(table_name);
+
+    ::fivetran_sdk::v2::DescribeTableResponse response;
+    auto status = service.DescribeTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(!response.not_found());
+
+    REQUIRE(response.table().name() == table_name);
+    REQUIRE(response.table().columns_size() == 6);
+    REQUIRE(response.table().columns(0).name() == "id");
+    REQUIRE(response.table().columns(0).type() ==
+            ::fivetran_sdk::v2::DataType::STRING);
+    REQUIRE_FALSE(response.table().columns(0).primary_key());
+
+    REQUIRE(response.table().columns(1).name() == "name");
+    REQUIRE(response.table().columns(1).type() ==
+            ::fivetran_sdk::v2::DataType::STRING);
+    REQUIRE(response.table().columns(1).primary_key());
+
+    REQUIRE(response.table().columns(2).name() == "new_before");
+    REQUIRE(response.table().columns(2).type() ==
+            ::fivetran_sdk::v2::DataType::STRING);
+    REQUIRE_FALSE(response.table().columns(2).primary_key());
+
+    REQUIRE(response.table().columns(3).name() == "new_after");
+    REQUIRE(response.table().columns(3).type() ==
+            ::fivetran_sdk::v2::DataType::STRING);
+    REQUIRE_FALSE(response.table().columns(3).primary_key());
+
+    // both new columns are added to the end, in the order they were requested
+    REQUIRE(response.table().columns(4).name() == "new_before2");
+    REQUIRE(response.table().columns(4).type() ==
+            ::fivetran_sdk::v2::DataType::STRING);
+    REQUIRE_FALSE(response.table().columns(4).primary_key());
+
+    REQUIRE(response.table().columns(5).name() == "new_after2");
+    REQUIRE(response.table().columns(5).type() ==
+            ::fivetran_sdk::v2::DataType::STRING);
+    REQUIRE_FALSE(response.table().columns(5).primary_key());
+  }
 }

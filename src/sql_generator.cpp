@@ -325,19 +325,18 @@ void MdSqlGenerator::alter_table_recreate(
 
 void MdSqlGenerator::alter_table_in_place(
     duckdb::Connection &con, const std::string &absolute_table_name,
-    const std::set<std::string> &added_columns,
+    const std::vector<column_def> &added_columns,
     const std::set<std::string> &alter_types,
     const std::map<std::string, column_def> &new_column_map) {
-  for (const auto &col_name : added_columns) {
+  for (const auto &col : added_columns) {
     std::ostringstream out;
     out << "ALTER TABLE " << absolute_table_name << " ADD COLUMN ";
-    const auto &col = new_column_map.at(col_name);
 
-    out << KeywordHelper::WriteQuoted(col_name, '"') << " "
+    out << KeywordHelper::WriteQuoted(col.name, '"') << " "
         << duckdb::EnumUtil::ToChars(col.type);
 
     run_query(con, "alter_table add", out.str(),
-              "Could not add column <" + col_name + "> to table <" +
+              "Could not add column <" + col.name + "> to table <" +
                   absolute_table_name + ">");
   }
 
@@ -407,6 +406,15 @@ void MdSqlGenerator::alter_table(
     recreate_table = true;
   }
 
+  // list added columns in order
+  std::vector<column_def> added_columns_ordered;
+  for (const auto &col : requested_columns) {
+    const auto &new_col_it = added_columns.find(col.name);
+    if (new_col_it != added_columns.end()) {
+      added_columns_ordered.push_back(new_column_map[col.name]);
+    }
+  }
+
   run_query(con, "begin alter table transaction", "BEGIN TRANSACTION",
             "Could not begin transaction for altering table <" +
                 absolute_table_name + ">");
@@ -425,17 +433,13 @@ void MdSqlGenerator::alter_table(
 
     // add new columns to the end of the table, in order they appear in the
     // request
-    for (const auto &col : requested_columns) {
-      const auto &new_col_it = added_columns.find(col.name);
-      if (new_col_it != added_columns.end()) {
-        all_columns.push_back(new_column_map[col.name]);
-      }
+    for (const auto &col : added_columns_ordered) {
+      all_columns.push_back(col);
     }
-
     alter_table_recreate(con, table, all_columns, common_columns);
   } else {
-    alter_table_in_place(con, absolute_table_name, added_columns, alter_types,
-                         new_column_map);
+    alter_table_in_place(con, absolute_table_name, added_columns_ordered,
+                         alter_types, new_column_map);
   }
 
   run_query(con, "commit alter table transaction", "END TRANSACTION",
