@@ -287,6 +287,7 @@ void MdSqlGenerator::alter_table_recreate(
                 KeywordHelper::WriteQuoted(temp_table.table_name, '"'),
             "Could not rename table <" + absolute_table_name + ">");
 
+  // new primary keys have to get a default value as they cannot be null
   std::set<std::string> new_primary_key_cols;
   for (const auto &col : all_columns) {
     if (col.primary_key &&
@@ -297,6 +298,7 @@ void MdSqlGenerator::alter_table_recreate(
 
   create_table(con, table, all_columns, new_primary_key_cols);
 
+  // reinsert the data from the old table
   std::ostringstream out_column_list;
   bool first = true;
   for (auto &col : common_columns) {
@@ -323,31 +325,18 @@ void MdSqlGenerator::alter_table_recreate(
 
 void MdSqlGenerator::alter_table_in_place(
     duckdb::Connection &con, const std::string &absolute_table_name,
-    const std::set<std::string> &added_columns,
-    const std::set<std::string> &deleted_columns,
+    const std::vector<column_def> &added_columns,
     const std::set<std::string> &alter_types,
     const std::map<std::string, column_def> &new_column_map) {
-  for (const auto &col_name : added_columns) {
+  for (const auto &col : added_columns) {
     std::ostringstream out;
     out << "ALTER TABLE " << absolute_table_name << " ADD COLUMN ";
-    const auto &col = new_column_map.at(col_name);
 
-    out << KeywordHelper::WriteQuoted(col_name, '"') << " "
+    out << KeywordHelper::WriteQuoted(col.name, '"') << " "
         << duckdb::EnumUtil::ToChars(col.type);
 
     run_query(con, "alter_table add", out.str(),
-              "Could not add column <" + col_name + "> to table <" +
-                  absolute_table_name + ">");
-  }
-
-  for (const auto &col_name : deleted_columns) {
-    std::ostringstream out;
-    out << "ALTER TABLE " << absolute_table_name << " DROP COLUMN ";
-
-    out << KeywordHelper::WriteQuoted(col_name, '"');
-
-    run_query(con, "alter_table drop", out.str(),
-              "Could not drop column <" + col_name + "> from table <" +
+              "Could not add column <" + col.name + "> to table <" +
                   absolute_table_name + ">");
   }
 
@@ -365,26 +354,27 @@ void MdSqlGenerator::alter_table_in_place(
   }
 }
 
-void MdSqlGenerator::alter_table(duckdb::Connection &con,
-                                 const table_def &table,
-                                 const std::vector<column_def> &columns) {
+void MdSqlGenerator::alter_table(
+    duckdb::Connection &con, const table_def &table,
+    const std::vector<column_def> &requested_columns) {
 
   bool recreate_table = false;
 
   auto absolute_table_name = table.to_escaped_string();
   std::set<std::string> alter_types;
   std::set<std::string> added_columns;
-  std::set<std::string> deleted_columns;
   std::set<std::string> common_columns;
 
   const auto &existing_columns = describe_table(con, table);
   std::map<std::string, column_def> new_column_map;
 
-  for (const auto &col : columns) {
+  // start by assuming all columns are new
+  for (const auto &col : requested_columns) {
     new_column_map.emplace(col.name, col);
     added_columns.emplace(col.name);
   }
 
+  // make added_columns correct by removing previously existing columns
   for (const auto &col : existing_columns) {
     const auto &new_col_it = new_column_map.find(col.name);
 
@@ -393,10 +383,9 @@ void MdSqlGenerator::alter_table(duckdb::Connection &con,
     }
 
     if (new_col_it == new_column_map.end()) {
-      deleted_columns.emplace(col.name);
-      if (col.primary_key) {
-        recreate_table = true;
-      }
+      logger->info("Source connector requested that table " +
+                   absolute_table_name + " column " + col.name +
+                   " be dropped, but dropping columns is not allowed");
     } else if (new_col_it->second.primary_key != col.primary_key) {
       logger->info("Altering primary key requested for column <" +
                    new_col_it->second.name + ">");
@@ -417,15 +406,40 @@ void MdSqlGenerator::alter_table(duckdb::Connection &con,
     recreate_table = true;
   }
 
+  // list added columns in order
+  std::vector<column_def> added_columns_ordered;
+  for (const auto &col : requested_columns) {
+    const auto &new_col_it = added_columns.find(col.name);
+    if (new_col_it != added_columns.end()) {
+      added_columns_ordered.push_back(new_column_map[col.name]);
+    }
+  }
+
   run_query(con, "begin alter table transaction", "BEGIN TRANSACTION",
             "Could not begin transaction for altering table <" +
                 absolute_table_name + ">");
 
   if (recreate_table) {
-    alter_table_recreate(con, table, columns, common_columns);
+    // preserve the order of the original columns
+    auto all_columns = existing_columns;
+
+    // replace definitions of existing columns with the new ones if available
+    for (size_t i = 0; i < all_columns.size(); i++) {
+      const auto &new_col_it = new_column_map.find(all_columns[i].name);
+      if (new_col_it != new_column_map.end()) {
+        all_columns[i] = new_col_it->second;
+      }
+    }
+
+    // add new columns to the end of the table, in order they appear in the
+    // request
+    for (const auto &col : added_columns_ordered) {
+      all_columns.push_back(col);
+    }
+    alter_table_recreate(con, table, all_columns, common_columns);
   } else {
-    alter_table_in_place(con, absolute_table_name, added_columns,
-                         deleted_columns, alter_types, new_column_map);
+    alter_table_in_place(con, absolute_table_name, added_columns_ordered,
+                         alter_types, new_column_map);
   }
 
   run_query(con, "commit alter table transaction", "END TRANSACTION",
