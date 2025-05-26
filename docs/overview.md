@@ -2,12 +2,17 @@
 name: MotherDuck
 title: Fivetran for MotherDuck | Configuration requirements and documentation
 description: Connect data sources to MotherDuck in minutes using Fivetran. Explore documentation and start syncing your applications, databases, events, files, and more.
+menuPosition: 80
 ---
 
-# Motherduck {% badge text="Partner-Built" /%} {% badge text="Private Preview" /%}
+# MotherDuck {% badge text="Partner-Built" /%} {% availabilityBadge connector="motherduck" /%} 
 
 [MotherDuck](https://motherduck.com/) is a DuckDB-powered serverless data warehouse with a unique architecture that combines the power and scale of the cloud with the efficiency and convenience of DuckDB.
 Fivetran supports MotherDuck as a destination.
+
+-----
+
+{% partial file="destinations/saas-supported-deployment-models.template.md" /%}
 
 -----
 
@@ -25,20 +30,27 @@ The data types in your MotherDuck data warehouse follow Fivetran's [standard dat
 
 We use the following data type conversions:
 
-| Fivetran Data Type | Destination Data Type | Notes |
-|--------------------|-----------------------|--|
-| BOOLEAN            | BOOLEAN               | |
-| SHORT              | SMALLINT              | |
-| INT                | INTEGER               | |
-| LONG               | BIGINT                | |
-| FLOAT              | FLOAT                 | |
-| DOUBLE             | DOUBLE                | |
-| DECIMAL            | DECIMAL               | |
-| LOCALDATE          | DATE                  | |
-| LOCALDATETIME      | TIMESTAMP             | |
-| INSTANT            | TIMESTAMP             | |
-| STRING             | VARCHAR               | |
-| JSON               | VARCHAR               | |
-| BINARY             | BIT                   | |
+| Fivetran Data Type | Destination Data Type |
+|--------------------|-----------------------|
+| BOOLEAN            | BOOLEAN               |
+| SHORT              | SMALLINT              |
+| INT                | INTEGER               |
+| LONG               | BIGINT                |
+| FLOAT              | FLOAT                 |
+| DOUBLE             | DOUBLE                |
+| DECIMAL            | DECIMAL               |
+| LOCALDATE          | DATE                  |
+| LOCALDATETIME      | TIMESTAMP             |
+| INSTANT            | TIMESTAMP             |
+| STRING             | VARCHAR               |
+| JSON               | VARCHAR               |
+| BINARY             | BIT                   |
+
+------------
+
+## Limitations
+
+[History mode](/docs/core-concepts/sync-modes/history-mode) is not supported for MotherDuck destinations.
+
 
 
