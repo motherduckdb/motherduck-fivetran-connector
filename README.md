@@ -47,6 +47,18 @@ make build_connector_debug
 This connector uses DuckDB's amalgamation sources.
 To upgrade, change `DUCKDB_VERSION` in [Makefile](Makefile) and re-run `make get_duckdb`.
 
+### Temporarily upgrade DuckDB by building the amalgamation
+
+1. check out the new released version of DuckDB submodule.
+2. build the amalgamation sources:
+```
+cd duckdb
+EXTENSION_CONFIGS='./.github/config/bundled_extensions.cmake' ENABLE_EXTENSION_AUTOLOADING=1 ENABLE_EXTENSION_AUTOINSTALL=1  MAIN_BRANCH_VERSIONING=0 python scripts/amalgamation.py
+```
+3. copy them into the libduckdb-src directory
+```
+cp src/amalgamation/* ../libduckdb-src/
+```
 
 ## TODO
 - support GZIP compression
