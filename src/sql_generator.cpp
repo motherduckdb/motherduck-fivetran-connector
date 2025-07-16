@@ -365,6 +365,7 @@ void MdSqlGenerator::alter_table(
   std::set<std::string> added_columns;
   std::set<std::string> common_columns;
 
+  logger->info("    in MdSqlGenerator::alter_table for " + absolute_table_name);
   const auto &existing_columns = describe_table(con, table);
   std::map<std::string, column_def> new_column_map;
 
@@ -394,6 +395,9 @@ void MdSqlGenerator::alter_table(
       alter_types.emplace(col.name);
     }
   }
+  logger->info("    inventoried columns; recreate_table = " +
+               std::to_string(recreate_table) +
+               "; num alter_types = " + std::to_string(alter_types.size()));
 
   auto primary_key_added_it =
       std::find_if(added_columns.begin(), added_columns.end(),
@@ -412,6 +416,7 @@ void MdSqlGenerator::alter_table(
     const auto &new_col_it = added_columns.find(col.name);
     if (new_col_it != added_columns.end()) {
       added_columns_ordered.push_back(new_column_map[col.name]);
+      logger->info("    adding column " + col.name);
     }
   }
 
@@ -420,6 +425,7 @@ void MdSqlGenerator::alter_table(
                 absolute_table_name + ">");
 
   if (recreate_table) {
+    logger->info("    recreating table");
     // preserve the order of the original columns
     auto all_columns = existing_columns;
 
@@ -438,6 +444,7 @@ void MdSqlGenerator::alter_table(
     }
     alter_table_recreate(con, table, all_columns, common_columns);
   } else {
+    logger->info("    altering table in place");
     alter_table_in_place(con, absolute_table_name, added_columns_ordered,
                          alter_types, new_column_map);
   }
@@ -485,6 +492,7 @@ void MdSqlGenerator::update_values(
     std::vector<const column_def *> &columns_regular,
     const std::string &unmodified_string) {
 
+  logger->info("MdSqlGenerator::update_values requested");
   std::ostringstream sql;
   auto absolute_table_name = table.to_escaped_string();
 

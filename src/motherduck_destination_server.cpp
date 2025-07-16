@@ -151,6 +151,7 @@ void process_file(
     const std::function<void(const std::string &view_name)> &process_view) {
 
   validate_file(props.filename);
+  logger->info("    validated file " + props.filename);
   auto table = props.decryption_key.empty() ? read_unencrypted_csv(props)
                                             : read_encrypted_csv(props);
 
@@ -163,16 +164,16 @@ void process_file(
         "Could not convert Arrow batch reader to an array stream for file <" +
         props.filename + ">: " + status.message());
   }
-  logger->info("ArrowArrayStream created for file " + props.filename);
+  logger->info("    ArrowArrayStream created for file " + props.filename);
 
   duckdb_connection c_con = reinterpret_cast<duckdb_connection>(&con);
   duckdb_arrow_stream c_arrow_stream = (duckdb_arrow_stream)&arrow_array_stream;
-  logger->info("duckdb_arrow_stream created for file " + props.filename);
+  logger->info("    duckdb_arrow_stream created for file " + props.filename);
   duckdb_arrow_scan(c_con, "arrow_view", c_arrow_stream);
-  logger->info("duckdb_arrow_scan completed for file " + props.filename);
+  logger->info("    duckdb_arrow_scan completed for file " + props.filename);
 
   process_view("\"localmem\".\"arrow_view\"");
-  logger->info("view processed for file " + props.filename);
+  logger->info("    view processed for file " + props.filename);
 
   arrow_array_stream.release(&arrow_array_stream);
 }
@@ -301,6 +302,7 @@ grpc::Status DestinationSdkImpl::CreateTable(
 
   auto logger = std::make_shared<mdlog::MdLog>();
   try {
+    logger->info("Endpoint <CreateTable>: started");
     auto schema_name = get_schema_name(request);
 
     std::string db_name =
@@ -325,6 +327,7 @@ grpc::Status DestinationSdkImpl::CreateTable(
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
 
+  logger->info("Endpoint <CreateTable>: ended");
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
@@ -334,6 +337,7 @@ grpc::Status DestinationSdkImpl::AlterTable(
     ::fivetran_sdk::v2::AlterTableResponse *response) {
   auto logger = std::make_shared<mdlog::MdLog>();
   try {
+    logger->info("Endpoint <AlterTable>: started");
     std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
     table_def table_name{db_name, get_schema_name(request),
@@ -354,6 +358,7 @@ grpc::Status DestinationSdkImpl::AlterTable(
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
 
+  logger->info("Endpoint <AlterTable>: ended");
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
@@ -391,7 +396,6 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
                       ">; not truncated");
     }
 
-    logger->info("Endpoint <Truncate>: finished");
   } catch (const std::exception &e) {
     logger->severe("Truncate endpoint failed for schema <" +
                    request->schema_name() + ">, table <" +
@@ -399,6 +403,8 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
     response->mutable_task()->set_message(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
+
+  logger->info("Endpoint <Truncate>: ended");
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
@@ -602,7 +608,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, msg);
   }
 
-  logger->info("Endpoint <WriteBatch>: ended");
+  logger->info("Endpoint <WriteHistoryBatch>: ended");
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
