@@ -68,7 +68,7 @@ build_grpc:
 	  git fetch --unshallow origin && \
 	  git checkout f1f503da85d52e56aae11557b4d79a42bcaa2b86
 	# abseil is broken too (see https://github.com/abseil/abseil-cpp/issues/1241), patch until bumped to fix
-	cd ${DEPENDENCIES_SOURCE_DIR}/grpc/third_party/abseil-cpp && \
+	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/grpc/third_party/abseil-cpp && \
 	  git apply ${ROOT_DIR}/dependencies-patches/abseil.patch
 
 	OPENSSL_ROOT_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR}/openssl cmake -S ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/grpc -B ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/grpc \
