@@ -55,16 +55,30 @@ build_openssl_native:
 	  make -j${CORES} && \
 	  make install_sw
 
+# Uses -DCMAKE_POLICY_VERSION_MINIMUM=3.5 because third_party/cares has minimum version set to 3.1.0
 build_grpc:
 	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
 	rm -rf ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/grpc ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/grpc ${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc
+
 	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR} && \
-	  git clone --recursive --depth=1 --branch ${GRPC_VERSION} https://github.com/grpc/grpc.git
-	OPENSSL_ROOT_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR}/openssl cmake -S ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/grpc -B${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/grpc \
-	  ${OSX_BUILD_UNIVERSAL_FLAG} \
-	  -DgRPC_SSL_PROVIDER=package \
+	  git clone --branch ${GRPC_VERSION} --depth=1 --recurse-submodules --shallow-submodules https://github.com/grpc/grpc.git
+	# We need at least zlib 1.3.1 for the build to work on newer Macs (same issue as https://github.com/bulletphysics/bullet3/issues/4607)
+	# Undo the following once grpc has been bumped to a version that has zlib 1.3.1 or newer
+	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/grpc/third_party/zlib && \
+	  git fetch --unshallow origin && \
+	  git checkout f1f503da85d52e56aae11557b4d79a42bcaa2b86
+	# abseil is broken too (see https://github.com/abseil/abseil-cpp/issues/1241), patch until bumped to fix
+	cd ${DEPENDENCIES_SOURCE_DIR}/grpc/third_party/abseil-cpp && \
+	  git apply ${ROOT_DIR}/dependencies-patches/abseil.patch
+
+	OPENSSL_ROOT_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR}/openssl cmake -S ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/grpc -B ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/grpc \
 	  -DCMAKE_CXX_STANDARD=14 \
-	  -DCMAKE_INSTALL_PREFIX=${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc
+	  -DgRPC_BUILD_TESTS=OFF \
+	  -DgRPC_INSTALL=ON \
+	  -DCMAKE_INSTALL_PREFIX=${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc \
+	  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+	  -DCMAKE_CXX_FLAGS="-Wno-error -Wno-missing-template-arg-list-after-template-kw"
+
 	cd ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/grpc && make -j${CORES} && cmake --install .
 
 
