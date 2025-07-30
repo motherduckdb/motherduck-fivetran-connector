@@ -77,7 +77,7 @@ build_grpc:
 	  -DgRPC_INSTALL=ON \
 	  -DCMAKE_INSTALL_PREFIX=${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc \
 	  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-	  -DCMAKE_CXX_FLAGS="-Wno-error -Wno-missing-template-arg-list-after-template-kw"
+	  -DCMAKE_CXX_FLAGS="-Wno-missing-template-arg-list-after-template-kw"
 
 	cd ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/grpc && make -j${CORES} && cmake --install .
 
