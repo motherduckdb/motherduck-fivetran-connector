@@ -72,9 +72,10 @@ build_grpc:
 	  git apply ${ROOT_DIR}/dependencies-patches/abseil.patch
 
 	OPENSSL_ROOT_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR}/openssl cmake -S ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/grpc -B ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/grpc \
-	  -DCMAKE_CXX_STANDARD=14 \
 	  -DgRPC_BUILD_TESTS=OFF \
 	  -DgRPC_INSTALL=ON \
+	  -DgRPC_SSL_PROVIDER=package \
+	  -DCMAKE_CXX_STANDARD=14 \
 	  -DCMAKE_INSTALL_PREFIX=${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc \
 	  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	  -DCMAKE_CXX_FLAGS="-Wno-missing-template-arg-list-after-template-kw"
