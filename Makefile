@@ -84,12 +84,15 @@ build_grpc:
 
 build_arrow:
 	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
-	rm -rf ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/arrow
-	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR} && \
-	git clone --branch apache-arrow-${ARROW_VERSION} https://github.com/apache/arrow.git && \
+	rm -rf ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/arrow ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow ${MD_FIVETRAN_DEPENDENCIES_DIR}/arrow
+	git clone --branch apache-arrow-${ARROW_VERSION} --depth 1 https://github.com/apache/arrow.git ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/arrow
 	cmake -S ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/arrow/cpp -B${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow \
-	-DCMAKE_INSTALL_PREFIX=${MD_FIVETRAN_DEPENDENCIES_DIR}/arrow -DARROW_CSV=ON -DARROW_WITH_ZSTD=ON
-	cd ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow && make -j${CORES} && cmake --install .
+	  -DARROW_BUILD_STATIC=ON -DARROW_CSV=ON -DARROW_WITH_ZSTD=ON \
+	  -DCMAKE_INSTALL_PREFIX=${MD_FIVETRAN_DEPENDENCIES_DIR}/arrow \
+	  -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+
+	CMAKE_POLICY_VERSION_MINIMUM=3.5 cmake --build ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow
+	cmake --install ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow
 
 # versions 1.3.0 and 1.3.1 are not available; amalgamation files were built from source and checked in
 get_duckdb:
