@@ -45,12 +45,11 @@ build_connector_debug: check_dependencies get_fivetran_protos
 
 build_openssl_native:
 	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
-	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}
-	cd ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR} && \
-	  wget -q -O openssl-${OPENSSL_VERSION}.tar.gz https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz && \
-	  tar -xf openssl-${OPENSSL_VERSION}.tar.gz && \
-	  mv openssl-${OPENSSL_VERSION} openssl && \
-	  cd openssl && \
+	wget -q -O ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION}.tar.gz https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
+	tar --extract --gunzip --file ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION}.tar.gz --directory ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
+	rm ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION}.tar.gz
+	mv ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION} ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl
+	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl && \
 	  ./config --prefix=${MD_FIVETRAN_DEPENDENCIES_DIR}/openssl --openssldir=${MD_FIVETRAN_DEPENDENCIES_DIR}/openssl --libdir=lib no-shared zlib-dynamic no-tests && \
 	  make -j${CORES} && \
 	  make install_sw
