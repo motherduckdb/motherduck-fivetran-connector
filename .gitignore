@@ -36,6 +36,6 @@
 build
 sources
 install
-cmake-build-debug
+cmake-build-*
 gen
 protos
