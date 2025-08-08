@@ -1,5 +1,6 @@
 #include "extension_helper.hpp"
 #include "motherduck_destination_server.hpp"
+#include "stacktrace.hpp"
 #include <csignal>
 #include <execinfo.h>
 #include <grpcpp/grpcpp.h>
@@ -23,6 +24,8 @@ void RunServer(const std::string &port) {
 
 void logCrash(int sig) {
   std::cerr << "Crash signal " << sig << std::endl;
+  auto trace = duckdb_copy::StackTrace::GetStackTrace();
+  std::cerr << "Stack Trace:" << trace << std::endl;
   std::exit(sig);
 }
 
