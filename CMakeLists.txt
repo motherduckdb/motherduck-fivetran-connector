@@ -29,6 +29,11 @@ include(./proto_helper.cmake)
 
 find_package(Threads REQUIRED)
 
+# Check that MD_FIVETRAN_DEPENDENCIES_DIR is set
+if(NOT DEFINED MD_FIVETRAN_DEPENDENCIES_DIR)
+  message(FATAL_ERROR "MD_FIVETRAN_DEPENDENCIES_DIR is not set. Please set it to the path where dependencies are installed and pass it in as CMake flag.")
+endif()
+
 message(WARNING "DEPENDENCIES DIR: " ${MD_FIVETRAN_DEPENDENCIES_DIR})
 
 # absl and utf8_range is required by protobuf
