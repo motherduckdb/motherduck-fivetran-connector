@@ -70,6 +70,8 @@ generate_protos(${CMAKE_CURRENT_SOURCE_DIR}/protos/destination_sdk.proto)
 # DuckDB amalgamation
 set(DuckDB_SOURCE_DIR ./libduckdb-src)
 
+add_link_options(-rdynamic)
+add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)
 
 add_library(motherduck_destination_sources STATIC
         "src/motherduck_destination_server.cpp"
@@ -79,6 +81,7 @@ add_library(motherduck_destination_sources STATIC
         "src/fivetran_duckdb_interop.cpp"
         "src/md_logging.cpp"
         "src/extension_helper.cpp"
+        "src/stacktrace.cpp"
         ${TARGET_ROOT}/cpp/destination_sdk.pb.cc
         ${TARGET_ROOT}/cpp/destination_sdk.grpc.pb.cc
         ${TARGET_ROOT}/cpp/common.pb.cc
