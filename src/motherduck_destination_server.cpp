@@ -78,7 +78,9 @@ std::vector<column_def> get_duckdb_columns(
 std::unique_ptr<duckdb::Connection> get_connection(
     const google::protobuf::Map<std::string, std::string> &request_config,
     const std::string &db_name, const std::shared_ptr<mdlog::MdLog> &logger) {
+  logger->info("    get_connection: start");
   std::string token = find_property(request_config, MD_PROP_TOKEN);
+  logger->info("    get_connection: got token");
 
   duckdb::DBConfig config;
   config.SetOptionByName(MD_PROP_TOKEN, token);
@@ -86,10 +88,13 @@ std::unique_ptr<duckdb::Connection> get_connection(
   config.SetOptionByName("old_implicit_casting", true);
   config.SetOptionByName("motherduck_attach_mode", "single");
 
+  logger->info("    get_connection: created configuration");
   duckdb::DuckDB db("md:" + db_name, &config);
 
+  logger->info("    get_connection: created database instance");
   auto con = std::make_unique<duckdb::Connection>(db);
 
+  logger->info("    get_connection: created connection");
   {
     auto result = con->Query("LOAD core_functions");
     if (result->HasError()) {
@@ -98,13 +103,17 @@ std::unique_ptr<duckdb::Connection> get_connection(
     }
   }
 
+  logger->info("    get_connection: loaded core_functions");
   auto result = con->Query("SELECT md_current_client_duckdb_id()");
   if (result->HasError()) {
     logger->warning("Could not retrieve the current duckdb ID: " +
                     result->GetError());
   } else {
+    logger->info("    get_connection: about to set duckdb_id in logger");
     logger->set_duckdb_id(result->GetValue(0, 0).ToString());
   }
+
+  logger->info("    get_connection: all done, returning connection");
   return con;
 }
 
