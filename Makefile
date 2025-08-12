@@ -2,10 +2,10 @@
 MAKEFILE:=$(firstword $(MAKEFILE_LIST))
 ROOT_DIR:=$(shell dirname $(realpath ${MAKEFILE}))
 CORES=$(shell grep -c ^processor /proc/cpuinfo 2>/dev/null || sysctl -n hw.ncpu)
-MD_FIVETRAN_DEPENDENCIES_DIR ?= $(strip ${ROOT_DIR})/install
-MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR = $(strip ${ROOT_DIR})/sources
-MD_FIVETRAN_DEPENDENCIES_BUILD_DIR = $(strip ${ROOT_DIR})/build
 
+DEPENDENCIES_SOURCE_DIR = $(strip ${ROOT_DIR})/sources
+DEPENDENCIES_BUILD_DIR = $(strip ${ROOT_DIR})/build
+DEPENDENCIES_INSTALL_DIR ?= $(strip ${ROOT_DIR})/install
 SOURCE_DIR=${ROOT_DIR}
 BUILD_DIR=${ROOT_DIR}/build
 INSTALL_DIR=${ROOT_DIR}/install
@@ -18,86 +18,86 @@ CATCH2_VERSION=v3.5.1
 
 info:
 	@echo "root dir = " ${ROOT_DIR}
-	@echo "dependencies install dir = " ${MD_FIVETRAN_DEPENDENCIES_DIR}
-	@echo "dependencies source dir = " ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
-	@echo "dependencies build dir = " ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}
+	@echo "dependencies source dir = " ${DEPENDENCIES_SOURCE_DIR}
+	@echo "dependencies build dir = " ${DEPENDENCIES_BUILD_DIR}
+	@echo "dependencies install dir = " ${DEPENDENCIES_INSTALL_DIR}
 
 check_dependencies:
-	if [ ! -d '${MD_FIVETRAN_DEPENDENCIES_DIR}/arrow' ]; then \
+	if [ ! -d '${DEPENDENCIES_INSTALL_DIR}/arrow' ]; then \
   		@echo "ERROR: Please run 'make build_dependencies' first."; \
   		exit 1; \
   	fi
 
 build_connector: check_dependencies get_fivetran_protos
-	@echo "dependencies: ${MD_FIVETRAN_DEPENDENCIES_DIR}"
+	@echo "dependencies: ${DEPENDENCIES_INSTALL_DIR}"
 	cmake -S ${SOURCE_DIR} -B ${BUILD_DIR}/Release \
     		-DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}/Release \
-    		-DMD_FIVETRAN_DEPENDENCIES_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR}
+    		-DMD_FIVETRAN_DEPENDENCIES_DIR=${DEPENDENCIES_INSTALL_DIR}
 	cmake --build ${BUILD_DIR}/Release -j${CORES} --config Release
 	cmake --install ${BUILD_DIR}/Release --config Release
 
 build_connector_debug: check_dependencies get_fivetran_protos
 	cmake -S ${SOURCE_DIR} -B ${BUILD_DIR}/Debug \
     		-DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}/Debug \
-    		-DMD_FIVETRAN_DEPENDENCIES_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR}
+    		-DMD_FIVETRAN_DEPENDENCIES_DIR=${DEPENDENCIES_INSTALL_DIR}
 	cmake --build ${BUILD_DIR}/Debug -j${CORES} --config Debug
 	cmake --install ${BUILD_DIR}/Debug --config Debug
 
 build_openssl_native:
-	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
-	wget -q -O ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION}.tar.gz https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
-	tar --extract --gunzip --file ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION}.tar.gz --directory ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
-	rm ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION}.tar.gz
-	mv ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION} ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl
-	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl && \
-	  ./config --prefix=${MD_FIVETRAN_DEPENDENCIES_DIR}/openssl --openssldir=${MD_FIVETRAN_DEPENDENCIES_DIR}/openssl --libdir=lib no-shared zlib-dynamic no-tests && \
+	mkdir -p ${DEPENDENCIES_SOURCE_DIR}
+	wget -q -O ${DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION}.tar.gz https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
+	tar --extract --gunzip --file ${DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION}.tar.gz --directory ${DEPENDENCIES_SOURCE_DIR}
+	rm ${DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION}.tar.gz
+	mv ${DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION} ${DEPENDENCIES_SOURCE_DIR}/openssl
+	cd ${DEPENDENCIES_SOURCE_DIR}/openssl && \
+	  ./config --prefix=${DEPENDENCIES_INSTALL_DIR}/openssl --openssldir=${DEPENDENCIES_INSTALL_DIR}/openssl --libdir=lib no-shared zlib-dynamic no-tests && \
 	  make -j${CORES} && \
 	  make install_sw
 
 # Uses -DCMAKE_POLICY_VERSION_MINIMUM=3.5 because third_party/cares has minimum version set to 3.1.0
 build_grpc:
-	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
-	rm -rf ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/grpc ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/grpc ${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc
+	mkdir -p ${DEPENDENCIES_SOURCE_DIR}
+	rm -rf ${DEPENDENCIES_SOURCE_DIR}/grpc ${DEPENDENCIES_BUILD_DIR}/grpc ${DEPENDENCIES_INSTALL_DIR}/grpc
 
-	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR} && \
+	cd ${DEPENDENCIES_SOURCE_DIR} && \
 	  git clone --branch ${GRPC_VERSION} --depth=1 --recurse-submodules --shallow-submodules https://github.com/grpc/grpc.git
 	# We need at least zlib 1.3.1 for the build to work on newer Macs (same issue as https://github.com/bulletphysics/bullet3/issues/4607)
 	# Undo the following once grpc has been bumped to a version that has zlib 1.3.1 or newer
-	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/grpc/third_party/zlib && \
+	cd ${DEPENDENCIES_SOURCE_DIR}/grpc/third_party/zlib && \
 	  git fetch --unshallow origin && \
 	  git checkout f1f503da85d52e56aae11557b4d79a42bcaa2b86
 	# abseil is broken too (see https://github.com/abseil/abseil-cpp/issues/1241), patch until bumped to fix
-	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/grpc/third_party/abseil-cpp && \
+	cd ${DEPENDENCIES_SOURCE_DIR}/grpc/third_party/abseil-cpp && \
 	  git apply ${ROOT_DIR}/dependencies-patches/abseil.patch
 
-	OPENSSL_ROOT_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR}/openssl cmake -S ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/grpc -B ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/grpc \
+	OPENSSL_ROOT_DIR=${DEPENDENCIES_INSTALL_DIR}/openssl cmake -S ${DEPENDENCIES_SOURCE_DIR}/grpc -B ${DEPENDENCIES_BUILD_DIR}/grpc \
 	  -DgRPC_BUILD_TESTS=OFF \
 	  -DgRPC_INSTALL=ON \
 	  -DgRPC_SSL_PROVIDER=package \
 	  -DCMAKE_CXX_STANDARD=14 \
-	  -DCMAKE_INSTALL_PREFIX=${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc \
+	  -DCMAKE_INSTALL_PREFIX=${DEPENDENCIES_INSTALL_DIR}/grpc \
 	  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	  -DCMAKE_CXX_FLAGS="-Wno-missing-template-arg-list-after-template-kw"
 
-	cd ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/grpc && make -j${CORES} && cmake --install .
+	cd ${DEPENDENCIES_BUILD_DIR}/grpc && make -j${CORES} && cmake --install .
 
 
 build_arrow:
-	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
-	rm -rf ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/arrow ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow ${MD_FIVETRAN_DEPENDENCIES_DIR}/arrow
-	git clone --branch apache-arrow-${ARROW_VERSION} --depth 1 https://github.com/apache/arrow.git ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/arrow
-	cmake -S ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/arrow/cpp -B${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow \
+	mkdir -p ${DEPENDENCIES_SOURCE_DIR}
+	rm -rf ${DEPENDENCIES_SOURCE_DIR}/arrow ${DEPENDENCIES_BUILD_DIR}/arrow ${DEPENDENCIES_INSTALL_DIR}/arrow
+	git clone --branch apache-arrow-${ARROW_VERSION} --depth 1 https://github.com/apache/arrow.git ${DEPENDENCIES_SOURCE_DIR}/arrow
+	cmake -S ${DEPENDENCIES_SOURCE_DIR}/arrow/cpp -B${DEPENDENCIES_BUILD_DIR}/arrow \
 	  -DARROW_BUILD_STATIC=ON -DARROW_CSV=ON -DARROW_WITH_ZSTD=ON \
-	  -DCMAKE_INSTALL_PREFIX=${MD_FIVETRAN_DEPENDENCIES_DIR}/arrow \
+	  -DCMAKE_INSTALL_PREFIX=${DEPENDENCIES_INSTALL_DIR}/arrow \
 	  -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
-	CMAKE_POLICY_VERSION_MINIMUM=3.5 cmake --build ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow
-	cmake --install ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow
+	CMAKE_POLICY_VERSION_MINIMUM=3.5 cmake --build ${DEPENDENCIES_BUILD_DIR}/arrow
+	cmake --install ${DEPENDENCIES_BUILD_DIR}/arrow
 
 # versions 1.3.0 and 1.3.1 are not available; amalgamation files were built from source and checked in
 get_duckdb:
-	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
-	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR} && \
+	mkdir -p ${DEPENDENCIES_SOURCE_DIR}
+	cd ${DEPENDENCIES_SOURCE_DIR} && \
 		wget -q -O libduckdb-src.zip https://github.com/duckdb/duckdb/releases/download/${DUCKDB_VERSION}/libduckdb-src.zip && \
 		unzip -o -d ../libduckdb-src libduckdb-src.zip
 
@@ -127,12 +127,12 @@ check_format:
 
 
 build_test_dependencies:
-	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
-	rm -rf ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/Catch2
-	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR} && \
+	mkdir -p ${DEPENDENCIES_SOURCE_DIR}
+	rm -rf ${DEPENDENCIES_SOURCE_DIR}/Catch2
+	cd ${DEPENDENCIES_SOURCE_DIR} && \
 		git clone https://github.com/catchorg/Catch2.git --branch ${CATCH2_VERSION} && \
 		cd Catch2 && \
-		cmake -S ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/Catch2 -B${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/Catch2 \
-			-DCMAKE_INSTALL_PREFIX=${MD_FIVETRAN_DEPENDENCIES_DIR}/Catch2 -DBUILD_TESTING=OFF
-	cd ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/Catch2 && make -j${CORES} && cmake --install .
+		cmake -S ${DEPENDENCIES_SOURCE_DIR}/Catch2 -B${DEPENDENCIES_BUILD_DIR}/Catch2 \
+			-DCMAKE_INSTALL_PREFIX=${DEPENDENCIES_INSTALL_DIR}/Catch2 -DBUILD_TESTING=OFF
+	cd ${DEPENDENCIES_BUILD_DIR}/Catch2 && make -j${CORES} && cmake --install .
 
