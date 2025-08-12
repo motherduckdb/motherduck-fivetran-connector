@@ -1,9 +1,3 @@
-if(DEFINED ENV{MD_FIVETRAN_DEPENDENCIES_DIR})
-    set(DEPENDENCIES_DIR "$ENV{MD_FIVETRAN_DEPENDENCIES_DIR}")
-else()
-    set(DEPENDENCIES_DIR "${CMAKE_CURRENT_LIST_DIR}/install")
-endif()
-
 if (APPLE)
     set(APPLE_DEPENDENCIES "-framework CoreFoundation -lresolv")
 else()
@@ -15,11 +9,11 @@ endif()
 # https://jaredrhodes.com/2018/08/24/generate-protocol-buffers-on-build-with-cmake/
 function(GENERATE_PROTOS PROTO_FILE_IN)
     if(WIN32)
-        set(PROTOC ${DEPENDENCIES_DIR}/grpc/bin/protoc.exe)
-        set(PROTOC_GEN_GRPC ${DEPENDENCIES_DIR}/grpc/bin/grpc_cpp_plugin.exe)
+        set(PROTOC ${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc/bin/protoc.exe)
+        set(PROTOC_GEN_GRPC ${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc/bin/grpc_cpp_plugin.exe)
     else()
-        set(PROTOC ${DEPENDENCIES_DIR}/grpc/bin/protoc)
-        set(PROTOC_GEN_GRPC ${DEPENDENCIES_DIR}/grpc/bin/grpc_cpp_plugin)
+        set(PROTOC ${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc/bin/protoc)
+        set(PROTOC_GEN_GRPC ${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc/bin/grpc_cpp_plugin)
     endif()
 
     if(NOT EXISTS ${PROTOC})
@@ -74,7 +68,7 @@ endfunction()
 function(LINK_DEPENDENCIES LIBRARY_NAME)
     target_include_directories(${LIBRARY_NAME} PUBLIC SYSTEM
             ${TARGET_ROOT}/cpp/
-            ${DEPENDENCIES_DIR}/grpc/include/
+            ${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc/include/
     )
 
     target_link_libraries(${LIBRARY_NAME}
