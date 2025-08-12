@@ -21,20 +21,19 @@ endif()
 
 message("-- ENABLE_SANITIZER=${ENABLE_SANITIZER}")
 message("-- ENABLE_UBSAN=${ENABLE_UBSAN}")
-
-# Proto generation
-
-set(TARGET_ROOT ${PROJECT_SOURCE_DIR}/gen)
-include(./proto_helper.cmake)
-
 find_package(Threads REQUIRED)
 
 # Check that MD_FIVETRAN_DEPENDENCIES_DIR is set
 if(NOT DEFINED MD_FIVETRAN_DEPENDENCIES_DIR)
-  message(FATAL_ERROR "MD_FIVETRAN_DEPENDENCIES_DIR is not set. Please set it to the path where dependencies are installed and pass it in as CMake flag.")
+  set(MD_FIVETRAN_DEPENDENCIES_DIR "${CMAKE_CURRENT_LIST_DIR}/install")
 endif()
 
 message(WARNING "DEPENDENCIES DIR: " ${MD_FIVETRAN_DEPENDENCIES_DIR})
+
+# Proto generation
+set(TARGET_ROOT ${PROJECT_SOURCE_DIR}/gen)
+include(./proto_helper.cmake)
+
 
 # absl and utf8_range is required by protobuf
 find_package(absl CONFIG REQUIRED PATHS ${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
