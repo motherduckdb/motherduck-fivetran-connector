@@ -17,19 +17,19 @@ DUCKDB_VERSION=v1.3.1
 CATCH2_VERSION=v3.5.1
 
 info:
-	echo "root dir = " ${ROOT_DIR}
-	echo "dependencies install dir = " ${MD_FIVETRAN_DEPENDENCIES_DIR}
-	echo "dependencies source dir = " ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
-	echo "dependencies build dir = " ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}
+	@echo "root dir = " ${ROOT_DIR}
+	@echo "dependencies install dir = " ${MD_FIVETRAN_DEPENDENCIES_DIR}
+	@echo "dependencies source dir = " ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
+	@echo "dependencies build dir = " ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}
 
 check_dependencies:
 	if [ ! -d '${MD_FIVETRAN_DEPENDENCIES_DIR}/arrow' ]; then \
-  		echo "ERROR: Please run 'make build_dependencies' first."; \
+  		@echo "ERROR: Please run 'make build_dependencies' first."; \
   		exit 1; \
   	fi
 
 build_connector: check_dependencies get_fivetran_protos
-	echo "dependencies: ${MD_FIVETRAN_DEPENDENCIES_DIR}"
+	@echo "dependencies: ${MD_FIVETRAN_DEPENDENCIES_DIR}"
 	cmake -S ${SOURCE_DIR} -B ${BUILD_DIR}/Release \
     		-DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}/Release \
     		-DMD_FIVETRAN_DEPENDENCIES_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR}
