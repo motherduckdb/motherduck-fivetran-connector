@@ -1,8 +1,8 @@
+#include "md_logging.hpp"
+#include "sql_generator.hpp"
 #include <iostream>
-#include <md_logging.hpp>
 #include <string>
 
-#include "../includes/sql_generator.hpp"
 
 using duckdb::KeywordHelper;
 
