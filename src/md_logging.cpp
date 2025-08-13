@@ -1,4 +1,4 @@
-#include <md_logging.hpp>
+#include "md_logging.hpp"
 
 namespace mdlog {
 std::string escape_char(const std::string &str, const char &c) {
