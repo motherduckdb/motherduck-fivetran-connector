@@ -73,14 +73,14 @@ add_link_options(-rdynamic)
 add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)
 
 add_library(motherduck_destination_sources STATIC
-        "src/motherduck_destination_server.cpp"
-        "src/sql_generator.cpp"
-        "src/decryption.cpp"
-        "src/csv_arrow_ingest.cpp"
-        "src/fivetran_duckdb_interop.cpp"
-        "src/md_logging.cpp"
-        "src/extension_helper.cpp"
-        "src/stacktrace.cpp"
+        src/motherduck_destination_server.cpp
+        src/sql_generator.cpp
+        src/decryption.cpp
+        src/csv_arrow_ingest.cpp
+        src/fivetran_duckdb_interop.cpp
+        src/md_logging.cpp
+        src/extension_helper.cpp
+        src/stacktrace.cpp
         ${TARGET_ROOT}/cpp/destination_sdk.pb.cc
         ${TARGET_ROOT}/cpp/destination_sdk.grpc.pb.cc
         ${TARGET_ROOT}/cpp/common.pb.cc
@@ -105,7 +105,7 @@ target_link_libraries(motherduck_destination_sources
         Arrow::arrow_static
 )
 
-add_executable(motherduck_destination "src/motherduck_destination.cpp")
+add_executable(motherduck_destination src/motherduck_destination.cpp)
 target_link_libraries(
         motherduck_destination motherduck_destination_sources
 )
