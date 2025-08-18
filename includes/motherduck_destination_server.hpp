@@ -1,6 +1,8 @@
 #pragma once
 
 #include "destination_sdk.grpc.pb.h"
+#include "duckdb.hpp"
+#include <md_logging.hpp>
 
 static constexpr const char *const MD_PROP_DATABASE = "motherduck_database";
 
@@ -22,8 +24,15 @@ static constexpr const int DUCKDB_DEFAULT_SCALE = 3;
 class DestinationSdkImpl final
     : public fivetran_sdk::v2::DestinationConnector::Service {
 public:
-  DestinationSdkImpl() = default;
+  explicit DestinationSdkImpl();
   ~DestinationSdkImpl() = default;
+
+  /** Creates a duckdb instance, loads extensions and initializes the passed-in
+   * logger with the user token */
+  std::unique_ptr<duckdb::Connection> InitConnection(
+      const google::protobuf::Map<std::string, std::string> &request_config,
+      const std::string &db_name, const std::shared_ptr<mdlog::MdLog> &logger);
+
   ::grpc::Status ConfigurationForm(
       ::grpc::ServerContext *context,
       const ::fivetran_sdk::v2::ConfigurationFormRequest *request,
@@ -60,4 +69,7 @@ public:
   WriteHistoryBatch(::grpc::ServerContext *context,
                     const ::fivetran_sdk::v2::WriteHistoryBatchRequest *request,
                     ::fivetran_sdk::v2::WriteBatchResponse *response) override;
+
+private:
+  std::shared_ptr<logging_sink::LoggingSink::Stub> loggingSinkClient = nullptr;
 };

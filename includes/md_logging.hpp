@@ -1,5 +1,6 @@
 #pragma once
 
+#include "logging_sink.grpc.pb.h"
 #include <iostream>
 #include <map>
 
@@ -17,8 +18,14 @@ public:
 
   void set_duckdb_id(const std::string &duckdb_id_);
 
+  void
+  set_remote_sink(const std::string &token_,
+                  std::shared_ptr<logging_sink::LoggingSink::Stub> &client_);
+
 private:
   std::string duckdb_id = "none";
+  std::string token;
+  std::shared_ptr<logging_sink::LoggingSink::Stub> client = nullptr;
 };
 
 std::string escape_char(const std::string &str, const char &c);

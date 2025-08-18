@@ -10,7 +10,6 @@
 #include <csv_arrow_ingest.hpp>
 #include <destination_sdk.grpc.pb.h>
 #include <fivetran_duckdb_interop.hpp>
-#include <md_logging.hpp>
 #include <motherduck_destination_server.hpp>
 #include <sql_generator.hpp>
 
@@ -72,40 +71,6 @@ std::vector<column_def> get_duckdb_columns(
         column_def{col.name(), ddbtype, col.primary_key(), precision, scale});
   }
   return duckdb_columns;
-}
-
-// todo: rename to init_connection
-std::unique_ptr<duckdb::Connection> get_connection(
-    const google::protobuf::Map<std::string, std::string> &request_config,
-    const std::string &db_name, const std::shared_ptr<mdlog::MdLog> &logger) {
-  std::string token = find_property(request_config, MD_PROP_TOKEN);
-
-  duckdb::DBConfig config;
-  config.SetOptionByName(MD_PROP_TOKEN, token);
-  config.SetOptionByName("custom_user_agent", "fivetran");
-  config.SetOptionByName("old_implicit_casting", true);
-  config.SetOptionByName("motherduck_attach_mode", "single");
-
-  duckdb::DuckDB db("md:" + db_name, &config);
-
-  auto con = std::make_unique<duckdb::Connection>(db);
-
-  {
-    auto result = con->Query("LOAD core_functions");
-    if (result->HasError()) {
-      throw std::runtime_error("Could not LOAD core_functions: " +
-                               result->GetError());
-    }
-  }
-
-  auto result = con->Query("SELECT md_current_client_duckdb_id()");
-  if (result->HasError()) {
-    logger->warning("Could not retrieve the current duckdb ID: " +
-                    result->GetError());
-  } else {
-    logger->set_duckdb_id(result->GetValue(0, 0).ToString());
-  }
-  return con;
 }
 
 const std::string
@@ -178,6 +143,104 @@ void process_file(
   arrow_array_stream.release(&arrow_array_stream);
 }
 
+bool disable_host_check(const std::string &host) {
+  const auto env_disable_host_check =
+      std::getenv("motherduck_disable_host_check");
+  if (env_disable_host_check == nullptr) {
+    return false;
+  }
+  const auto value = std::string(env_disable_host_check);
+  return host == "localhost" || host == "127.0.0.1" || host == "::1" ||
+         value == "true" || value == "1";
+}
+
+std::shared_ptr<grpc::Channel>
+CreateChannelFromConfig(const std::string &host, int64_t port, bool use_tls) {
+  grpc::ChannelArguments channel_arguments;
+
+  // Prevent AWS NLB from closing the TCP connection after 350 seconds by
+  // closing it first after 4 minutes.
+  channel_arguments.SetInt("grpc.client_idle_timeout_ms", 240000);
+  // When a log sink is active, send a keepalive every minute to keep the
+  // connection active.
+  channel_arguments.SetInt("grpc.keepalive_time_ms", 60000);
+  // Timeout consistent with default.
+  channel_arguments.SetInt("grpc.keepalive_timeout_ms", 20000);
+
+  // If grpc.keepalive_time_ms is on, then grpc.http2.max_pings_without_data has
+  // to be modified (the default is only 2, so only 1 additional keepalive is
+  // sent after the initial query execution starts).
+  channel_arguments.SetInt("grpc.http2.max_pings_without_data", 0);
+
+  std::shared_ptr<grpc::ChannelCredentials> channel_credentials;
+  if (use_tls) {
+    grpc::experimental::TlsChannelCredentialsOptions tls_options;
+    tls_options.set_verify_server_certs(
+        false); // TODO: enable server verification before public release
+    if (disable_host_check(host)) {
+      // dev mode: disable all host validation and cert checks
+      std::cout << "DISABLING HOST CHECK" << std::endl;
+      tls_options.set_check_call_host(false);
+      tls_options.set_certificate_verifier(
+          std::make_shared<grpc::experimental::NoOpCertificateVerifier>());
+    }
+    channel_credentials = grpc::experimental::TlsCredentials(tls_options);
+  } else {
+    channel_credentials = grpc::InsecureChannelCredentials();
+  }
+
+  return grpc::CreateCustomChannel(host + ":" + std::to_string(port),
+                                   channel_credentials, channel_arguments);
+}
+
+DestinationSdkImpl::DestinationSdkImpl() {
+
+  const char *logging_host = std::getenv("motherduck_host");
+  if (logging_host == nullptr) {
+    logging_host = "api.motherduck.com";
+  }
+  //std::cout << "logging going to " << logging_host << std::endl;
+  auto logging_port = 443;
+  auto use_tls = true;
+  loggingSinkClient = std::shared_ptr<logging_sink::LoggingSink::Stub>(
+      std::move(logging_sink::LoggingSink::NewStub(
+          CreateChannelFromConfig(logging_host, logging_port, use_tls))));
+}
+
+std::unique_ptr<duckdb::Connection> DestinationSdkImpl::InitConnection(
+    const google::protobuf::Map<std::string, std::string> &request_config,
+    const std::string &db_name, const std::shared_ptr<mdlog::MdLog> &logger) {
+  std::string token = find_property(request_config, MD_PROP_TOKEN);
+  logger->set_remote_sink(token, loggingSinkClient);
+
+  duckdb::DBConfig config;
+  config.SetOptionByName(MD_PROP_TOKEN, token);
+  config.SetOptionByName("custom_user_agent", "fivetran");
+  config.SetOptionByName("old_implicit_casting", true);
+  config.SetOptionByName("motherduck_attach_mode", "single");
+
+  duckdb::DuckDB db("md:" + db_name, &config);
+
+  auto con = std::make_unique<duckdb::Connection>(db);
+
+  {
+    auto result = con->Query("LOAD core_functions");
+    if (result->HasError()) {
+      throw std::runtime_error("Could not LOAD core_functions: " +
+                               result->GetError());
+    }
+  }
+
+  auto result = con->Query("SELECT md_current_client_duckdb_id()");
+  if (result->HasError()) {
+    logger->warning("Could not retrieve the current duckdb ID: " +
+                    result->GetError());
+  } else {
+    logger->set_duckdb_id(result->GetValue(0, 0).ToString());
+  }
+  return con;
+}
+
 grpc::Status DestinationSdkImpl::ConfigurationForm(
     ::grpc::ServerContext *context,
     const ::fivetran_sdk::v2::ConfigurationFormRequest *request,
@@ -246,7 +309,7 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
     std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
+        InitConnection(request->configuration(), db_name, logger);
     logger->info("Endpoint <DescribeTable>: got connection");
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
     table_def table_name{db_name, get_schema_name(request),
@@ -308,7 +371,7 @@ grpc::Status DestinationSdkImpl::CreateTable(
     std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
     std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
+        InitConnection(request->configuration(), db_name, logger);
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
     const table_def table{db_name, schema_name, request->table().name()};
 
@@ -344,7 +407,7 @@ grpc::Status DestinationSdkImpl::AlterTable(
                          request->table().name()};
 
     std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
+        InitConnection(request->configuration(), db_name, logger);
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
     sql_generator->alter_table(*con, table_name,
@@ -379,7 +442,7 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
     }
 
     std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
+        InitConnection(request->configuration(), db_name, logger);
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
     if (sql_generator->table_exists(*con, table_name)) {
@@ -428,7 +491,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     table_def table_name{db_name, get_schema_name(request),
                          request->table().name()};
     std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
+        InitConnection(request->configuration(), db_name, logger);
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
     // Use local memory by default to prevent Arrow-based VIEW from traveling
@@ -528,7 +591,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     table_def table_name{db_name, get_schema_name(request),
                          request->table().name()};
     std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
+        InitConnection(request->configuration(), db_name, logger);
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
     // Use local memory by default to prevent Arrow-based VIEW from traveling
@@ -644,7 +707,7 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
 
   try {
     std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
+        InitConnection(request->configuration(), db_name, logger);
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
     if (request->name() == CONFIG_TEST_NAME_AUTHENTICATE) {

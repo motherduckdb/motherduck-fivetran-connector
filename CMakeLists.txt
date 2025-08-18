@@ -62,6 +62,9 @@ endif()
 generate_protos(${CMAKE_CURRENT_SOURCE_DIR}/protos/common.proto)
 generate_protos(${CMAKE_CURRENT_SOURCE_DIR}/protos/destination_sdk.proto)
 
+# Motherduck logging proto
+generate_protos(${CMAKE_CURRENT_SOURCE_DIR}/protos/logging_sink.proto)
+
 # DuckDB amalgamation
 set(DuckDB_SOURCE_DIR ./libduckdb-src)
 
@@ -74,6 +77,8 @@ add_library(motherduck_destination_sources STATIC
         "src/fivetran_duckdb_interop.cpp"
         "src/md_logging.cpp"
         "src/extension_helper.cpp"
+        ${TARGET_ROOT}/cpp/logging_sink.pb.cc
+        ${TARGET_ROOT}/cpp/logging_sink.grpc.pb.cc
         ${TARGET_ROOT}/cpp/destination_sdk.pb.cc
         ${TARGET_ROOT}/cpp/destination_sdk.grpc.pb.cc
         ${TARGET_ROOT}/cpp/common.pb.cc
