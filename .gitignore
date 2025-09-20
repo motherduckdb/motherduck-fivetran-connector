@@ -38,4 +38,5 @@ sources
 install
 cmake-build-*
 gen
+libduckdb-src
 protos
