@@ -13,7 +13,7 @@ INSTALL_DIR="${ROOT_DIR}/install"
 GRPC_VERSION=v1.61.1
 OPENSSL_VERSION=3.1.3
 ARROW_VERSION=15.0.2
-DUCKDB_VERSION=v1.3.1
+DUCKDB_VERSION=v1.3.2
 CATCH2_VERSION=v3.5.1
 
 info:
@@ -94,7 +94,6 @@ build_arrow:
 	CMAKE_POLICY_VERSION_MINIMUM=3.5 cmake --build ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow
 	cmake --install ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow
 
-# versions 1.3.0 and 1.3.1 are not available; amalgamation files were built from source and checked in
 get_duckdb:
 	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
 	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR} && \
@@ -107,8 +106,7 @@ get_fivetran_protos:
 	curl -o protos/destination_sdk.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/v2/destination_sdk.proto
 	curl -o protos/common.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/v2/common.proto
 
-# get_duckdb temporarily removed from the dependencies
-build_dependencies: build_openssl_native build_grpc build_arrow build_test_dependencies
+build_dependencies: get_duckdb build_openssl_native build_grpc build_arrow build_test_dependencies
 
 # Repo-wide C++ formatting
 # For local formatter use:

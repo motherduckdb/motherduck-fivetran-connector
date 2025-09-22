@@ -36,8 +36,7 @@ jobs:
           CXX: clang++-15
           CPP: clang-cpp-15
         run: |
-          # make get_fivetran_protos get_duckdb amalgamation files temporarily unavailable
-          make get_fivetran_protos
+          make get_fivetran_protos get_duckdb
           make build_connector_debug
 
       - name: run tests
