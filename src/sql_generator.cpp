@@ -463,12 +463,12 @@ void MdSqlGenerator::upsert(
   auto full_column_list = make_full_column_list(columns_pk, columns_regular);
   const std::string absolute_table_name = table.to_escaped_string();
   std::ostringstream sql;
-  sql << "INSERT INTO " << absolute_table_name << "(" << full_column_list
+  sql << "INSERT INTO " << absolute_table_name << " (" << full_column_list
       << ") SELECT " << full_column_list << " FROM " << staging_table_name;
   if (!columns_pk.empty()) {
     sql << " ON CONFLICT (";
     write_joined(sql, columns_pk, print_column);
-    sql << " ) DO UPDATE SET ";
+    sql << ") DO UPDATE SET ";
 
     write_joined(sql, columns_regular,
                  [](const std::string &quoted_col, std::ostringstream &out) {
