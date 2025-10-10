@@ -78,7 +78,7 @@ class DuckDBInitializer {
 public:
   DuckDBInitializer(const std::string &db_name, const std::string &md_token,
                     const std::shared_ptr<mdlog::MdLog> &logger)
-  : initial_token(md_token) {
+      : initial_token(md_token) {
     duckdb::DBConfig config;
     config.SetOptionByName(MD_PROP_TOKEN, md_token);
     config.SetOptionByName("custom_user_agent", "fivetran");
@@ -107,14 +107,16 @@ private:
   void initialize_db(const std::shared_ptr<mdlog::MdLog> &logger) {
     duckdb::Connection con(db);
     {
-      const auto load_res = con->Query("LOAD core_functions");
+      const auto load_res = con.Query("LOAD core_functions");
       if (load_res->HasError()) {
-        throw std::runtime_error("Could not LOAD core_functions: " + load_res->GetError());
+        throw std::runtime_error("Could not LOAD core_functions: " +
+                                 load_res->GetError());
       }
       logger->info("    DuckDBInitializer: loaded core_functions");
     }
     {
-      const auto duckdb_id_res = con->Query("SELECT md_current_client_duckdb_id()");
+      const auto duckdb_id_res =
+          con.Query("SELECT md_current_client_duckdb_id()");
       if (duckdb_id_res->HasError()) {
         logger->warning("Could not retrieve the current duckdb ID: " +
                         duckdb_id_res->GetError());
@@ -126,17 +128,18 @@ private:
   }
 };
 
-duckdb::DuckDB &get_duckdb(
-  const std::string &db_name, const std::string &md_token,
-  const std::shared_ptr<mdlog::MdLog> &logger) {
+duckdb::DuckDB &get_duckdb(const std::string &db_name,
+                           const std::string &md_token,
+                           const std::shared_ptr<mdlog::MdLog> &logger) {
 
   static DuckDBInitializer initializer(db_name, md_token, logger);
 
   if (!initializer.IsTokenSameAsInitial(md_token)) {
-    throw std::runtime_error("Trying to connect to MotherDuck with a different token than initially provided");
+    throw std::runtime_error("Trying to connect to MotherDuck with a different "
+                             "token than initially provided");
   }
 
-  return initializer.GetDB();
+  return initializer.GetDB(logger);
 }
 
 // todo: rename to init_connection
@@ -151,7 +154,8 @@ std::unique_ptr<duckdb::Connection> get_connection(
   auto con = std::make_unique<duckdb::Connection>(db);
   logger->info("    get_connection: created connection");
 
-  const auto con_id_res = con->Query("SELECT md_current_client_connection_id()");
+  const auto con_id_res =
+      con->Query("SELECT md_current_client_connection_id()");
   if (con_id_res->HasError()) {
     logger->warning("Could not retrieve the current connection ID: " +
                     con_id_res->GetError());
