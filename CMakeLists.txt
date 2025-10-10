@@ -1,6 +1,5 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.20)
 project(MotherDuckFivetranDestination C CXX)
-
 
 # Debug Asan/Ubsan
 if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT DISABLE_SANITIZER)
@@ -22,112 +21,93 @@ endif()
 message("-- ENABLE_SANITIZER=${ENABLE_SANITIZER}")
 message("-- ENABLE_UBSAN=${ENABLE_UBSAN}")
 
-# Proto generation
+if(DEFINED ENV{MD_FIVETRAN_DEPENDENCIES_DIR})
+    set(DEPENDENCIES_DIR "$ENV{MD_FIVETRAN_DEPENDENCIES_DIR}")
+else()
+    set(DEPENDENCIES_DIR "${CMAKE_CURRENT_LIST_DIR}/install" CACHE STRING "Path to dependencies")
+endif()
 
-set(TARGET_ROOT ${PROJECT_SOURCE_DIR}/gen)
-include(./proto_helper.cmake)
+message(WARNING "DEPENDENCIES DIR: ${DEPENDENCIES_DIR}")
 
 find_package(Threads REQUIRED)
 
-# Check that MD_FIVETRAN_DEPENDENCIES_DIR is set
-if(NOT DEFINED MD_FIVETRAN_DEPENDENCIES_DIR)
-  message(FATAL_ERROR "MD_FIVETRAN_DEPENDENCIES_DIR is not set. Please set it to the path where dependencies are installed and pass it in as CMake flag.")
-endif()
-
-message(WARNING "DEPENDENCIES DIR: " ${MD_FIVETRAN_DEPENDENCIES_DIR})
-
-# absl and utf8_range is required by protobuf
-find_package(absl CONFIG REQUIRED PATHS ${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
-find_package(utf8_range CONFIG REQUIRED PATHS ${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
-find_package(Protobuf CONFIG REQUIRED PATHS ${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
-find_package(Arrow REQUIRED PATHS ${MD_FIVETRAN_DEPENDENCIES_DIR}/arrow NO_DEFAULT_PATH)
-
+# absl and utf8_range are required by protobuf
+find_package(absl CONFIG REQUIRED PATHS ${DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
+find_package(utf8_range CONFIG REQUIRED PATHS ${DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
+find_package(Arrow REQUIRED PATHS ${DEPENDENCIES_DIR}/arrow NO_DEFAULT_PATH)
 message(STATUS "Using arrow ${ARROW_VERSION}")
-
-
-set(Protobuf_INCLUDE_DIR "${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc/include")
-set(Protobuf_LIBRARIES "${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc/lib")
-set(Openssl_INCLUDE_DIR "${MD_FIVETRAN_DEPENDENCIES_DIR}/openssl/include")
-set(Openssl_LIBRARIES "${MD_FIVETRAN_DEPENDENCIES_DIR}/openssl/lib")
-
+find_package(Protobuf CONFIG REQUIRED PATHS ${DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
 message(STATUS "Using protobuf ${Protobuf_VERSION}")
+set(Protobuf_INCLUDE_DIR "${DEPENDENCIES_DIR}/grpc/include")
 
-find_package(gRPC CONFIG REQUIRED PATHS ${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
+set(OPENSSL_ROOT_DIR "${DEPENDENCIES_DIR}/openssl")
+find_package(OpenSSL MODULE REQUIRED)
+message(STATUS "Using OpenSSL ${OPENSSL_VERSION}, include dir: ${OPENSSL_INCLUDE_DIR}")
+
+find_package(gRPC CONFIG REQUIRED PATHS ${DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
 message(STATUS "Using gRPC ${gRPC_VERSION}")
 
-set(_GRPC_GRPCPP gRPC::grpc++)
 if(CMAKE_CROSSCOMPILING)
   find_program(_GRPC_CPP_PLUGIN_EXECUTABLE grpc_cpp_plugin)
 else()
   set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
 endif()
 
+add_link_options(-rdynamic)
+add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)
+
+### Proto generation ###
+set(FIVETRAN_SDK ${PROJECT_SOURCE_DIR}/gen)
+
+# Loads the generate_protos and link_dependencies functions
+set(TARGET_ROOT ${FIVETRAN_SDK})
+include(./proto_helper.cmake)
 
 # Proto files
 generate_protos(${CMAKE_CURRENT_SOURCE_DIR}/protos/common.proto)
 generate_protos(${CMAKE_CURRENT_SOURCE_DIR}/protos/destination_sdk.proto)
 
-# DuckDB amalgamation
+add_library(fivetran_sdk OBJECT
+        ${FIVETRAN_SDK}/cpp/destination_sdk.pb.cc
+        ${FIVETRAN_SDK}/cpp/destination_sdk.grpc.pb.cc
+        ${FIVETRAN_SDK}/cpp/common.pb.cc
+        ${FIVETRAN_SDK}/cpp/common.grpc.pb.cc
+)
+target_include_directories(fivetran_sdk PUBLIC ${FIVETRAN_SDK}/cpp)
+link_dependencies(fivetran_sdk)
+
+### DuckDB amalgamation ###
 set(DuckDB_SOURCE_DIR ./libduckdb-src)
+add_library(duckdb OBJECT ${DuckDB_SOURCE_DIR}/duckdb.cpp)
+target_include_directories(duckdb PUBLIC ${DuckDB_SOURCE_DIR})
 
-add_link_options(-rdynamic)
-add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)
-
+### MotherDuck destination connector ###
 add_library(motherduck_destination_sources STATIC
-        "src/motherduck_destination_server.cpp"
-        "src/sql_generator.cpp"
-        "src/decryption.cpp"
-        "src/csv_arrow_ingest.cpp"
-        "src/fivetran_duckdb_interop.cpp"
-        "src/md_logging.cpp"
-        "src/extension_helper.cpp"
-        "src/stacktrace.cpp"
-        ${TARGET_ROOT}/cpp/destination_sdk.pb.cc
-        ${TARGET_ROOT}/cpp/destination_sdk.grpc.pb.cc
-        ${TARGET_ROOT}/cpp/common.pb.cc
-        ${TARGET_ROOT}/cpp/common.grpc.pb.cc
-        ${DuckDB_SOURCE_DIR}/duckdb.cpp
+        src/csv_arrow_ingest.cpp
+        src/decryption.cpp
+        src/extension_helper.cpp
+        src/fivetran_duckdb_interop.cpp
+        src/md_logging.cpp
+        src/motherduck_destination_server.cpp
+        src/sql_generator.cpp
+        src/stacktrace.cpp
 )
 
 target_include_directories(motherduck_destination_sources PUBLIC
-        ${TARGET_ROOT}/cpp
         includes
-        ${DuckDB_SOURCE_DIR}
-        ${Openssl_INCLUDE_DIR}/include/openssl
-        ${DUCKDB_INCLUDES}
 )
 
-link_dependencies(motherduck_destination_sources)
-
-target_link_libraries(motherduck_destination_sources
-        ${_REFLECTION}
-        ${_GRPC_GRPCPP}
-        ${_PROTOBUF_LIBPROTOBUF}
+target_link_libraries(motherduck_destination_sources PUBLIC
         Arrow::arrow_static
+        duckdb
+        fivetran_sdk
+        OpenSSL::Crypto
 )
 
-add_executable(motherduck_destination "src/motherduck_destination.cpp")
+add_executable(motherduck_destination src/motherduck_destination.cpp)
 target_link_libraries(
         motherduck_destination motherduck_destination_sources
 )
 
 # Testing
-find_package(Catch2 3 REQUIRED PATHS ${MD_FIVETRAN_DEPENDENCIES_DIR}/Catch2 NO_DEFAULT_PATH)
-add_executable(integration_tests
-        test/integration/test_server.cpp
-)
-target_compile_definitions(integration_tests PRIVATE
-        TEST_RESOURCES_LOCATION=${CMAKE_CURRENT_LIST_DIR}/test/files/
-)
-
-target_include_directories(integration_tests PUBLIC
-        ${TARGET_ROOT}/cpp
-        includes
-        ${Protobuf_INCLUDE_DIR}
-        ${DUCKDB_INCLUDES}
-
-)
-target_link_libraries(integration_tests PRIVATE
-        Catch2::Catch2WithMain
-        motherduck_destination_sources
-)
+add_subdirectory(test)

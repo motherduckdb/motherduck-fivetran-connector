@@ -32,7 +32,7 @@ build_connector: check_dependencies get_fivetran_protos
 	echo "dependencies: ${MD_FIVETRAN_DEPENDENCIES_DIR}"
 	cmake -S ${SOURCE_DIR} -B ${BUILD_DIR}/Release \
     		-DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}/Release \
-    		-DMD_FIVETRAN_DEPENDENCIES_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR}
+    		-DDEPENDENCIES_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR}
 	cmake --build ${BUILD_DIR}/Release -j${CORES} --config Release
 	cmake --install ${BUILD_DIR}/Release --config Release
 
@@ -48,6 +48,7 @@ build_openssl_native:
 	wget -q -O ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION}.tar.gz https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
 	tar --extract --gunzip --file ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION}.tar.gz --directory ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
 	rm ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION}.tar.gz
+	rm -rf ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl
 	mv ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION} ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl
 	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl && \
 	  ./config --prefix=${MD_FIVETRAN_DEPENDENCIES_DIR}/openssl --openssldir=${MD_FIVETRAN_DEPENDENCIES_DIR}/openssl --libdir=lib no-shared zlib-dynamic no-tests && \
