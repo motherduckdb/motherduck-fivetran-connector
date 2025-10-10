@@ -74,6 +74,58 @@ std::vector<column_def> get_duckdb_columns(
   return duckdb_columns;
 }
 
+class DuckDBInitializer {
+public:
+  DuckDBInitializer(const std::string &db_name, const std::string &md_token,
+                    const std::shared_ptr<mdlog::MdLog> &logger)
+  : initial_token(md_token) {
+    duckdb::DBConfig config;
+    config.SetOptionByName(MD_PROP_TOKEN, md_token);
+    config.SetOptionByName("custom_user_agent", "fivetran");
+    config.SetOptionByName("old_implicit_casting", true);
+    config.SetOptionByName("motherduck_attach_mode", "single");
+    logger->info("    DuckDBInitializer: created configuration");
+
+    db = duckdb::DuckDB("md:" + db_name, &config);
+    logger->info("    DuckDBInitializer: created database instance");
+  }
+
+  duckdb::DuckDB &GetDB() {
+    return db;
+  }
+
+  bool IsTokenSameAsInitial(const std::string &new_token) const {
+    return initial_token == new_token;
+  }
+
+private:
+  std::string initial_token;
+  duckdb::DuckDB db;
+};
+
+duckdb::DuckDB &get_duckdb(
+  const std::string &db_name, const std::string &md_token,
+  const std::shared_ptr<mdlog::MdLog> &logger) {
+
+  static DuckDBInitializer initializer(db_name, md_token, logger);
+
+  if (!initializer.IsTokenSameAsInitial(md_token)) {
+    throw std::runtime_error("Trying to connect to MotherDuck with a different token than initially provided");
+  }
+
+  return initializer.GetDB();
+}
+
+std::string get_current_md_token(duckdb::Connection &con) {
+  const auto res = con.Query("CALL get_md_token()");
+  if (res->HasError()) {
+    throw std::runtime_error("Could not get current MD token: " +
+                             res->GetError());
+  }
+  // get_md_token returns a single string value
+  return res->GetValue(0, 0).ToString();
+}
+
 // todo: rename to init_connection
 std::unique_ptr<duckdb::Connection> get_connection(
     const google::protobuf::Map<std::string, std::string> &request_config,
@@ -82,24 +134,14 @@ std::unique_ptr<duckdb::Connection> get_connection(
   std::string token = find_property(request_config, MD_PROP_TOKEN);
   logger->info("    get_connection: got token");
 
-  duckdb::DBConfig config;
-  config.SetOptionByName(MD_PROP_TOKEN, token);
-  config.SetOptionByName("custom_user_agent", "fivetran");
-  config.SetOptionByName("old_implicit_casting", true);
-  config.SetOptionByName("motherduck_attach_mode", "single");
-
-  logger->info("    get_connection: created configuration");
-  duckdb::DuckDB db("md:" + db_name, &config);
-
-  logger->info("    get_connection: created database instance");
+  duckdb::DuckDB &db = get_duckdb(db_name, token, logger);
   auto con = std::make_unique<duckdb::Connection>(db);
-
   logger->info("    get_connection: created connection");
+
   {
     auto result = con->Query("LOAD core_functions");
     if (result->HasError()) {
-      throw std::runtime_error("Could not LOAD core_functions: " +
-                               result->GetError());
+      throw std::runtime_error("Could not LOAD core_functions: " + result->GetError());
     }
   }
 
@@ -117,7 +159,7 @@ std::unique_ptr<duckdb::Connection> get_connection(
   return con;
 }
 
-const std::string
+std::string
 get_encryption_key(const std::string &filename,
                    const google::protobuf::Map<std::string, std::string> &keys,
                    ::fivetran_sdk::v2::Encryption encryption) {
