@@ -47,17 +47,17 @@ message(STATUS "Using OpenSSL ${OPENSSL_VERSION}, include dir: ${OPENSSL_INCLUDE
 find_package(gRPC CONFIG REQUIRED PATHS ${DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
 message(STATUS "Using gRPC ${gRPC_VERSION}")
 
-if(CMAKE_CROSSCOMPILING)
-  find_program(_GRPC_CPP_PLUGIN_EXECUTABLE grpc_cpp_plugin)
-else()
-  set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
-endif()
-
 add_link_options(-rdynamic)
 add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)
 
 ### Proto generation ###
 set(FIVETRAN_SDK ${PROJECT_SOURCE_DIR}/gen)
+
+if(CMAKE_CROSSCOMPILING)
+    find_program(_GRPC_CPP_PLUGIN_EXECUTABLE grpc_cpp_plugin)
+else()
+    set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
+endif()
 
 # Loads the generate_protos and link_dependencies functions
 set(TARGET_ROOT ${FIVETRAN_SDK})
