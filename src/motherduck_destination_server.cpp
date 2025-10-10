@@ -90,7 +90,8 @@ public:
     logger->info("    DuckDBInitializer: created database instance");
   }
 
-  duckdb::DuckDB &GetDB() {
+  duckdb::DuckDB &GetDB(const std::shared_ptr<mdlog::MdLog> &logger) {
+    std::call_once(init_flag, &DuckDBInitializer::initialize_db, this, logger);
     return db;
   }
 
@@ -101,6 +102,28 @@ public:
 private:
   std::string initial_token;
   duckdb::DuckDB db;
+  std::once_flag init_flag;
+
+  void initialize_db(const std::shared_ptr<mdlog::MdLog> &logger) {
+    duckdb::Connection con(db);
+    {
+      const auto load_res = con->Query("LOAD core_functions");
+      if (load_res->HasError()) {
+        throw std::runtime_error("Could not LOAD core_functions: " + load_res->GetError());
+      }
+      logger->info("    DuckDBInitializer: loaded core_functions");
+    }
+    {
+      const auto duckdb_id_res = con->Query("SELECT md_current_client_duckdb_id()");
+      if (duckdb_id_res->HasError()) {
+        logger->warning("Could not retrieve the current duckdb ID: " +
+                        duckdb_id_res->GetError());
+      } else {
+        logger->info("    get_connection: about to set duckdb_id in logger");
+        logger->set_duckdb_id(duckdb_id_res->GetValue(0, 0).ToString());
+      }
+    }
+  }
 };
 
 duckdb::DuckDB &get_duckdb(
@@ -116,16 +139,6 @@ duckdb::DuckDB &get_duckdb(
   return initializer.GetDB();
 }
 
-std::string get_current_md_token(duckdb::Connection &con) {
-  const auto res = con.Query("CALL get_md_token()");
-  if (res->HasError()) {
-    throw std::runtime_error("Could not get current MD token: " +
-                             res->GetError());
-  }
-  // get_md_token returns a single string value
-  return res->GetValue(0, 0).ToString();
-}
-
 // todo: rename to init_connection
 std::unique_ptr<duckdb::Connection> get_connection(
     const google::protobuf::Map<std::string, std::string> &request_config,
@@ -138,21 +151,13 @@ std::unique_ptr<duckdb::Connection> get_connection(
   auto con = std::make_unique<duckdb::Connection>(db);
   logger->info("    get_connection: created connection");
 
-  {
-    auto result = con->Query("LOAD core_functions");
-    if (result->HasError()) {
-      throw std::runtime_error("Could not LOAD core_functions: " + result->GetError());
-    }
-  }
-
-  logger->info("    get_connection: loaded core_functions");
-  auto result = con->Query("SELECT md_current_client_duckdb_id()");
-  if (result->HasError()) {
-    logger->warning("Could not retrieve the current duckdb ID: " +
-                    result->GetError());
+  const auto con_id_res = con->Query("SELECT md_current_client_connection_id()");
+  if (con_id_res->HasError()) {
+    logger->warning("Could not retrieve the current connection ID: " +
+                    con_id_res->GetError());
   } else {
-    logger->info("    get_connection: about to set duckdb_id in logger");
-    logger->set_duckdb_id(result->GetValue(0, 0).ToString());
+    logger->info("    get_connection: about to set connection_id in logger");
+    logger->set_connection_id(con_id_res->GetValue(0, 0).ToString());
   }
 
   logger->info("    get_connection: all done, returning connection");
