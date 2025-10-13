@@ -19,6 +19,4 @@ private:
   std::string duckdb_id = "none";
 };
 
-std::string escape_char(const std::string &str, const char &c);
-
 } // namespace mdlog
