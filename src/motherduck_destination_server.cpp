@@ -466,6 +466,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     // Use local memory by default to prevent Arrow-based VIEW from traveling
     // up to the cloud
+    con->Query("DETACH DATABASE IF EXISTS localmem");
     con->Query("ATTACH ':memory:' as localmem");
     con->Query("USE localmem");
 
@@ -566,6 +567,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     // Use local memory by default to prevent Arrow-based VIEW from traveling
     // up to the cloud
+    con->Query("DETACH DATABASE IF EXISTS localmem");
     con->Query("ATTACH ':memory:' as localmem");
     con->Query("USE localmem");
 
