@@ -26,8 +26,13 @@ if(DEFINED ENV{MD_FIVETRAN_DEPENDENCIES_DIR})
 else()
     set(DEPENDENCIES_DIR "${CMAKE_CURRENT_LIST_DIR}/install" CACHE STRING "Path to dependencies")
 endif()
+message(STATUS "DEPENDENCIES DIR: ${DEPENDENCIES_DIR}")
 
-message(WARNING "DEPENDENCIES DIR: ${DEPENDENCIES_DIR}")
+foreach(dependency grpc arrow openssl Catch2)
+    if(NOT EXISTS ${DEPENDENCIES_DIR}/${dependency})
+        message(FATAL_ERROR "Directory ${DEPENDENCIES_DIR}/${dependency} does not exist. Make sure to install the dependencies using `make build_dependencies` first.")
+    endif()
+endforeach()
 
 find_package(Threads REQUIRED)
 
