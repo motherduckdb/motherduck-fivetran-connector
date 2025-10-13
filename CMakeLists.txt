@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.10...3.20)
 project(MotherDuckFivetranDestination C CXX)
 
 # Debug Asan/Ubsan
