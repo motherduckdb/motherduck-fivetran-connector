@@ -1,18 +1,18 @@
+#include "motherduck_destination_server.hpp"
+#include "common.hpp"
+#include "csv_arrow_ingest.hpp"
+#include "destination_sdk.grpc.pb.h"
+#include "duckdb.hpp"
+#include "fivetran_duckdb_interop.hpp"
+#include "md_logging.hpp"
+#include "sql_generator.hpp"
+
 #include <fstream>
-#include <iostream>
 #include <memory>
 #include <string>
 
 #include <arrow/c/bridge.h>
 #include <grpcpp/grpcpp.h>
-
-#include <common.hpp>
-#include <csv_arrow_ingest.hpp>
-#include <destination_sdk.grpc.pb.h>
-#include <fivetran_duckdb_interop.hpp>
-#include <md_logging.hpp>
-#include <motherduck_destination_server.hpp>
-#include <sql_generator.hpp>
 
 std::string
 find_property(const google::protobuf::Map<std::string, std::string> &config,
@@ -74,94 +74,67 @@ std::vector<column_def> get_duckdb_columns(
   return duckdb_columns;
 }
 
-class DuckDBInitializer {
-public:
-  DuckDBInitializer(const std::string &db_name, const std::string &md_token,
-                    const std::shared_ptr<mdlog::MdLog> &logger)
-      : initial_token(md_token) {
+duckdb::DuckDB &
+DestinationSdkImpl::get_duckdb(const std::string &md_token,
+                               const std::string &db_name,
+                               const std::shared_ptr<mdlog::MdLog> &logger) {
+  auto initialize_db = [this, &md_token, &db_name, &logger]() {
     duckdb::DBConfig config;
     config.SetOptionByName(MD_PROP_TOKEN, md_token);
     config.SetOptionByName("custom_user_agent", "fivetran");
     config.SetOptionByName("old_implicit_casting", true);
     config.SetOptionByName("motherduck_attach_mode", "single");
-    logger->info("    DuckDBInitializer: created configuration");
+    logger->info("    initialize_db: created configuration");
 
     db = duckdb::DuckDB("md:" + db_name, &config);
-    logger->info("    DuckDBInitializer: created database instance");
-  }
+    logger->info("    initialize_db: created database instance");
 
-  duckdb::DuckDB &GetDB(const std::shared_ptr<mdlog::MdLog> &logger) {
-    std::call_once(init_flag, &DuckDBInitializer::initialize_db, this, logger);
-    return db;
-  }
-
-  bool IsTokenSameAsInitial(const std::string &new_token) const {
-    return initial_token == new_token;
-  }
-
-private:
-  std::string initial_token;
-  duckdb::DuckDB db;
-  std::once_flag init_flag;
-
-  void initialize_db(const std::shared_ptr<mdlog::MdLog> &logger) {
     duckdb::Connection con(db);
-    {
-      const auto load_res = con.Query("LOAD core_functions");
-      if (load_res->HasError()) {
-        throw std::runtime_error("Could not LOAD core_functions: " +
-                                 load_res->GetError());
-      }
-      logger->info("    DuckDBInitializer: loaded core_functions");
+
+    const auto load_res = con.Query("LOAD core_functions");
+    if (load_res->HasError()) {
+      throw std::runtime_error("Could not LOAD core_functions: " +
+                               load_res->GetError());
     }
-    {
-      const auto duckdb_id_res =
-          con.Query("SELECT md_current_client_duckdb_id()");
-      if (duckdb_id_res->HasError()) {
-        logger->warning("Could not retrieve the current duckdb ID: " +
-                        duckdb_id_res->GetError());
-      } else {
-        logger->info("    get_connection: about to set duckdb_id in logger");
-        logger->set_duckdb_id(duckdb_id_res->GetValue(0, 0).ToString());
-      }
-    }
-  }
-};
+    logger->info("    initialize_db: loaded core_functions");
 
-duckdb::DuckDB &get_duckdb(const std::string &db_name,
-                           const std::string &md_token,
-                           const std::shared_ptr<mdlog::MdLog> &logger) {
+    initial_md_token = md_token;
+  };
 
-  static DuckDBInitializer initializer(db_name, md_token, logger);
+  std::call_once(db_init_flag, initialize_db);
 
-  if (!initializer.IsTokenSameAsInitial(md_token)) {
+  if (md_token != initial_md_token) {
     throw std::runtime_error("Trying to connect to MotherDuck with a different "
                              "token than initially provided");
   }
 
-  return initializer.GetDB(logger);
+  return db;
 }
 
 // todo: rename to init_connection
-std::unique_ptr<duckdb::Connection> get_connection(
+std::unique_ptr<duckdb::Connection> DestinationSdkImpl::get_connection(
     const google::protobuf::Map<std::string, std::string> &request_config,
     const std::string &db_name, const std::shared_ptr<mdlog::MdLog> &logger) {
   logger->info("    get_connection: start");
-  std::string token = find_property(request_config, MD_PROP_TOKEN);
+  const std::string md_token = find_property(request_config, MD_PROP_TOKEN);
   logger->info("    get_connection: got token");
 
-  duckdb::DuckDB &db = get_duckdb(db_name, token, logger);
+  duckdb::DuckDB &db = get_duckdb(md_token, db_name, logger);
   auto con = std::make_unique<duckdb::Connection>(db);
   logger->info("    get_connection: created connection");
 
-  const auto con_id_res =
-      con->Query("SELECT md_current_client_connection_id()");
-  if (con_id_res->HasError()) {
-    logger->warning("Could not retrieve the current connection ID: " +
-                    con_id_res->GetError());
+  const auto client_ids_res =
+      con->Query("SELECT md_current_client_duckdb_id(), "
+                 "md_current_client_connection_id()");
+  if (client_ids_res->HasError()) {
+    logger->warning(
+        "Could not retrieve the current DuckDB and connection ID: " +
+        client_ids_res->GetError());
   } else {
+    logger->info("    get_connection: about to set duckdb_id in logger");
+    logger->set_duckdb_id(client_ids_res->GetValue(0, 0).ToString());
     logger->info("    get_connection: about to set connection_id in logger");
-    logger->set_connection_id(con_id_res->GetValue(0, 0).ToString());
+    logger->set_connection_id(client_ids_res->GetValue(1, 0).ToString());
   }
 
   logger->info("    get_connection: all done, returning connection");
