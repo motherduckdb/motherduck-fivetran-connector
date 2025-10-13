@@ -23,7 +23,7 @@ class DestinationSdkImpl final
     : public fivetran_sdk::v2::DestinationConnector::Service {
 public:
   DestinationSdkImpl() = default;
-  ~DestinationSdkImpl() = default;
+  ~DestinationSdkImpl() override = default;
   ::grpc::Status ConfigurationForm(
       ::grpc::ServerContext *context,
       const ::fivetran_sdk::v2::ConfigurationFormRequest *request,
