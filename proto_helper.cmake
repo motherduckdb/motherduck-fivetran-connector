@@ -1,9 +1,3 @@
-if(DEFINED ENV{MD_FIVETRAN_DEPENDENCIES_DIR})
-    set(DEPENDENCIES_DIR "$ENV{MD_FIVETRAN_DEPENDENCIES_DIR}")
-else()
-    set(DEPENDENCIES_DIR "${CMAKE_CURRENT_LIST_DIR}/install")
-endif()
-
 if (APPLE)
     set(APPLE_DEPENDENCIES "-framework CoreFoundation -lresolv")
 else()
