@@ -141,7 +141,7 @@ std::unique_ptr<duckdb::Connection> DestinationSdkImpl::get_connection(
   return con;
 }
 
-const std::string
+std::string
 get_encryption_key(const std::string &filename,
                    const google::protobuf::Map<std::string, std::string> &keys,
                    ::fivetran_sdk::v2::Encryption encryption) {
