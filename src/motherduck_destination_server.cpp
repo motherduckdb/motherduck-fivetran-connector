@@ -9,6 +9,7 @@
 
 #include <fstream>
 #include <memory>
+#include <mutex>
 #include <string>
 
 #include <arrow/c/bridge.h>
