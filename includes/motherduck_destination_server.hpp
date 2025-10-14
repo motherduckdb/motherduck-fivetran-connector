@@ -1,6 +1,11 @@
 #pragma once
 
 #include "destination_sdk.grpc.pb.h"
+#include "duckdb.hpp"
+#include "md_logging.hpp"
+
+#include <memory>
+#include <mutex>
 
 static constexpr const char *const MD_PROP_DATABASE = "motherduck_database";
 
@@ -24,6 +29,7 @@ class DestinationSdkImpl final
 public:
   DestinationSdkImpl() = default;
   ~DestinationSdkImpl() override = default;
+
   ::grpc::Status ConfigurationForm(
       ::grpc::ServerContext *context,
       const ::fivetran_sdk::v2::ConfigurationFormRequest *request,
@@ -60,4 +66,16 @@ public:
   WriteHistoryBatch(::grpc::ServerContext *context,
                     const ::fivetran_sdk::v2::WriteHistoryBatchRequest *request,
                     ::fivetran_sdk::v2::WriteBatchResponse *response) override;
+
+private:
+  std::string initial_md_token;
+  duckdb::DuckDB db;
+  std::once_flag db_init_flag;
+
+  duckdb::DuckDB &get_duckdb(const std::string &md_token,
+                             const std::string &db_name,
+                             const std::shared_ptr<mdlog::MdLog> &logger);
+  std::unique_ptr<duckdb::Connection> get_connection(
+      const google::protobuf::Map<std::string, std::string> &request_config,
+      const std::string &db_name, const std::shared_ptr<mdlog::MdLog> &logger);
 };

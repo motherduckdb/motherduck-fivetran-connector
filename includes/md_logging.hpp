@@ -14,9 +14,11 @@ public:
   void severe(const std::string &message) const;
 
   void set_duckdb_id(const std::string &duckdb_id_);
+  void set_connection_id(const std::string &connection_id_);
 
 private:
   std::string duckdb_id = "none";
+  std::string connection_id = "none";
 };
 
 } // namespace mdlog

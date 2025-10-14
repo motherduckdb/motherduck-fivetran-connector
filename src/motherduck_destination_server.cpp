@@ -1,18 +1,19 @@
+#include "motherduck_destination_server.hpp"
+#include "common.hpp"
+#include "csv_arrow_ingest.hpp"
+#include "destination_sdk.grpc.pb.h"
+#include "duckdb.hpp"
+#include "fivetran_duckdb_interop.hpp"
+#include "md_logging.hpp"
+#include "sql_generator.hpp"
+
 #include <fstream>
-#include <iostream>
 #include <memory>
+#include <mutex>
 #include <string>
 
 #include <arrow/c/bridge.h>
 #include <grpcpp/grpcpp.h>
-
-#include <common.hpp>
-#include <csv_arrow_ingest.hpp>
-#include <destination_sdk.grpc.pb.h>
-#include <fivetran_duckdb_interop.hpp>
-#include <md_logging.hpp>
-#include <motherduck_destination_server.hpp>
-#include <sql_generator.hpp>
 
 std::string
 find_property(const google::protobuf::Map<std::string, std::string> &config,
@@ -74,43 +75,67 @@ std::vector<column_def> get_duckdb_columns(
   return duckdb_columns;
 }
 
+duckdb::DuckDB &
+DestinationSdkImpl::get_duckdb(const std::string &md_token,
+                               const std::string &db_name,
+                               const std::shared_ptr<mdlog::MdLog> &logger) {
+  auto initialize_db = [this, &md_token, &db_name, &logger]() {
+    duckdb::DBConfig config;
+    config.SetOptionByName(MD_PROP_TOKEN, md_token);
+    config.SetOptionByName("custom_user_agent", "fivetran");
+    config.SetOptionByName("old_implicit_casting", true);
+    config.SetOptionByName("motherduck_attach_mode", "single");
+    logger->info("    initialize_db: created configuration");
+
+    db = duckdb::DuckDB("md:" + db_name, &config);
+    logger->info("    initialize_db: created database instance");
+
+    duckdb::Connection con(db);
+
+    const auto load_res = con.Query("LOAD core_functions");
+    if (load_res->HasError()) {
+      throw std::runtime_error("Could not LOAD core_functions: " +
+                               load_res->GetError());
+    }
+    logger->info("    initialize_db: loaded core_functions");
+
+    initial_md_token = md_token;
+  };
+
+  std::call_once(db_init_flag, initialize_db);
+
+  if (md_token != initial_md_token) {
+    throw std::runtime_error("Trying to connect to MotherDuck with a different "
+                             "token than initially provided");
+  }
+
+  return db;
+}
+
 // todo: rename to init_connection
-std::unique_ptr<duckdb::Connection> get_connection(
+std::unique_ptr<duckdb::Connection> DestinationSdkImpl::get_connection(
     const google::protobuf::Map<std::string, std::string> &request_config,
     const std::string &db_name, const std::shared_ptr<mdlog::MdLog> &logger) {
   logger->info("    get_connection: start");
-  std::string token = find_property(request_config, MD_PROP_TOKEN);
+  const std::string md_token = find_property(request_config, MD_PROP_TOKEN);
   logger->info("    get_connection: got token");
 
-  duckdb::DBConfig config;
-  config.SetOptionByName(MD_PROP_TOKEN, token);
-  config.SetOptionByName("custom_user_agent", "fivetran");
-  config.SetOptionByName("old_implicit_casting", true);
-  config.SetOptionByName("motherduck_attach_mode", "single");
-
-  logger->info("    get_connection: created configuration");
-  duckdb::DuckDB db("md:" + db_name, &config);
-
-  logger->info("    get_connection: created database instance");
+  duckdb::DuckDB &db = get_duckdb(md_token, db_name, logger);
   auto con = std::make_unique<duckdb::Connection>(db);
-
   logger->info("    get_connection: created connection");
-  {
-    auto result = con->Query("LOAD core_functions");
-    if (result->HasError()) {
-      throw std::runtime_error("Could not LOAD core_functions: " +
-                               result->GetError());
-    }
-  }
 
-  logger->info("    get_connection: loaded core_functions");
-  auto result = con->Query("SELECT md_current_client_duckdb_id()");
-  if (result->HasError()) {
-    logger->warning("Could not retrieve the current duckdb ID: " +
-                    result->GetError());
+  const auto client_ids_res =
+      con->Query("SELECT md_current_client_duckdb_id(), "
+                 "md_current_client_connection_id()");
+  if (client_ids_res->HasError()) {
+    logger->warning(
+        "Could not retrieve the current DuckDB and connection ID: " +
+        client_ids_res->GetError());
   } else {
     logger->info("    get_connection: about to set duckdb_id in logger");
-    logger->set_duckdb_id(result->GetValue(0, 0).ToString());
+    logger->set_duckdb_id(client_ids_res->GetValue(0, 0).ToString());
+    logger->info("    get_connection: about to set connection_id in logger");
+    logger->set_connection_id(client_ids_res->GetValue(1, 0).ToString());
   }
 
   logger->info("    get_connection: all done, returning connection");
@@ -175,15 +200,26 @@ void process_file(
   }
   logger->info("    ArrowArrayStream created for file " + props.filename);
 
+  const auto con_id = con.context->GetConnectionId();
+  const auto temp_db_name = "temp_mem_db_" + std::to_string(con_id);
+
+  // Run DETACH just to be extra sure
+  con.Query("DETACH DATABASE IF EXISTS " + temp_db_name);
+  con.Query("ATTACH ':memory:' AS " + temp_db_name);
+  // Use local memory by default to prevent Arrow-based VIEW from traveling
+  // up to the cloud
+  con.Query("USE " + temp_db_name);
+
   duckdb_connection c_con = reinterpret_cast<duckdb_connection>(&con);
   duckdb_arrow_stream c_arrow_stream = (duckdb_arrow_stream)&arrow_array_stream;
   logger->info("    duckdb_arrow_stream created for file " + props.filename);
   duckdb_arrow_scan(c_con, "arrow_view", c_arrow_stream);
   logger->info("    duckdb_arrow_scan completed for file " + props.filename);
 
-  process_view("\"localmem\".\"arrow_view\"");
+  process_view("\"" + temp_db_name + "\".\"arrow_view\"");
   logger->info("    view processed for file " + props.filename);
 
+  con.Query("DETACH DATABASE IF EXISTS " + temp_db_name);
   arrow_array_stream.release(&arrow_array_stream);
 }
 
@@ -440,11 +476,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
         get_connection(request->configuration(), db_name, logger);
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
-    // Use local memory by default to prevent Arrow-based VIEW from traveling
-    // up to the cloud
-    con->Query("ATTACH ':memory:' as localmem");
-    con->Query("USE localmem");
-
     const auto cols = get_duckdb_columns(request->table().columns());
     std::vector<const column_def *> columns_pk;
     std::vector<const column_def *> columns_regular;
@@ -539,11 +570,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name, logger);
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
-
-    // Use local memory by default to prevent Arrow-based VIEW from traveling
-    // up to the cloud
-    con->Query("ATTACH ':memory:' as localmem");
-    con->Query("USE localmem");
 
     const auto cols = get_duckdb_columns(request->table().columns());
     std::vector<const column_def *> columns_pk;

@@ -21,7 +21,7 @@ std::string escape_char(const std::string &str, const char &c) {
 void MdLog::log(const std::string &level, const std::string &message) const {
   std::cout << "{\"level\":\"" << escape_char(level, '"') << "\","
             << "\"message\":\"" << escape_char(message, '"') << ", duckdb_id=<"
-            << duckdb_id << ">\","
+            << duckdb_id << ">, connection_id=<" << connection_id << ">\","
             << "\"message-origin\":\"sdk_destination\"}" << std::endl;
 }
 
@@ -35,6 +35,10 @@ void MdLog::severe(const std::string &message) const { log("SEVERE", message); }
 
 void MdLog::set_duckdb_id(const std::string &duckdb_id_) {
   duckdb_id = duckdb_id_;
+}
+
+void MdLog::set_connection_id(const std::string &connection_id_) {
+  connection_id = connection_id_;
 }
 
 } // namespace mdlog
