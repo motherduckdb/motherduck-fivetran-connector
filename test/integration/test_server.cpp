@@ -7,6 +7,9 @@
 #include <catch2/reporters/catch_reporter_event_listener.hpp>
 #include <catch2/reporters/catch_reporter_registrars.hpp>
 #include <fstream>
+#include <future>
+#include <thread>
+#include <vector>
 
 #define STRING(x) #x
 #define XSTRING(s) STRING(s)
@@ -1054,6 +1057,63 @@ TEST_CASE("Table with large json row", "[integration][write-batch]") {
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 1);
     REQUIRE(res->GetValue(0, 0) == 1);
+  }
+}
+
+TEST_CASE("Parallel WriteBatch requests", "[integration][write-batch]") {
+  DestinationSdkImpl service;
+
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+
+  constexpr int num_tables = 5;
+  std::vector<std::string> table_names;
+
+  for (int i = 0; i < num_tables; i++) {
+    const std::string table_name = "parallel_books_" + std::to_string(i);
+    table_names.push_back(table_name);
+
+    ::fivetran_sdk::v2::CreateTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    define_test_table(request, table_name);
+
+    ::fivetran_sdk::v2::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  // Launch parallel WriteBatch requests that each write to their own table
+  std::vector<std::future<grpc::Status>> futures;
+
+  for (int i = 0; i < num_tables; i++) {
+    futures.push_back(
+        std::async(std::launch::async, [&service, &table_names, i, token]() {
+          ::fivetran_sdk::v2::WriteBatchRequest request;
+          (*request.mutable_configuration())["motherduck_token"] = token;
+          (*request.mutable_configuration())["motherduck_database"] =
+              TEST_DATABASE_NAME;
+          define_test_table(request, table_names[i]);
+          request.mutable_file_params()->set_null_string("magic-nullvalue");
+          request.add_replace_files(TEST_RESOURCES_DIR + "books_upsert.csv");
+
+          ::fivetran_sdk::v2::WriteBatchResponse response;
+          return service.WriteBatch(nullptr, &request, &response);
+        }));
+  }
+
+  for (auto &future : futures) {
+    auto status = future.get();
+    REQUIRE_NO_FAIL(status);
+  }
+
+  auto con = get_test_connection(token);
+  for (const auto &table_name : table_names) {
+    auto res =
+        con->Query("SELECT id, title, FROM " + table_name + " ORDER BY id");
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 3);
   }
 }
 
