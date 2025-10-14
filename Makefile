@@ -6,9 +6,9 @@ MD_FIVETRAN_DEPENDENCIES_DIR ?= $(strip ${ROOT_DIR})/install
 MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR = $(strip ${ROOT_DIR})/sources
 MD_FIVETRAN_DEPENDENCIES_BUILD_DIR = $(strip ${ROOT_DIR})/build
 
-SOURCE_DIR="${ROOT_DIR}"
-BUILD_DIR="${ROOT_DIR}/build"
-INSTALL_DIR="${ROOT_DIR}/install"
+SOURCE_DIR=${ROOT_DIR}
+BUILD_DIR=${ROOT_DIR}/build
+INSTALL_DIR=${ROOT_DIR}/install
 
 GRPC_VERSION=v1.61.1
 OPENSSL_VERSION=3.1.3
@@ -32,22 +32,21 @@ build_connector: check_dependencies get_fivetran_protos
 	echo "dependencies: ${MD_FIVETRAN_DEPENDENCIES_DIR}"
 	cmake -S ${SOURCE_DIR} -B ${BUILD_DIR}/Release \
     		-DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}/Release \
-    		-DMD_FIVETRAN_DEPENDENCIES_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR}
+    		-DDEPENDENCIES_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR}
 	cmake --build ${BUILD_DIR}/Release -j${CORES} --config Release
-	cmake --install ${BUILD_DIR}/Release --config Release
 
 build_connector_debug: check_dependencies get_fivetran_protos
 	cmake -S ${SOURCE_DIR} -B ${BUILD_DIR}/Debug \
     		-DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}/Debug \
-    		-DMD_FIVETRAN_DEPENDENCIES_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR}
+    		-DDEPENDENCIES_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR}
 	cmake --build ${BUILD_DIR}/Debug -j${CORES} --config Debug
-	cmake --install ${BUILD_DIR}/Debug --config Debug
 
 build_openssl_native:
 	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
 	wget -q -O ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION}.tar.gz https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
 	tar --extract --gunzip --file ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION}.tar.gz --directory ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
 	rm ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION}.tar.gz
+	rm -rf ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl
 	mv ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl-${OPENSSL_VERSION} ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl
 	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/openssl && \
 	  ./config --prefix=${MD_FIVETRAN_DEPENDENCIES_DIR}/openssl --openssldir=${MD_FIVETRAN_DEPENDENCIES_DIR}/openssl --libdir=lib no-shared zlib-dynamic no-tests && \
