@@ -200,15 +200,26 @@ void process_file(
   }
   logger->info("    ArrowArrayStream created for file " + props.filename);
 
+  const auto con_id = con.context->GetConnectionId();
+  const auto temp_db_name = "temp_mem_db_" + std::to_string(con_id);
+
+  // Run DETACH just to be extra sure
+  con.Query("DETACH DATABASE IF EXISTS " + temp_db_name);
+  con.Query("ATTACH ':memory:' AS " + temp_db_name);
+  // Use local memory by default to prevent Arrow-based VIEW from traveling
+  // up to the cloud
+  con.Query("USE " + temp_db_name);
+
   duckdb_connection c_con = reinterpret_cast<duckdb_connection>(&con);
   duckdb_arrow_stream c_arrow_stream = (duckdb_arrow_stream)&arrow_array_stream;
   logger->info("    duckdb_arrow_stream created for file " + props.filename);
   duckdb_arrow_scan(c_con, "arrow_view", c_arrow_stream);
   logger->info("    duckdb_arrow_scan completed for file " + props.filename);
 
-  process_view("\"localmem\".\"arrow_view\"");
+  process_view("\"" + temp_db_name + "\".\"arrow_view\"");
   logger->info("    view processed for file " + props.filename);
 
+  con.Query("DETACH DATABASE IF EXISTS " + temp_db_name);
   arrow_array_stream.release(&arrow_array_stream);
 }
 
@@ -465,12 +476,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
         get_connection(request->configuration(), db_name, logger);
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
-    // Use local memory by default to prevent Arrow-based VIEW from traveling
-    // up to the cloud
-    con->Query("DETACH DATABASE IF EXISTS localmem");
-    con->Query("ATTACH ':memory:' as localmem");
-    con->Query("USE localmem");
-
     const auto cols = get_duckdb_columns(request->table().columns());
     std::vector<const column_def *> columns_pk;
     std::vector<const column_def *> columns_regular;
@@ -565,12 +570,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name, logger);
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
-
-    // Use local memory by default to prevent Arrow-based VIEW from traveling
-    // up to the cloud
-    con->Query("DETACH DATABASE IF EXISTS localmem");
-    con->Query("ATTACH ':memory:' as localmem");
-    con->Query("USE localmem");
 
     const auto cols = get_duckdb_columns(request->table().columns());
     std::vector<const column_def *> columns_pk;
