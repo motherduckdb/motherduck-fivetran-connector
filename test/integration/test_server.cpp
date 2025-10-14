@@ -1111,7 +1111,7 @@ TEST_CASE("Parallel WriteBatch requests", "[integration][write-batch]") {
   auto con = get_test_connection(token);
   for (const auto &table_name : table_names) {
     auto res =
-        con->Query("SELECT id, title, FROM " + table_name + " ORDER BY id");
+        con->Query("SELECT id, title FROM " + table_name + " ORDER BY id");
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 3);
   }
