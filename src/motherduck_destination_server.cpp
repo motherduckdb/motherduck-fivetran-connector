@@ -82,7 +82,8 @@ DestinationSdkImpl::get_duckdb(const std::string &md_token,
   auto initialize_db = [this, &md_token, &db_name, &logger]() {
     duckdb::DBConfig config;
     config.SetOptionByName(MD_PROP_TOKEN, md_token);
-    config.SetOptionByName("custom_user_agent", "fivetran");
+    config.SetOptionByName("custom_user_agent",
+                           std::string("fivetran/") + GIT_COMMIT_SHA);
     config.SetOptionByName("old_implicit_casting", true);
     config.SetOptionByName("motherduck_attach_mode", "single");
     logger->info("    initialize_db: created configuration");
