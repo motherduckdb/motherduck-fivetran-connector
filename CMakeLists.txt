@@ -55,6 +55,31 @@ message(STATUS "Using gRPC ${gRPC_VERSION}")
 add_link_options(-rdynamic)
 add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)
 
+### Store latest git commit SHA ###
+find_package(Git REQUIRED)
+if(NOT GIT_FOUND)
+    message(FATAL_ERROR "Git executable not found. Git is required to build this project.")
+endif()
+
+execute_process(
+    COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_COMMIT_SHA
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE GIT_RESULT
+    ERROR_VARIABLE GIT_ERROR
+)
+
+if(NOT GIT_RESULT EQUAL 0)
+    message(FATAL_ERROR "Failed to get git commit SHA: ${GIT_ERROR}")
+endif()
+
+if(NOT GIT_COMMIT_SHA)
+    message(FATAL_ERROR "Git commit SHA is empty. Make sure the git repository is initialized correctly.")
+endif()
+
+message(STATUS "Git commit SHA: ${GIT_COMMIT_SHA}")
+
 ### Proto generation ###
 set(FIVETRAN_SDK ${PROJECT_SOURCE_DIR}/gen)
 
@@ -107,6 +132,11 @@ target_link_libraries(motherduck_destination_sources PUBLIC
         duckdb
         fivetran_sdk
         OpenSSL::Crypto
+)
+
+# The short commit SHA of the latest commit is used as version number in the custom_user_agent
+target_compile_definitions(motherduck_destination_sources PRIVATE
+    GIT_COMMIT_SHA="${GIT_COMMIT_SHA}"
 )
 
 add_executable(motherduck_destination src/motherduck_destination.cpp)
