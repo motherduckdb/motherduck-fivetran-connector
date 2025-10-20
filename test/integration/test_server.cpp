@@ -1117,6 +1117,55 @@ TEST_CASE("Parallel WriteBatch requests", "[integration][write-batch]") {
   }
 }
 
+TEST_CASE("Parallel DescribeTable requests", "[integration][describe-table]") {
+  DestinationSdkImpl service;
+
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+
+  constexpr unsigned int num_tables = 10;
+  constexpr unsigned int requests_per_table = 5;
+  std::vector<std::string> table_names;
+
+  for (int i = 0; i < num_tables; i++) {
+    const std::string table_name = "parallel_describe_" + std::to_string(i);
+    table_names.push_back(table_name);
+
+    ::fivetran_sdk::v2::CreateTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    define_test_table(request, table_name);
+
+    ::fivetran_sdk::v2::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  std::vector<std::future<grpc::Status>> futures;
+
+  for (int i = 0; i < num_tables; i++) {
+    for (int j = 0; j < requests_per_table; j++) {
+      futures.push_back(
+          std::async(std::launch::async, [&service, &table_names, i, token]() {
+            ::fivetran_sdk::v2::DescribeTableRequest request;
+            (*request.mutable_configuration())["motherduck_token"] = token;
+            (*request.mutable_configuration())["motherduck_database"] =
+                TEST_DATABASE_NAME;
+            request.set_table_name(table_names[i]);
+
+            ::fivetran_sdk::v2::DescribeTableResponse response;
+            return service.DescribeTable(nullptr, &request, &response);
+          }));
+    }
+  }
+
+  for (auto &future : futures) {
+    auto status = future.get();
+    REQUIRE_NO_FAIL(status);
+  }
+}
+
 TEST_CASE("Truncate nonexistent table should succeed", "[integration]") {
   DestinationSdkImpl service;
 
