@@ -119,6 +119,7 @@ add_library(motherduck_destination_sources STATIC
         src/fivetran_duckdb_interop.cpp
         src/md_logging.cpp
         src/motherduck_destination_server.cpp
+        src/openssl_helper.cpp
         src/sql_generator.cpp
         src/stacktrace.cpp
 )
