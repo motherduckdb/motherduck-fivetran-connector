@@ -53,7 +53,7 @@ void encrypt_stream(std::istream &input, std::ostream &output,
   const int aes_block_size = EVP_CIPHER_get_block_size(aes_impl);
 
   const int iv_length = EVP_CIPHER_get_iv_length(aes_impl);
-  assert(iv_length == aes_key_length);
+  assert(iv_length == aes_block_size);
   const std::string iv = generate_random_string(iv_length);
   assert(iv.size() == static_cast<size_t>(iv_length));
 
