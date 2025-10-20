@@ -76,7 +76,8 @@ TEST_CASE("ConfigurationForm", "[integration][config]") {
   REQUIRE(response.tests(1).label() == "Test Authentication");
 }
 
-TEST_CASE("DescribeTable fails when database missing", "[integration]") {
+TEST_CASE("DescribeTable fails when database missing",
+          "[integration][describe-table]") {
   DestinationSdkImpl service;
 
   ::fivetran_sdk::v2::DescribeTableRequest request;
@@ -88,7 +89,8 @@ TEST_CASE("DescribeTable fails when database missing", "[integration]") {
   REQUIRE_FAIL(status, "Missing property motherduck_database");
 }
 
-TEST_CASE("DescribeTable on nonexistent table", "[integration]") {
+TEST_CASE("DescribeTable on nonexistent table",
+          "[integration][describe-table]") {
   DestinationSdkImpl service;
 
   ::fivetran_sdk::v2::DescribeTableRequest request;
