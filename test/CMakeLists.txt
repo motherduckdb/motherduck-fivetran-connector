@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 find_package(Catch2 3 REQUIRED PATHS ${DEPENDENCIES_DIR}/Catch2 NO_DEFAULT_PATH)
 
 add_executable(integration_tests
+        test_decryption.cpp
         integration/test_server.cpp
 )
 target_compile_definitions(integration_tests PRIVATE
