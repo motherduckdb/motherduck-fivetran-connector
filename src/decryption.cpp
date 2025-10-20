@@ -17,7 +17,7 @@ std::vector<unsigned char> decrypt_stream(std::istream &input,
   // IV vector."
 
   constexpr int iv_length = 16;
-  std::vector<unsigned char> iv(16);
+  std::vector<unsigned char> iv(iv_length);
   input.read(reinterpret_cast<char *>(iv.data()), iv_length);
 
   const std::vector<unsigned char> encrypted_data(
