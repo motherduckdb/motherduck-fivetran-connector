@@ -252,10 +252,10 @@ std::vector<column_def> MdSqlGenerator::describe_table(duckdb::Connection &con,
   if (result->HasError()) {
     throw std::runtime_error(err + ": " + result->GetError());
   }
-  auto materialized_result = duckdb::unique_ptr_cast<
-      duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
 
-  for (const auto &row : materialized_result->Collection().GetRows()) {
+  auto &materialized_result = result->Cast<duckdb::MaterializedQueryResult>();
+
+  for (const auto &row : materialized_result.Collection().GetRows()) {
     duckdb::LogicalTypeId column_type =
         static_cast<duckdb::LogicalTypeId>(row.GetValue(1).GetValue<int8_t>());
     column_def col{row.GetValue(0).GetValue<duckdb::string>(), column_type,

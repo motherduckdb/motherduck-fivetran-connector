@@ -76,7 +76,8 @@ TEST_CASE("ConfigurationForm", "[integration][config]") {
   REQUIRE(response.tests(1).label() == "Test Authentication");
 }
 
-TEST_CASE("DescribeTable fails when database missing", "[integration]") {
+TEST_CASE("DescribeTable fails when database missing",
+          "[integration][describe-table]") {
   DestinationSdkImpl service;
 
   ::fivetran_sdk::v2::DescribeTableRequest request;
@@ -88,7 +89,8 @@ TEST_CASE("DescribeTable fails when database missing", "[integration]") {
   REQUIRE_FAIL(status, "Missing property motherduck_database");
 }
 
-TEST_CASE("DescribeTable on nonexistent table", "[integration]") {
+TEST_CASE("DescribeTable on nonexistent table",
+          "[integration][describe-table]") {
   DestinationSdkImpl service;
 
   ::fivetran_sdk::v2::DescribeTableRequest request;
@@ -1066,10 +1068,10 @@ TEST_CASE("Parallel WriteBatch requests", "[integration][write-batch]") {
   auto token = std::getenv("motherduck_token");
   REQUIRE(token);
 
-  constexpr int num_tables = 5;
+  constexpr unsigned int num_tables = 5;
   std::vector<std::string> table_names;
 
-  for (int i = 0; i < num_tables; i++) {
+  for (unsigned int i = 0; i < num_tables; i++) {
     const std::string table_name = "parallel_books_" + std::to_string(i);
     table_names.push_back(table_name);
 
@@ -1087,7 +1089,7 @@ TEST_CASE("Parallel WriteBatch requests", "[integration][write-batch]") {
   // Launch parallel WriteBatch requests that each write to their own table
   std::vector<std::future<grpc::Status>> futures;
 
-  for (int i = 0; i < num_tables; i++) {
+  for (unsigned int i = 0; i < num_tables; i++) {
     futures.push_back(
         std::async(std::launch::async, [&service, &table_names, i, token]() {
           ::fivetran_sdk::v2::WriteBatchRequest request;
@@ -1114,6 +1116,55 @@ TEST_CASE("Parallel WriteBatch requests", "[integration][write-batch]") {
         con->Query("SELECT id, title FROM " + table_name + " ORDER BY id");
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 3);
+  }
+}
+
+TEST_CASE("Parallel DescribeTable requests", "[integration][describe-table]") {
+  DestinationSdkImpl service;
+
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+
+  constexpr unsigned int num_tables = 10;
+  constexpr unsigned int requests_per_table = 5;
+  std::vector<std::string> table_names;
+
+  for (unsigned int t = 0; t < num_tables; t++) {
+    const std::string table_name = "parallel_describe_" + std::to_string(t);
+    table_names.push_back(table_name);
+
+    ::fivetran_sdk::v2::CreateTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = token;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    define_test_table(request, table_name);
+
+    ::fivetran_sdk::v2::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  std::vector<std::future<grpc::Status>> futures;
+
+  for (unsigned int t = 0; t < num_tables; t++) {
+    for (unsigned int r = 0; r < requests_per_table; r++) {
+      futures.push_back(
+          std::async(std::launch::async, [&service, &table_names, t, token]() {
+            ::fivetran_sdk::v2::DescribeTableRequest request;
+            (*request.mutable_configuration())["motherduck_token"] = token;
+            (*request.mutable_configuration())["motherduck_database"] =
+                TEST_DATABASE_NAME;
+            request.set_table_name(table_names[t]);
+
+            ::fivetran_sdk::v2::DescribeTableResponse response;
+            return service.DescribeTable(nullptr, &request, &response);
+          }));
+    }
+  }
+
+  for (auto &future : futures) {
+    auto status = future.get();
+    REQUIRE_NO_FAIL(status);
   }
 }
 
