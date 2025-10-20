@@ -5,10 +5,10 @@
 #include <openssl/evp.h>
 
 /// Decrypts the provided file using AES-256-CBC with PKCS5 padding.
-/// The `filename` parameter is used to provide additional context in error
+/// The `input_name` parameter is used to provide additional context in error
 /// messages. Returns the plaintext as a vector of bytes.
 std::vector<unsigned char> decrypt_stream(std::istream &input,
-                                          const std::string &filename,
+                                          const std::string &input_name,
                                           const unsigned char *decryption_key) {
   // https://github.com/fivetran/fivetran_partner_sdk/blob/2f13d37849cc866ab71704158f5e9ba247b755b5/development-guide/destination-connector-development-guide.md#encryption
   // "Each batch file is encrypted separately using AES-256 in CBC mode and with
@@ -17,7 +17,7 @@ std::vector<unsigned char> decrypt_stream(std::istream &input,
   // IV vector."
 
   constexpr int iv_length = 16;
-  std::vector<unsigned char> iv(16);
+  std::vector<unsigned char> iv(iv_length);
   input.read(reinterpret_cast<char *>(iv.data()), iv_length);
 
   const std::vector<unsigned char> encrypted_data(
@@ -33,19 +33,19 @@ std::vector<unsigned char> decrypt_stream(std::istream &input,
   if (1 != EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, decryption_key,
                               iv.data())) {
     openssl_helper::raise_openssl_error(
-        "Failed to initialize decryption context for file " + filename);
+        "Failed to initialize decryption context for file " + input_name);
   }
   int len = 0;
   std::vector<unsigned char> plaintext(encrypted_data.size());
   if (1 != EVP_DecryptUpdate(ctx, plaintext.data(), &len, encrypted_data.data(),
                              encrypted_data.size())) {
     openssl_helper::raise_openssl_error("Could not decrypt UPDATE file " +
-                                        filename);
+                                        input_name);
   }
   int plaintext_len = len;
   if (1 != EVP_DecryptFinal_ex(ctx, plaintext.data() + len, &len)) {
     openssl_helper::raise_openssl_error(
-        "Could not finalize decryption of file " + filename);
+        "Could not finalize decryption of file " + input_name);
   }
   plaintext_len += len;
 

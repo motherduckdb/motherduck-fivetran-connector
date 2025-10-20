@@ -309,7 +309,8 @@ grpc::Status DestinationSdkImpl::DescribeTable(
 
     logger->info("Endpoint <DescribeTable>: table exists; getting columns");
     auto duckdb_columns = sql_generator->describe_table(*con, table_name);
-    logger->info("Endpoint <DescribeTable>: got columns");
+    logger->info("Endpoint <DescribeTable>: got " +
+                 std::to_string(duckdb_columns.size()) + " columns");
 
     fivetran_sdk::v2::Table *table = response->mutable_table();
     table->set_name(get_table_name(request));
