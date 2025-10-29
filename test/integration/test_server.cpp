@@ -1396,12 +1396,30 @@ void add_config(T &request, const std::string &token,
 }
 
 template <typename T>
+void add_config(T &request, const std::string &token,
+                const std::string &database) {
+  (*request.mutable_configuration())["motherduck_token"] = token;
+  (*request.mutable_configuration())["motherduck_database"] = database;
+}
+
+template <typename T>
 void add_col(T &request, const std::string &name,
              ::fivetran_sdk::v2::DataType type, bool is_primary_key) {
   auto col = request.mutable_table()->add_columns();
   col->set_name(name);
   col->set_type(type);
   col->set_primary_key(is_primary_key);
+}
+
+template <typename T>
+void add_decimal_col(T &request, const std::string &name, bool is_primary_key,
+                     int precision, int scale) {
+  auto col = request.mutable_table()->add_columns();
+  col->set_name(name);
+  col->set_type(::fivetran_sdk::v2::DataType::DECIMAL);
+  col->set_primary_key(is_primary_key);
+  col->mutable_params()->mutable_decimal()->set_precision(precision);
+  col->mutable_params()->mutable_decimal()->set_scale(scale);
 }
 
 TEST_CASE("AlterTable with constraints", "[integration]") {
@@ -2295,5 +2313,151 @@ TEST_CASE("AlterTable must not drop columns", "[integration]") {
     REQUIRE(response.table().columns(5).type() ==
             ::fivetran_sdk::v2::DataType::STRING);
     REQUIRE_FALSE(response.table().columns(5).primary_key());
+  }
+}
+
+TEST_CASE("AlterTable decimal width change", "[integration]") {
+  DestinationSdkImpl service;
+
+  const std::string table_name =
+      "some_table" + std::to_string(Catch::rngSeed());
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+
+  auto con = get_test_connection(token);
+
+  {
+    // Create Table with DECIMAL(17,4)
+    ::fivetran_sdk::v2::CreateTableRequest request;
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
+    add_decimal_col(request, "amount", false, 17, 4);
+
+    ::fivetran_sdk::v2::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // Verify the created table has DECIMAL(17,4)
+    ::fivetran_sdk::v2::DescribeTableRequest request;
+    add_config(request, token, TEST_DATABASE_NAME);
+    request.set_table_name(table_name);
+
+    ::fivetran_sdk::v2::DescribeTableResponse response;
+    auto status = service.DescribeTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(!response.not_found());
+
+    REQUIRE(response.table().name() == table_name);
+    REQUIRE(response.table().columns_size() == 2);
+    REQUIRE(response.table().columns(1).name() == "amount");
+    REQUIRE(response.table().columns(1).type() ==
+            ::fivetran_sdk::v2::DataType::DECIMAL);
+    REQUIRE(response.table().columns(1).has_params());
+    REQUIRE(response.table().columns(1).params().has_decimal());
+    REQUIRE(response.table().columns(1).params().decimal().precision() == 17);
+    REQUIRE(response.table().columns(1).params().decimal().scale() == 4);
+  }
+
+  {
+    // Insert test data
+    auto res = con->Query("INSERT INTO " + table_name +
+                          " (id, amount) VALUES (1, 1234567890123.4567)");
+    REQUIRE_NO_FAIL(res);
+  }
+
+  {
+    // Alter Table to change DECIMAL(17,4) to DECIMAL(29,4)
+    ::fivetran_sdk::v2::AlterTableRequest request;
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
+    add_decimal_col(request, "amount", false, 29, 4);
+
+    ::fivetran_sdk::v2::AlterTableResponse response;
+    auto status = service.AlterTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // Verify the altered table has DECIMAL(29,4)
+    ::fivetran_sdk::v2::DescribeTableRequest request;
+    add_config(request, token, TEST_DATABASE_NAME);
+    request.set_table_name(table_name);
+
+    ::fivetran_sdk::v2::DescribeTableResponse response;
+    auto status = service.DescribeTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(!response.not_found());
+
+    REQUIRE(response.table().name() == table_name);
+    REQUIRE(response.table().columns_size() == 2);
+    REQUIRE(response.table().columns(0).name() == "id");
+    REQUIRE(response.table().columns(0).type() ==
+            ::fivetran_sdk::v2::DataType::INT);
+
+    REQUIRE(response.table().columns(1).name() == "amount");
+    REQUIRE(response.table().columns(1).type() ==
+            ::fivetran_sdk::v2::DataType::DECIMAL);
+    REQUIRE(response.table().columns(1).has_params());
+    REQUIRE(response.table().columns(1).params().has_decimal());
+    REQUIRE(response.table().columns(1).params().decimal().precision() == 29);
+    REQUIRE(response.table().columns(1).params().decimal().scale() == 4);
+  }
+
+  {
+    // Verify data was preserved
+    auto res = con->Query("SELECT id, amount FROM " + table_name);
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 1);
+    REQUIRE(res->GetValue(0, 0).ToString() == "1");
+    REQUIRE(res->GetValue(1, 0).ToString() == "1234567890123.4567");
+  }
+
+  {
+    // Alter Table to change DECIMAL(29,4) to DECIMAL(31,6)
+    ::fivetran_sdk::v2::AlterTableRequest request;
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
+    add_decimal_col(request, "amount", false, 31, 6);
+
+    ::fivetran_sdk::v2::AlterTableResponse response;
+    auto status = service.AlterTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // Verify the altered table has DECIMAL(31,6)
+    ::fivetran_sdk::v2::DescribeTableRequest request;
+    add_config(request, token, TEST_DATABASE_NAME);
+    request.set_table_name(table_name);
+
+    ::fivetran_sdk::v2::DescribeTableResponse response;
+    auto status = service.DescribeTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(!response.not_found());
+
+    REQUIRE(response.table().name() == table_name);
+    REQUIRE(response.table().columns_size() == 2);
+    REQUIRE(response.table().columns(0).name() == "id");
+    REQUIRE(response.table().columns(0).type() ==
+            ::fivetran_sdk::v2::DataType::INT);
+
+    REQUIRE(response.table().columns(1).name() == "amount");
+    REQUIRE(response.table().columns(1).type() ==
+            ::fivetran_sdk::v2::DataType::DECIMAL);
+    REQUIRE(response.table().columns(1).has_params());
+    REQUIRE(response.table().columns(1).params().has_decimal());
+    REQUIRE(response.table().columns(1).params().decimal().precision() == 31);
+    REQUIRE(response.table().columns(1).params().decimal().scale() == 6);
+  }
+
+  {
+    // Verify data was preserved
+    auto res = con->Query("SELECT id, amount FROM " + table_name);
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 1);
+    REQUIRE(res->GetValue(0, 0).ToString() == "1");
+    REQUIRE(res->GetValue(1, 0).ToString() == "1234567890123.456700");
   }
 }
