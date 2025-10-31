@@ -2381,10 +2381,15 @@ TEST_CASE("AlterTable decimal width change", "[integration]") {
     REQUIRE_NO_FAIL(res);
   }
 
-  INFO("Verifying initial DECIMAL(17,4)");
-  verify_decimal_column(17, 4);
-  INFO("Verifying initial data");
-  verify_data("1234567890123.4567");
+  {
+    INFO("Verifying initial DECIMAL(17,4)");
+    verify_decimal_column(17, 4);
+  }
+
+  {
+    INFO("Verifying initial data");
+    verify_data("1234567890123.4567");
+  }
 
   {
     // Alter Table to change DECIMAL(17,4) to DECIMAL(29,4)
@@ -2398,10 +2403,15 @@ TEST_CASE("AlterTable decimal width change", "[integration]") {
     REQUIRE_NO_FAIL(status);
   }
 
-  INFO("Verifying DECIMAL(29,4) after first alter with only the wider width");
-  verify_decimal_column(29, 4);
-  INFO("Verifying data preserved after first alter with only the wider width");
-  verify_data("1234567890123.4567");
+  {
+    INFO("Verifying DECIMAL(29,4) after first alter with only the wider width");
+    verify_decimal_column(29, 4);
+  }
+  {
+    INFO(
+        "Verifying data preserved after first alter with only the wider width");
+    verify_data("1234567890123.4567");
+  }
 
   {
     // Alter Table to change DECIMAL(29,4) to DECIMAL(31,6)
@@ -2415,12 +2425,16 @@ TEST_CASE("AlterTable decimal width change", "[integration]") {
     REQUIRE_NO_FAIL(status);
   }
 
-  INFO("Verifying DECIMAL(31,6) after second alter to both wider width and "
-       "scale");
-  verify_decimal_column(31, 6);
-  INFO("Verifying data preserved after second alter to both wider width and "
-       "scale");
-  verify_data("1234567890123.456700");
+  {
+    INFO("Verifying DECIMAL(31,6) after second alter to both wider width and "
+         "scale");
+    verify_decimal_column(31, 6);
+  }
+  {
+    INFO("Verifying data preserved after second alter to both wider width and "
+         "scale");
+    verify_data("1234567890123.456700");
+  }
 
   {
     // Return the table back to DECIMAL(17,4), which should fit because that's
@@ -2435,12 +2449,17 @@ TEST_CASE("AlterTable decimal width change", "[integration]") {
     REQUIRE_NO_FAIL(status);
   }
 
-  INFO("Verifying DECIMAL(17,4) after altering to narrower but still "
-       "sufficient width and scale");
-  verify_decimal_column(17, 4);
-  INFO("Verifying data preserved after altering to narrower but still "
-       "sufficient width and scale");
-  verify_data("1234567890123.4567");
+  {
+    INFO("Verifying DECIMAL(17,4) after altering to narrower but still "
+         "sufficient width and scale");
+    verify_decimal_column(17, 4);
+  }
+
+  {
+    INFO("Verifying data preserved after altering to narrower but still "
+         "sufficient width and scale");
+    verify_data("1234567890123.4567");
+  }
 
   {
     // Attempt to shrink the type scale, which will succeed and round the
@@ -2456,10 +2475,15 @@ TEST_CASE("AlterTable decimal width change", "[integration]") {
     REQUIRE_NO_FAIL(status);
   }
 
-  INFO("Verifying DECIMAL(17,3) after altering to narrower scale");
-  verify_decimal_column(16, 3);
-  INFO("Verifying data gets rounded after altering to narrower scale");
-  verify_data("1234567890123.457");
+  {
+    INFO("Verifying DECIMAL(17,3) after altering to narrower scale");
+    verify_decimal_column(16, 3);
+  }
+
+  {
+    INFO("Verifying data gets rounded after altering to narrower scale");
+    verify_data("1234567890123.457");
+  }
 
   {
     // Attempt to shrink the type width, which will fail because the whole part
