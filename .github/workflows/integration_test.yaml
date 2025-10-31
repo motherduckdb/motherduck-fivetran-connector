@@ -8,10 +8,10 @@ on:
     - cron: "15 3 * * *" # run nightly at 3:15am
 
 jobs:
-
   build_and_test:
     name: Build and test the connector
     runs-on: ubuntu-22.04
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
 
