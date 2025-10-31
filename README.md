@@ -46,6 +46,3 @@ make build_connector_debug
 
 This connector uses DuckDB's amalgamation sources.
 To upgrade, change `DUCKDB_VERSION` in [Makefile](Makefile) and re-run `make get_duckdb`.
-
-## TODO
-- support GZIP compression
