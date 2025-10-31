@@ -8,13 +8,12 @@ using duckdb::KeywordHelper;
 
 // Utility
 
-std::string get_column_type_definition(const column_def &col) {
-  std::ostringstream out;
-  out << duckdb::EnumUtil::ToChars(col.type);
+std::ostream &operator<<(std::ostream &os, const column_def &col) {
+  os << duckdb::EnumUtil::ToChars(col.type);
   if (col.type == duckdb::LogicalTypeId::DECIMAL) {
-    out << " (" << col.width << "," << col.scale << ")";
+    os << " (" << col.width << "," << col.scale << ")";
   }
-  return out.str();
+  return os;
 }
 
 std::string table_def::to_escaped_string() const {
@@ -198,8 +197,7 @@ void MdSqlGenerator::create_table(
   ddl << "CREATE OR REPLACE TABLE " << absolute_table_name << " (";
 
   for (const auto &col : all_columns) {
-    ddl << KeywordHelper::WriteQuoted(col.name, '"') << " "
-        << get_column_type_definition(col);
+    ddl << KeywordHelper::WriteQuoted(col.name, '"') << " " << col;
     if (columns_with_default_value.find(col.name) !=
         columns_with_default_value.end()) {
       ddl << " DEFAULT " + get_default_value(col.type);
@@ -337,8 +335,7 @@ void MdSqlGenerator::alter_table_in_place(
   for (const auto &col : added_columns) {
     std::ostringstream out;
     out << "ALTER TABLE " << absolute_table_name << " ADD COLUMN "
-        << KeywordHelper::WriteQuoted(col.name, '"') << " "
-        << get_column_type_definition(col);
+        << KeywordHelper::WriteQuoted(col.name, '"') << " " << col;
 
     run_query(con, "alter_table add", out.str(),
               "Could not add column <" + col.name + "> to table <" +
@@ -350,8 +347,7 @@ void MdSqlGenerator::alter_table_in_place(
     out << "ALTER TABLE " << absolute_table_name << " ALTER ";
     const auto &col = new_column_map.at(col_name);
 
-    out << KeywordHelper::WriteQuoted(col_name, '"') << " TYPE "
-        << get_column_type_definition(col);
+    out << KeywordHelper::WriteQuoted(col_name, '"') << " TYPE " << col;
 
     run_query(con, "alter table change type", out.str(),
               "Could not alter type for column <" + col_name + "> in table <" +

@@ -10,6 +10,8 @@ struct column_def {
   unsigned int scale;
 };
 
+std::ostream &operator<<(std::ostream &os, const column_def &col);
+
 struct table_def {
   std::string db_name;
   std::string schema_name;
