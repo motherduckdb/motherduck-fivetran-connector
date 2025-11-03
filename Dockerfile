@@ -7,6 +7,7 @@ ENV CXX=clang++
 ENV CCACHE_DIR=/root/.ccache
 ENV CMAKE_C_COMPILER_LAUNCHER=ccache
 ENV CMAKE_CXX_COMPILER_LAUNCHER=ccache
+ENV CMAKE_GENERATOR=Ninja
 
 # zlib is required for OpenSSL
 RUN apt-get update && \
