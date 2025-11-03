@@ -56,29 +56,34 @@ add_link_options(-rdynamic)
 add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)
 
 ### Store latest git commit SHA ###
-find_package(Git REQUIRED)
-if(NOT GIT_FOUND)
-    message(FATAL_ERROR "Git executable not found. Git is required to build this project.")
+if(DEFINED GIT_COMMIT_SHA_OVERRIDE AND NOT GIT_COMMIT_SHA_OVERRIDE STREQUAL "")
+    set(GIT_COMMIT_SHA ${GIT_COMMIT_SHA_OVERRIDE})
+    message(STATUS "Using overridden Git commit SHA: ${GIT_COMMIT_SHA}")
+else()
+    find_package(Git REQUIRED)
+    if(NOT GIT_FOUND)
+        message(FATAL_ERROR "Git executable not found. Make sure that git is installed or provide GIT_COMMIT_SHA_OVERRIDE.")
+    endif()
+
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_COMMIT_SHA
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE GIT_RESULT
+        ERROR_VARIABLE GIT_ERROR
+    )
+
+    if(NOT GIT_RESULT EQUAL 0)
+        message(FATAL_ERROR "Failed to get git commit SHA: ${GIT_ERROR}")
+    endif()
+
+    if(NOT GIT_COMMIT_SHA)
+        message(FATAL_ERROR "Git commit SHA is empty. Make sure the git repository is initialized correctly.")
+    endif()
+
+    message(STATUS "Git commit SHA: ${GIT_COMMIT_SHA}")
 endif()
-
-execute_process(
-    COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    OUTPUT_VARIABLE GIT_COMMIT_SHA
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    RESULT_VARIABLE GIT_RESULT
-    ERROR_VARIABLE GIT_ERROR
-)
-
-if(NOT GIT_RESULT EQUAL 0)
-    message(FATAL_ERROR "Failed to get git commit SHA: ${GIT_ERROR}")
-endif()
-
-if(NOT GIT_COMMIT_SHA)
-    message(FATAL_ERROR "Git commit SHA is empty. Make sure the git repository is initialized correctly.")
-endif()
-
-message(STATUS "Git commit SHA: ${GIT_COMMIT_SHA}")
 
 ### Proto generation ###
 set(FIVETRAN_SDK ${PROJECT_SOURCE_DIR}/gen)
@@ -146,4 +151,6 @@ target_link_libraries(
 )
 
 # Testing
-add_subdirectory(test)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test)
+    add_subdirectory(test)
+endif()

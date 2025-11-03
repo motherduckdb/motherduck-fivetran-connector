@@ -42,6 +42,11 @@ make build_connector_debug
 ./build/Debug/integration_tests
 ```
 
+You can also run the connector in Docker:
+```shell
+docker build --build-arg GIT_COMMIT_SHA_OVERRIDE=$(git rev-parse --short HEAD) -t motherduck-connector .
+```
+
 ## Upgrading DuckDB
 
 This connector uses DuckDB's amalgamation sources.

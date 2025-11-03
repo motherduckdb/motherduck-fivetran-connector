@@ -32,7 +32,8 @@ build_connector: check_dependencies get_fivetran_protos
 	echo "dependencies: ${MD_FIVETRAN_DEPENDENCIES_DIR}"
 	cmake -S ${SOURCE_DIR} -B ${BUILD_DIR}/Release \
     		-DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}/Release \
-    		-DDEPENDENCIES_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR}
+    		-DDEPENDENCIES_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR} \
+    		$(if ${GIT_COMMIT_SHA_OVERRIDE},-DGIT_COMMIT_SHA_OVERRIDE=${GIT_COMMIT_SHA_OVERRIDE},)
 	cmake --build ${BUILD_DIR}/Release -j${CORES} --config Release
 
 build_connector_debug: check_dependencies get_fivetran_protos
