@@ -1396,12 +1396,30 @@ void add_config(T &request, const std::string &token,
 }
 
 template <typename T>
+void add_config(T &request, const std::string &token,
+                const std::string &database) {
+  (*request.mutable_configuration())["motherduck_token"] = token;
+  (*request.mutable_configuration())["motherduck_database"] = database;
+}
+
+template <typename T>
 void add_col(T &request, const std::string &name,
              ::fivetran_sdk::v2::DataType type, bool is_primary_key) {
   auto col = request.mutable_table()->add_columns();
   col->set_name(name);
   col->set_type(type);
   col->set_primary_key(is_primary_key);
+}
+
+template <typename T>
+void add_decimal_col(T &request, const std::string &name, bool is_primary_key,
+                     int precision, int scale) {
+  auto col = request.mutable_table()->add_columns();
+  col->set_name(name);
+  col->set_type(::fivetran_sdk::v2::DataType::DECIMAL);
+  col->set_primary_key(is_primary_key);
+  col->mutable_params()->mutable_decimal()->set_precision(precision);
+  col->mutable_params()->mutable_decimal()->set_scale(scale);
 }
 
 TEST_CASE("AlterTable with constraints", "[integration]") {
@@ -2295,5 +2313,190 @@ TEST_CASE("AlterTable must not drop columns", "[integration]") {
     REQUIRE(response.table().columns(5).type() ==
             ::fivetran_sdk::v2::DataType::STRING);
     REQUIRE_FALSE(response.table().columns(5).primary_key());
+  }
+}
+
+TEST_CASE("AlterTable decimal width change", "[integration]") {
+  DestinationSdkImpl service;
+
+  const std::string table_name =
+      "some_table" + std::to_string(Catch::rngSeed());
+  auto token = std::getenv("motherduck_token");
+  REQUIRE(token);
+
+  auto con = get_test_connection(token);
+
+  auto verify_decimal_column = [&](int expected_precision, int expected_scale) {
+    ::fivetran_sdk::v2::DescribeTableRequest request;
+    add_config(request, token, TEST_DATABASE_NAME);
+    request.set_table_name(table_name);
+
+    ::fivetran_sdk::v2::DescribeTableResponse response;
+    auto status = service.DescribeTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(!response.not_found());
+
+    REQUIRE(response.table().name() == table_name);
+    REQUIRE(response.table().columns_size() == 2);
+
+    REQUIRE(response.table().columns(0).name() == "id");
+    REQUIRE(response.table().columns(0).type() ==
+            ::fivetran_sdk::v2::DataType::INT);
+
+    REQUIRE(response.table().columns(1).name() == "amount");
+    REQUIRE(response.table().columns(1).type() ==
+            ::fivetran_sdk::v2::DataType::DECIMAL);
+    REQUIRE(response.table().columns(1).has_params());
+    REQUIRE(response.table().columns(1).params().has_decimal());
+    REQUIRE(response.table().columns(1).params().decimal().precision() ==
+            expected_precision);
+    REQUIRE(response.table().columns(1).params().decimal().scale() ==
+            expected_scale);
+  };
+
+  auto verify_data = [&](const std::string &expected_amount) {
+    auto res = con->Query("SELECT id, amount FROM " + table_name);
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 1);
+    REQUIRE(res->GetValue(0, 0).ToString() == "1");
+    REQUIRE(res->GetValue(1, 0).ToString() == expected_amount);
+  };
+
+  {
+    // Create Table with DECIMAL(17,4)
+    ::fivetran_sdk::v2::CreateTableRequest request;
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
+    add_decimal_col(request, "amount", false, 17, 4);
+
+    ::fivetran_sdk::v2::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // Insert test data
+    auto res = con->Query("INSERT INTO " + table_name +
+                          " (id, amount) VALUES (1, 1234567890123.4567)");
+    REQUIRE_NO_FAIL(res);
+  }
+
+  {
+    INFO("Verifying initial DECIMAL(17,4)");
+    verify_decimal_column(17, 4);
+  }
+
+  {
+    INFO("Verifying initial data");
+    verify_data("1234567890123.4567");
+  }
+
+  {
+    // Alter Table to change DECIMAL(17,4) to DECIMAL(29,4)
+    ::fivetran_sdk::v2::AlterTableRequest request;
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
+    add_decimal_col(request, "amount", false, 29, 4);
+
+    ::fivetran_sdk::v2::AlterTableResponse response;
+    auto status = service.AlterTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    INFO("Verifying DECIMAL(29,4) after first alter with only the wider width");
+    verify_decimal_column(29, 4);
+  }
+  {
+    INFO(
+        "Verifying data preserved after first alter with only the wider width");
+    verify_data("1234567890123.4567");
+  }
+
+  {
+    // Alter Table to change DECIMAL(29,4) to DECIMAL(31,6)
+    ::fivetran_sdk::v2::AlterTableRequest request;
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
+    add_decimal_col(request, "amount", false, 31, 6);
+
+    ::fivetran_sdk::v2::AlterTableResponse response;
+    auto status = service.AlterTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    INFO("Verifying DECIMAL(31,6) after second alter to both wider width and "
+         "scale");
+    verify_decimal_column(31, 6);
+  }
+  {
+    INFO("Verifying data preserved after second alter to both wider width and "
+         "scale");
+    verify_data("1234567890123.456700");
+  }
+
+  {
+    // Return the table back to DECIMAL(17,4), which should fit because that's
+    // where it started
+    ::fivetran_sdk::v2::AlterTableRequest request;
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
+    add_decimal_col(request, "amount", false, 17, 4);
+
+    ::fivetran_sdk::v2::AlterTableResponse response;
+    auto status = service.AlterTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    INFO("Verifying DECIMAL(17,4) after altering to narrower but still "
+         "sufficient width and scale");
+    verify_decimal_column(17, 4);
+  }
+
+  {
+    INFO("Verifying data preserved after altering to narrower but still "
+         "sufficient width and scale");
+    verify_data("1234567890123.4567");
+  }
+
+  {
+    // Attempt to shrink the type scale, which will succeed and round the
+    // number. Even though the width shrinks, the whole part still fits; the
+    // reduction comes from the fractional part
+    ::fivetran_sdk::v2::AlterTableRequest request;
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
+    add_decimal_col(request, "amount", false, 16, 3);
+
+    ::fivetran_sdk::v2::AlterTableResponse response;
+    auto status = service.AlterTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    INFO("Verifying DECIMAL(17,3) after altering to narrower scale");
+    verify_decimal_column(16, 3);
+  }
+
+  {
+    INFO("Verifying data gets rounded after altering to narrower scale");
+    verify_data("1234567890123.457");
+  }
+
+  {
+    // Attempt to shrink the type width, which will fail because the whole part
+    // no longer fits
+    ::fivetran_sdk::v2::AlterTableRequest request;
+    add_config(request, token, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
+    add_decimal_col(request, "amount", false, 15, 3);
+
+    ::fivetran_sdk::v2::AlterTableResponse response;
+    auto status = service.AlterTable(nullptr, &request, &response);
+    REQUIRE_FALSE(status.ok());
+    CHECK_THAT(status.error_message(),
+               Catch::Matchers::ContainsSubstring("value is out of range"));
   }
 }
