@@ -28,7 +28,7 @@ else()
 endif()
 message(STATUS "DEPENDENCIES DIR: ${DEPENDENCIES_DIR}")
 
-foreach(dependency grpc arrow openssl Catch2)
+foreach(dependency grpc arrow openssl)
     if(NOT EXISTS ${DEPENDENCIES_DIR}/${dependency})
         message(FATAL_ERROR "Directory ${DEPENDENCIES_DIR}/${dependency} does not exist. Make sure to install the dependencies using `make build_dependencies` first.")
     endif()
