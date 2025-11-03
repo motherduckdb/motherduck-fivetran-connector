@@ -17,15 +17,15 @@ jobs:
 
       - name: Install Clang-19
         run: |
-          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-19 main"
-          apt-get update
-          apt-get install -y --no-install-recommends clang-19
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-19 main"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang-19
 
       - name: Install Ninja
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends ninja-build
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build
 
       - name: Cache dependencies
         id: cache-deps
