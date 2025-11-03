@@ -30,4 +30,16 @@ void preload_extensions() {
           "to gRPC server startup");
     }
   }
+  {
+    // Preinstall core_functions; no need to load as every duckdb instance will
+    // do that
+    // Parquet is needed to enable zstd compression:
+    // https://github.com/duckdb/duckdb/blob/c8906e701ea8202fce34813b151933275f501f4b/src/common/virtual_file_system.cpp#L52-54
+    auto result = con.Query("INSTALL parquet");
+    if (result->HasError()) {
+      throw std::runtime_error(
+          "Could not install parquet extension prior "
+          "to gRPC server startup");
+    }
+  }
 }

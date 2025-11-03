@@ -3,6 +3,11 @@
 #include <string>
 #include <vector>
 
+enum class CompressionType {
+  None = 0,
+  ZSTD = 1
+};
+
 struct IngestProperties {
 
   IngestProperties(const std::string &_filename,
@@ -11,11 +16,13 @@ struct IngestProperties {
                    const std::string &_null_value,
                    const int &_csv_block_size_mb)
       : filename(_filename), decryption_key(_decryption_key),
+        compression(CompressionType::None),
         utf8_columns(_utf8_columns), null_value(_null_value),
         csv_block_size_mb(_csv_block_size_mb) {}
 
   const std::string filename;
   const std::string decryption_key;
+  const CompressionType compression;
   const std::vector<std::string> &utf8_columns;
   const std::string null_value;
   const int csv_block_size_mb;
