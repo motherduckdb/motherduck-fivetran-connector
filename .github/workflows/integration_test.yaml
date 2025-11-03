@@ -37,15 +37,15 @@ jobs:
       - name: Build dependencies
         if: ${{ steps.cache-deps.outputs.cache-hit != 'true' }}
         env:
-          CC: clang-19
-          CXX: clang++-19
+          CC: clang-15
+          CXX: clang++-15
         run: |
           make build_openssl_native build_grpc build_arrow build_test_dependencies
 
       - name: Build connector
         env:
-          CC: clang-19
-          CXX: clang++-19
+          CC: clang-15
+          CXX: clang++-15
           CMAKE_GENERATOR: Ninja
         run: |
           make get_fivetran_protos get_duckdb
