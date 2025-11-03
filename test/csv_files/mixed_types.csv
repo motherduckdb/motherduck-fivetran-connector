@@ -1,0 +1,6 @@
+id,string_col,int_col,float_col,bool_col,date_col,mixed_col
+1,text,100,1.5,true,2024-01-15,string_value
+2,another,200,2.5,false,2024-02-20,123
+3,test,300,3.5,true,2024-03-25,45.67
+4,sample,400,4.5,false,2024-04-30,true
+5,data,500,5.5,true,2024-05-15,2024-01-01

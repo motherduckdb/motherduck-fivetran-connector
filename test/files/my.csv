@@ -1,0 +1,4 @@
+id,title,magic_number,_fivetran_deleted,_fivetran_synced
+1,First Entry,42,,
+2,Second Entry,7,,
+3,Third Entry,13,,
