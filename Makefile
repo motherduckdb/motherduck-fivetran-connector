@@ -32,7 +32,8 @@ build_connector: check_dependencies get_fivetran_protos
 	echo "dependencies: ${MD_FIVETRAN_DEPENDENCIES_DIR}"
 	cmake -S ${SOURCE_DIR} -B ${BUILD_DIR}/Release \
     		-DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}/Release \
-    		-DDEPENDENCIES_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR}
+    		-DDEPENDENCIES_DIR=${MD_FIVETRAN_DEPENDENCIES_DIR} \
+    		$(if ${GIT_COMMIT_SHA_OVERRIDE},-DGIT_COMMIT_SHA_OVERRIDE=${GIT_COMMIT_SHA_OVERRIDE},)
 	cmake --build ${BUILD_DIR}/Release -j${CORES} --config Release
 
 build_connector_debug: check_dependencies get_fivetran_protos
@@ -73,19 +74,21 @@ build_grpc:
 	  -DgRPC_BUILD_TESTS=OFF \
 	  -DgRPC_INSTALL=ON \
 	  -DgRPC_SSL_PROVIDER=package \
+	  -G "Unix Makefiles" \
 	  -DCMAKE_CXX_STANDARD=14 \
 	  -DCMAKE_INSTALL_PREFIX=${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc \
 	  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	  -DCMAKE_CXX_FLAGS="-Wno-missing-template-arg-list-after-template-kw"
 
-	cd ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/grpc && make -j${CORES} && cmake --install .
+	cd ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/grpc && make -j${CORES}
+	cmake --install ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/grpc
 
 
 build_arrow:
 	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
 	rm -rf ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/arrow ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow ${MD_FIVETRAN_DEPENDENCIES_DIR}/arrow
 	git clone --branch apache-arrow-${ARROW_VERSION} --depth 1 https://github.com/apache/arrow.git ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/arrow
-	cmake -S ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/arrow/cpp -B${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow \
+	cmake -S ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/arrow/cpp -B ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow \
 	  -DARROW_BUILD_STATIC=ON -DARROW_CSV=ON -DARROW_WITH_ZSTD=ON \
 	  -DCMAKE_INSTALL_PREFIX=${MD_FIVETRAN_DEPENDENCIES_DIR}/arrow \
 	  -DCMAKE_POLICY_VERSION_MINIMUM=3.5
@@ -125,11 +128,13 @@ check_format:
 
 build_test_dependencies:
 	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
-	rm -rf ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/Catch2
-	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR} && \
-		git clone https://github.com/catchorg/Catch2.git --branch ${CATCH2_VERSION} && \
-		cd Catch2 && \
-		cmake -S ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/Catch2 -B${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/Catch2 \
-			-DCMAKE_INSTALL_PREFIX=${MD_FIVETRAN_DEPENDENCIES_DIR}/Catch2 -DBUILD_TESTING=OFF
-	cd ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/Catch2 && make -j${CORES} && cmake --install .
+	rm -rf ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/catch2 ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/catch2 ${MD_FIVETRAN_DEPENDENCIES_DIR}/catch2
+	git clone --branch ${CATCH2_VERSION} --depth 1 https://github.com/catchorg/Catch2.git ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/catch2
+	cmake -S ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/catch2 -B ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/catch2 \
+	  -G "Unix Makefiles" \
+	  -DCMAKE_CXX_STANDARD=14 \
+	  -DCMAKE_INSTALL_PREFIX=${MD_FIVETRAN_DEPENDENCIES_DIR}/catch2 \
+	  -DBUILD_TESTING=OFF
+	cd ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/catch2 && make -j${CORES}
+	cmake --install ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/catch2
 

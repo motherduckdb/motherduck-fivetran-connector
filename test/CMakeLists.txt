@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 
-find_package(Catch2 3 REQUIRED PATHS ${DEPENDENCIES_DIR}/Catch2 NO_DEFAULT_PATH)
+if(NOT EXISTS ${DEPENDENCIES_DIR}/catch2)
+    message(FATAL_ERROR "Directory ${DEPENDENCIES_DIR}/catch2 does not exist. Make sure to install the dependencies using `make build_test_dependencies` first.")
+endif()
+
+find_package(Catch2 3 REQUIRED PATHS ${DEPENDENCIES_DIR}/catch2 NO_DEFAULT_PATH)
 
 add_executable(integration_tests
         test_decryption.cpp

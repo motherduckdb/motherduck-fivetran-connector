@@ -43,7 +43,12 @@ COPY src/ ./src/
 COPY includes/ ./includes/
 COPY libduckdb-src/ ./libduckdb-src/
 
-RUN --mount=type=cache,target=/root/.ccache make build_connector
+# Build argument to override git commit SHA
+# Set this because we don't copy the .git directory
+ARG GIT_COMMIT_SHA_OVERRIDE
+
+RUN --mount=type=cache,target=/root/.ccache \
+    make build_connector GIT_COMMIT_SHA_OVERRIDE=${GIT_COMMIT_SHA_OVERRIDE}
 
 ##### Stage 2: Final image #####
 FROM ubuntu:22.04
