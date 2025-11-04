@@ -5,6 +5,7 @@ CORES=$(shell grep -c ^processor /proc/cpuinfo 2>/dev/null || sysctl -n hw.ncpu)
 MD_FIVETRAN_DEPENDENCIES_DIR ?= $(strip ${ROOT_DIR})/install
 MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR = $(strip ${ROOT_DIR})/sources
 MD_FIVETRAN_DEPENDENCIES_BUILD_DIR = $(strip ${ROOT_DIR})/build
+DDB_PLATFORM:=$(shell ${ROOT_DIR}/scripts/get_duckdb_platform.sh)
 
 SOURCE_DIR=${ROOT_DIR}
 BUILD_DIR=${ROOT_DIR}/build
@@ -83,7 +84,6 @@ build_grpc:
 	cd ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/grpc && make -j${CORES}
 	cmake --install ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/grpc
 
-
 build_arrow:
 	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
 	rm -rf ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/arrow ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow ${MD_FIVETRAN_DEPENDENCIES_DIR}/arrow
@@ -98,10 +98,8 @@ build_arrow:
 
 get_duckdb:
 	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
-	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR} && \
-		wget -q -O libduckdb-src.zip https://github.com/duckdb/duckdb/releases/download/${DUCKDB_VERSION}/libduckdb-src.zip && \
-		unzip -o -d ../libduckdb-src libduckdb-src.zip
-
+	wget -q -O ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/libduckdb.zip https://github.com/duckdb/duckdb/releases/download/${DUCKDB_VERSION}/libduckdb-${DDB_PLATFORM}.zip
+	unzip -o -d ${ROOT_DIR}/libduckdb ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/libduckdb.zip
 
 get_fivetran_protos:
 	mkdir -p protos

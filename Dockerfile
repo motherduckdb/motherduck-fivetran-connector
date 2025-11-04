@@ -34,6 +34,7 @@ WORKDIR /app
 # Copy only files required for build_dependencies to ensure the Docker image layer gets cached
 COPY Makefile ./
 COPY dependencies-patches/ ./dependencies-patches/
+COPY scripts/ ./scripts/
 
 RUN --mount=type=cache,target=/root/.ccache make build_dependencies
 
@@ -42,7 +43,6 @@ COPY CMakeLists.txt ./
 COPY proto_helper.cmake ./
 COPY src/ ./src/
 COPY includes/ ./includes/
-COPY libduckdb-src/ ./libduckdb-src/
 
 # Build argument to override git commit SHA
 # Set this because we don't copy the .git directory
