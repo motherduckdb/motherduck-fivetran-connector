@@ -111,10 +111,8 @@ add_library(fivetran_sdk OBJECT
 target_include_directories(fivetran_sdk PUBLIC ${FIVETRAN_SDK}/cpp)
 link_dependencies(fivetran_sdk)
 
-### DuckDB amalgamation ###
-set(DuckDB_SOURCE_DIR ./libduckdb-src)
-add_library(duckdb OBJECT ${DuckDB_SOURCE_DIR}/duckdb.cpp)
-target_include_directories(duckdb PUBLIC ${DuckDB_SOURCE_DIR})
+### DuckDB ###
+find_library(DUCKDB_LIB NAMES duckdb REQUIRED PATHS ${CMAKE_SOURCE_DIR}/libduckdb NO_DEFAULT_PATH)
 
 ### MotherDuck destination connector ###
 add_library(motherduck_destination_sources STATIC
@@ -131,11 +129,12 @@ add_library(motherduck_destination_sources STATIC
 
 target_include_directories(motherduck_destination_sources PUBLIC
         includes
+        ${CMAKE_SOURCE_DIR}/libduckdb
 )
 
 target_link_libraries(motherduck_destination_sources PUBLIC
         Arrow::arrow_static
-        duckdb
+        ${DUCKDB_LIB}
         fivetran_sdk
         OpenSSL::Crypto
 )
