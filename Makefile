@@ -30,7 +30,7 @@ check_dependencies:
   		exit 1; \
   	fi
 
-build_connector: check_dependencies get_fivetran_protos
+build_connector: check_dependencies get_fivetran_protos libduckdb/duckdb.hpp
 	echo "dependencies: ${MD_FIVETRAN_DEPENDENCIES_DIR}"
 	cmake -S ${SOURCE_DIR} -B ${BUILD_DIR}/Release \
     		-DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}/Release \

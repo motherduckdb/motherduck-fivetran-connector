@@ -112,7 +112,7 @@ target_include_directories(fivetran_sdk PUBLIC ${FIVETRAN_SDK}/cpp)
 link_dependencies(fivetran_sdk)
 
 ### DuckDB ###
-# Explicit order static libraries: DuckDB comes first, then extensions, then third-party libs
+# Explicitly order static libraries: DuckDB comes first, then extensions, then third-party libs
 set(DUCKDB_STATIC_LIBS
     "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_static.a"
     "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libautocomplete_extension.a"
@@ -133,7 +133,7 @@ set(DUCKDB_STATIC_LIBS
     "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_yyjson.a"
     "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_zstd.a"
 )
-# jemalloc is only used on Linux
+# jemalloc is only shipped by default on Linux
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(DUCKDB_STATIC_LIBS ${DUCKDB_STATIC_LIBS} "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libjemalloc_extension.a")
 endif()
