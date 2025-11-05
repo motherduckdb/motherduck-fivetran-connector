@@ -1,3 +1,4 @@
+.PHONY: info build_connector build_connector_debug build_dependencies build_grpc build_arrow build_openssl_native get_duckdb get_fivetran_protos check_dependencies build_test_dependencies format check_format
 
 MAKEFILE:=$(firstword $(MAKEFILE_LIST))
 ROOT_DIR:=$(shell dirname $(realpath ${MAKEFILE}))
@@ -29,7 +30,7 @@ check_dependencies:
   		exit 1; \
   	fi
 
-build_connector: check_dependencies get_fivetran_protos
+build_connector: check_dependencies get_fivetran_protos libduckdb/duckdb.hpp
 	echo "dependencies: ${MD_FIVETRAN_DEPENDENCIES_DIR}"
 	cmake -S ${SOURCE_DIR} -B ${BUILD_DIR}/Release \
     		-DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}/Release \
@@ -95,6 +96,9 @@ build_arrow:
 
 	CMAKE_POLICY_VERSION_MINIMUM=3.5 cmake --build ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow
 	cmake --install ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow
+
+libduckdb/duckdb.hpp:
+	$(MAKE) get_duckdb
 
 get_duckdb:
 	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
