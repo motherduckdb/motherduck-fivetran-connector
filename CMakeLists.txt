@@ -112,7 +112,34 @@ target_include_directories(fivetran_sdk PUBLIC ${FIVETRAN_SDK}/cpp)
 link_dependencies(fivetran_sdk)
 
 ### DuckDB ###
-find_library(DUCKDB_LIB NAMES duckdb REQUIRED PATHS ${CMAKE_SOURCE_DIR}/libduckdb NO_DEFAULT_PATH)
+# Explicit order static libraries: DuckDB comes first, then extensions, then third-party libs
+set(DUCKDB_STATIC_LIBS
+    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_static.a"
+    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libautocomplete_extension.a"
+    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libcore_functions_extension.a"
+    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libicu_extension.a"
+    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libjson_extension.a"
+    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libparquet_extension.a"
+    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_fastpforlib.a"
+    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_fmt.a"
+    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_fsst.a"
+    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_hyperloglog.a"
+    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_mbedtls.a"
+    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_miniz.a"
+    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_pg_query.a"
+    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_re2.a"
+    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_skiplistlib.a"
+    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_utf8proc.a"
+    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_yyjson.a"
+    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_zstd.a"
+)
+# jemalloc is only used on Linux
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(DUCKDB_STATIC_LIBS ${DUCKDB_STATIC_LIBS} "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libjemalloc_extension.a")
+endif()
+add_library(duckdb_static INTERFACE)
+target_link_libraries(duckdb_static INTERFACE ${DUCKDB_STATIC_LIBS})
+target_include_directories(duckdb_static INTERFACE "${CMAKE_CURRENT_LIST_DIR}/libduckdb")
 
 ### MotherDuck destination connector ###
 add_library(motherduck_destination_sources STATIC
@@ -129,12 +156,11 @@ add_library(motherduck_destination_sources STATIC
 
 target_include_directories(motherduck_destination_sources PUBLIC
         includes
-        ${CMAKE_SOURCE_DIR}/libduckdb
 )
 
 target_link_libraries(motherduck_destination_sources PUBLIC
         Arrow::arrow_static
-        ${DUCKDB_LIB}
+        duckdb_static
         fivetran_sdk
         OpenSSL::Crypto
 )
