@@ -88,8 +88,7 @@ read_unencrypted_csv(const IngestProperties &props) {
   auto maybe_file = arrow::io::ReadableFile::Open(props.filename,
                                                   arrow::default_memory_pool());
   if (!maybe_file.ok()) {
-    throw std::runtime_error("Could not open file <" +
-                             props.filename +
+    throw std::runtime_error("Could not open file <" + props.filename +
                              ">: " + maybe_file.status().message());
   }
   auto file_stream = std::move(maybe_file.ValueOrDie());
@@ -98,8 +97,7 @@ read_unencrypted_csv(const IngestProperties &props) {
   // ZSTD magic number is 0x28B52FFD (little-endian: FD 2F B5 28)
   auto maybe_size = file_stream->GetSize();
   if (!maybe_size.ok()) {
-    throw std::runtime_error("Could not get file size <" +
-                             props.filename +
+    throw std::runtime_error("Could not get file size <" + props.filename +
                              ">: " + maybe_size.status().message());
   }
   int64_t file_size = maybe_size.ValueOrDie();
@@ -122,8 +120,7 @@ read_unencrypted_csv(const IngestProperties &props) {
     auto maybe_seek = file_stream->Seek(0);
     if (!maybe_seek.ok()) {
       throw std::runtime_error("Could not seek to beginning of file <" +
-                               props.filename +
-                               ">: " + maybe_seek.message());
+                               props.filename + ">: " + maybe_seek.message());
     }
   }
 
@@ -140,8 +137,9 @@ read_unencrypted_csv(const IngestProperties &props) {
     auto maybe_compressed_input_stream =
         arrow::io::CompressedInputStream::Make(codec.get(), file_stream);
     if (!maybe_compressed_input_stream.ok()) {
-      throw std::runtime_error("Could not create input stream from compressed file <" +
-                               props.filename + ">: ");
+      throw std::runtime_error(
+          "Could not create input stream from compressed file <" +
+          props.filename + ">: ");
     }
     auto compressed_input_stream =
         std::move(maybe_compressed_input_stream.ValueOrDie());

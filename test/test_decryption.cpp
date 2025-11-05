@@ -59,13 +59,13 @@ void encrypt_stream(std::istream &input, std::ostream &output,
 
   // Sets up cipher context ctx for encryption with cipher type aes_impl.
   // PKCS padding is enabled by default.
-  const auto init_result = EVP_EncryptInit_ex2(
+  const int init_result = EVP_EncryptInit_ex2(
       ctx, aes_impl, reinterpret_cast<const unsigned char *>(key.c_str()),
       reinterpret_cast<const unsigned char *>(iv.c_str()), nullptr);
   // Decrease reference count of aes_impl; EVP_EncryptInit_ex2 has incremented
   // the reference count
   EVP_CIPHER_free(aes_impl);
-  if (init_result != 1) {
+  if (1 != init_result) {
     openssl_helper::raise_openssl_error(
         "Failed to initialize encryption cipher context for " +
         std::string(algorithm));
@@ -104,7 +104,7 @@ void encrypt_stream(std::istream &input, std::ostream &output,
                  ciphertext_length);
   }
 
-  if (!EVP_EncryptFinal_ex(ctx, ciphertext_buffer, &ciphertext_length)) {
+  if (1 != EVP_EncryptFinal_ex(ctx, ciphertext_buffer, &ciphertext_length)) {
     openssl_helper::raise_openssl_error("Error during encryption finalization");
   }
   output.write(reinterpret_cast<char *>(ciphertext_buffer), ciphertext_length);

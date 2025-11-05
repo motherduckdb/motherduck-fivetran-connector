@@ -37,9 +37,8 @@ void preload_extensions() {
     // https://github.com/duckdb/duckdb/blob/c8906e701ea8202fce34813b151933275f501f4b/src/common/virtual_file_system.cpp#L52-54
     auto result = con.Query("INSTALL parquet");
     if (result->HasError()) {
-      throw std::runtime_error(
-          "Could not install parquet extension prior "
-          "to gRPC server startup");
+      throw std::runtime_error("Could not install parquet extension prior "
+                               "to gRPC server startup");
     }
   }
 }

@@ -192,22 +192,25 @@ void validate_file(const std::string &file_path) {
                               "> is missing or inaccessible");
 }
 
-void add_csv_reader_options(std::stringstream &ss, std::vector<column_def> &columns, IngestProperties &props) {
+void add_csv_reader_options(std::stringstream &ss,
+                            std::vector<column_def> &columns,
+                            IngestProperties &props) {
   ss << "columns = {";
   for (const auto &column : columns) {
     ss << duckdb::KeywordHelper::WriteQuoted(column.name, '\'');
     // TODO: Should check that column.type is something we can handle?
-    ss << duckdb::KeywordHelper::WriteQuoted(duckdb::EnumUtil::ToString(column.type), '\'');
+    ss << duckdb::KeywordHelper::WriteQuoted(
+        duckdb::EnumUtil::ToString(column.type), '\'');
   }
   ss << "}";
 
   // allow_quoted_nulls = false: We want to interpret "NULL" as a literal string
   // escape???
-  // force_not_null: Define columns where there cannot be a null-string to skip comparison there
-  // ignore_errors? How do we want to handle errors? Can we use the reject_table? It should work because the read is local.
-  // max_line_size? Is the default of 2000000 bytes fine?
-  // new_line should probably be set to '\n'
-  // columns or column_types
+  // force_not_null: Define columns where there cannot be a null-string to skip
+  // comparison there ignore_errors? How do we want to handle errors? Can we use
+  // the reject_table? It should work because the read is local. max_line_size?
+  // Is the default of 2000000 bytes fine? new_line should probably be set to
+  // '\n' columns or column_types
 
   // Configure preserve_insertion_order
   // Other configuration options: TimeZone?
@@ -219,29 +222,35 @@ void add_csv_reader_options(std::stringstream &ss, std::vector<column_def> &colu
   // enable_progress_bar = false
   // At some point, I can enable profiling
 
-
-  // unmodified_string indicates that the value in this column of the tuple was not changed.
-  // Can we do something smart with this while reading already?
+  // unmodified_string indicates that the value in this column of the tuple was
+  // not changed. Can we do something smart with this while reading already?
 
   // Test reading CSV with escape character in quoted string (should be ""?)
 
-  // I need a test with unmodified_string. How do I deal with the fact that this string does not match the column type?
+  // I need a test with unmodified_string. How do I deal with the fact that this
+  // string does not match the column type?
 
-  // When do I get an unmodified_string? Only for updates/upserts? Then I can have special handling for this and otherwise give the CSV reader its types?
+  // When do I get an unmodified_string? Only for updates/upserts? Then I can
+  // have special handling for this and otherwise give the CSV reader its types?
 }
 
-std::string generate_read_csv_query(const std::string &filepath, const std::vector<column_def> &columns, const IngestProperties &props, std::string compression) {
+std::string generate_read_csv_query(const std::string &filepath,
+                                    const std::vector<column_def> &columns,
+                                    const IngestProperties &props,
+                                    std::string compression) {
   // Defaults:
   // - Encoding: UTF-8
 
   std::ostringstream query;
   // TODO: Need to escape filename? Write test for this
   query << "SELECT * FROM read_csv('" << filepath << "'",
-  // We set all_varchar=true because we have to deal with `unmodified_string`. Those are string values
-  // that represent an unchanged value in an UPDATE or UPSERT, and they break type conversion in the CSV reader.
-  // We do the conversion later during the UPDATE/UPSERT.
-  // TODO: Can we push down type conversion to the CSV reader if there is no `unmodified_string` specified?
-  query << ", all_varchar=true";
+      // We set all_varchar=true because we have to deal with
+      // `unmodified_string`. Those are string values that represent an
+      // unchanged value in an UPDATE or UPSERT, and they break type conversion
+      // in the CSV reader. We do the conversion later during the UPDATE/UPSERT.
+      // TODO: Can we push down type conversion to the CSV reader if there is no
+      // `unmodified_string` specified?
+      query << ", all_varchar=true";
   query << ", delim=','";
   query << ", escape='\"'"; // TODO: Is this correct?
   query << ", encoding='utf-8'";
@@ -255,14 +264,15 @@ std::string generate_read_csv_query(const std::string &filepath, const std::vect
   if (!props.null_value.empty()) {
     query << ", nullstr='" << props.null_value << "'";
   }
-  // query << ", compression=" << (props.compression == CompressionType::ZSTD ? "'zstd'" : "'uncompressed'");
+  // query << ", compression=" << (props.compression == CompressionType::ZSTD ?
+  // "'zstd'" : "'uncompressed'");
   query << ", compression='" + compression + "'";
 
   // TODO: Can columns be empty?
   if (!columns.empty()) {
     query << ", columns = {";
     bool first = true;
-    for (const auto& column : columns) {
+    for (const auto &column : columns) {
       if (!first) {
         query << ", ";
       }
@@ -310,12 +320,14 @@ void process_file(
     std::cout << "Temporary file: " << temp_file << "\n";
 
     // Create and write to the file
-    std::ofstream ofs(temp_file, std::ios::out | std::ios::binary | std::ios::trunc);
+    std::ofstream ofs(temp_file,
+                      std::ios::out | std::ios::binary | std::ios::trunc);
     if (!ofs) {
       std::cerr << "Error opening file\n";
       return;
     }
-    ofs.write(reinterpret_cast<const char*>(plaintext.data()), plaintext.size());
+    ofs.write(reinterpret_cast<const char *>(plaintext.data()),
+              plaintext.size());
     ofs.close();
     ddb_file_path = temp_file;
     compression = "ZSTD";
@@ -324,7 +336,6 @@ void process_file(
   } else {
     logger->info("File is not encrypted");
   }
-
 
   const auto con_id = con.context->GetConnectionId();
   const auto temp_db_name = "temp_mem_db_" + std::to_string(con_id);
@@ -337,7 +348,9 @@ void process_file(
   con.Query("USE " + temp_db_name);
 
   // TODO: Move CREATE VIEW into generate function
-  auto xres = con.Query("CREATE VIEW " + temp_db_name + ".arrow_view AS " + generate_read_csv_query(ddb_file_path, {}, props, compression));
+  auto xres =
+      con.Query("CREATE VIEW " + temp_db_name + ".arrow_view AS " +
+                generate_read_csv_query(ddb_file_path, {}, props, compression));
   if (xres->HasError()) {
     xres->ThrowError();
   }
