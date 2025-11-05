@@ -112,7 +112,7 @@ target_include_directories(fivetran_sdk PUBLIC ${FIVETRAN_SDK}/cpp)
 link_dependencies(fivetran_sdk)
 
 ### DuckDB amalgamation ###
-set(DuckDB_SOURCE_DIR ./libduckdb-src)
+set(DuckDB_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libduckdb-src)
 add_library(duckdb OBJECT ${DuckDB_SOURCE_DIR}/duckdb.cpp)
 target_include_directories(duckdb PUBLIC ${DuckDB_SOURCE_DIR})
 
