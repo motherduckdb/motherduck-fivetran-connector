@@ -10,7 +10,7 @@ on:
 jobs:
   build_and_test:
     name: Build and test the connector
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-64-cores
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
