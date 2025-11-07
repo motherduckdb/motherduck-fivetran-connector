@@ -102,8 +102,11 @@ libduckdb/duckdb.hpp:
 
 get_duckdb:
 	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
-	wget -q -O ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/libduckdb.zip https://github.com/duckdb/duckdb/releases/download/${DUCKDB_VERSION}/libduckdb-${DDB_PLATFORM}.zip
-	unzip -o -d ${ROOT_DIR}/libduckdb ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/libduckdb.zip
+	wget -q -O ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/static-duckdb-libs.zip https://github.com/duckdb/duckdb/releases/download/${DUCKDB_VERSION}/static-libs-${DDB_PLATFORM}.zip
+	unzip -o -d ${ROOT_DIR}/libduckdb ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/static-duckdb-libs.zip
+	# The static-libs do not ship with the duckdb.hpp header, so download it separately
+	wget -q -O ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/libduckdb-src.zip https://github.com/duckdb/duckdb/releases/download/${DUCKDB_VERSION}/libduckdb-src.zip
+	unzip -o -d ${ROOT_DIR}/libduckdb ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/libduckdb-src.zip duckdb.hpp
 
 get_fivetran_protos:
 	mkdir -p protos
