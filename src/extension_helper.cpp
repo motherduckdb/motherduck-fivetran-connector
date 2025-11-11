@@ -21,7 +21,7 @@ void preload_extensions() {
     }
   }
   {
-    // Preinstall core_functions. Bo need to load as every duckdb instance will
+    // Preinstall core_functions. No need to load as every duckdb instance will
     // do that. Should be no-op because core_functions are statically linked.
     auto result = con.Query("INSTALL core_functions");
     if (result->HasError()) {
