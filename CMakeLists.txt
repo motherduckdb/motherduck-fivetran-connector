@@ -58,11 +58,13 @@ add_link_options(-rdynamic)
 add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)
 
 ### DuckDB dependency ###
+message(STATUS "Fetching DuckDB...")
 set(FETCHCONTENT_TRY_FIND_PACKAGE_MODE NEVER)
 FetchContent_Declare(
     duckdb
     GIT_REPOSITORY https://github.com/duckdb/duckdb.git
-    GIT_TAG b390a7c3760bd95926fe8aefde20d04b349b472e # v1.4.1
+    GIT_TAG v1.4.1
+    GIT_SHALLOW TRUE
     SYSTEM
 )
 
