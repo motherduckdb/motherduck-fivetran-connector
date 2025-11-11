@@ -1,5 +1,7 @@
-cmake_minimum_required(VERSION 3.10...3.20)
+cmake_minimum_required(VERSION 3.25)
 project(MotherDuckFivetranDestination C CXX)
+
+include(FetchContent)
 
 # Debug Asan/Ubsan
 if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT DISABLE_SANITIZER)
@@ -54,6 +56,26 @@ message(STATUS "Using gRPC ${gRPC_VERSION}")
 
 add_link_options(-rdynamic)
 add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)
+
+### DuckDB dependency ###
+set(FETCHCONTENT_TRY_FIND_PACKAGE_MODE NEVER)
+FetchContent_Declare(
+    duckdb
+    GIT_REPOSITORY https://github.com/duckdb/duckdb.git
+    GIT_TAG b390a7c3760bd95926fe8aefde20d04b349b472e # v1.4.1
+    SYSTEM
+)
+
+set(ENABLE_EXTENSION_AUTOINSTALL OFF)
+set(ENABLE_EXTENSION_AUTOLOADING OFF)
+set(BUILD_SHELL OFF)
+set(BUILD_UNITTESTS OFF)
+# Usually, DuckDB always statically links core_functions and parquet from extension_config.cmake.
+# However, we don't need parquet, so we only statically link core_functions.
+set(DISABLE_BUILTIN_EXTENSIONS ON)
+FetchContent_MakeAvailable(duckdb)
+
+get_target_property(DuckDB_INCLUDE_DIRS duckdb_static INTERFACE_INCLUDE_DIRECTORIES)
 
 ### Store latest git commit SHA ###
 if(DEFINED GIT_COMMIT_SHA_OVERRIDE AND NOT GIT_COMMIT_SHA_OVERRIDE STREQUAL "")
@@ -111,36 +133,6 @@ add_library(fivetran_sdk OBJECT
 target_include_directories(fivetran_sdk PUBLIC ${FIVETRAN_SDK}/cpp)
 link_dependencies(fivetran_sdk)
 
-### DuckDB ###
-# Explicitly order static libraries: DuckDB comes first, then extensions, then third-party libs
-set(DUCKDB_STATIC_LIBS
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_static.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libautocomplete_extension.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libcore_functions_extension.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libicu_extension.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libjson_extension.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libparquet_extension.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_fastpforlib.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_fmt.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_fsst.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_hyperloglog.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_mbedtls.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_miniz.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_pg_query.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_re2.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_skiplistlib.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_utf8proc.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_yyjson.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_zstd.a"
-)
-# jemalloc is only shipped by default on Linux
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    set(DUCKDB_STATIC_LIBS ${DUCKDB_STATIC_LIBS} "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libjemalloc_extension.a")
-endif()
-add_library(duckdb_static INTERFACE)
-target_link_libraries(duckdb_static INTERFACE ${DUCKDB_STATIC_LIBS})
-target_include_directories(duckdb_static INTERFACE "${CMAKE_CURRENT_LIST_DIR}/libduckdb")
-
 ### MotherDuck destination connector ###
 add_library(motherduck_destination_sources STATIC
         src/csv_arrow_ingest.cpp
@@ -156,6 +148,8 @@ add_library(motherduck_destination_sources STATIC
 
 target_include_directories(motherduck_destination_sources PUBLIC
         includes
+        PUBLIC SYSTEM
+        ${DuckDB_INCLUDE_DIRS}
 )
 
 target_link_libraries(motherduck_destination_sources PUBLIC
