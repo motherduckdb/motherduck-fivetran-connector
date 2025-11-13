@@ -6,14 +6,11 @@ case $(uname -s) in
     *)          echo "Unsupported operating system: $(uname -s)" >&2; exit 1;;
 esac
 
-if [ "$OS" = "osx" ]; then
-    ARCH="universal"
-elif [ "$OS" = "linux" ]; then
-  case $(uname -m) in
-    x86_64)     ARCH="amd64";;
-    aarch64)    ARCH="arm64";;
-    *)          echo "Unsupported Linux architecture: $(uname -m)" >&2; exit 1;;
-  esac
-fi
+case $(uname -m) in
+  x86_64)     ARCH="amd64";;
+  aarch64)    ARCH="arm64";;
+  arm64)      ARCH="arm64";;
+  *)          echo "Unsupported architecture: $(uname -m)" >&2; exit 1;;
+esac
 
 echo "${OS}-${ARCH}"

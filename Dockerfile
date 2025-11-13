@@ -7,20 +7,17 @@ ENV CXX=clang++
 ENV CCACHE_DIR=/root/.ccache
 ENV CMAKE_C_COMPILER_LAUNCHER=ccache
 ENV CMAKE_CXX_COMPILER_LAUNCHER=ccache
-ENV CMAKE_GENERATOR=Ninja
 
 # zlib is required for OpenSSL
+# lsb-release, software-properties-common and gnupg are required to install Clang
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    git \
-    cmake \
     build-essential \
-    autoconf \
-    libtool \
-    pkg-config \
     clang \
     ccache \
-    ninja-build \
+    git \
+    lsb-release \
+    software-properties-common gnupg \
     wget \
     unzip \
     tar \
@@ -28,6 +25,19 @@ RUN apt-get update && \
     curl \
     zlib1g-dev && \
     rm -rf /var/lib/apt/lists/*
+
+# Install CMake 3.28.6
+# Available architectures are aarch64 and x86_64 - coincidentally the same as the return values of `uname -m`
+RUN wget --output-document=install_cmake.sh --no-verbose https://github.com/Kitware/CMake/releases/download/v3.28.6/cmake-3.28.6-linux-$(uname -m).sh && \
+    chmod +x install_cmake.sh && \
+    ./install_cmake.sh --skip-license --prefix=/usr/local && \
+    rm install_cmake.sh
+
+# Install Clang 16
+RUN wget --output-document=install_clang.sh --no-verbose https://apt.llvm.org/llvm.sh && \
+    chmod +x install_clang.sh && \
+    ./install_clang.sh 16 && \
+    rm install_clang.sh
 
 WORKDIR /app
 
