@@ -166,9 +166,19 @@ bool MdSqlGenerator::table_exists(duckdb::Connection &con,
 void MdSqlGenerator::create_schema(duckdb::Connection &con,
                                    const std::string &db_name,
                                    const std::string &schema_name) {
-  auto query = "CREATE schema " + KeywordHelper::WriteQuoted(schema_name, '\'');
+  std::ostringstream ddl;
+  ddl << "CREATE SCHEMA "
+      << KeywordHelper::WriteQuoted(db_name, '"') << "."
+      << KeywordHelper::WriteQuoted(schema_name, '"');
+  const std::string query = ddl.str();
+
   logger->info("create_schema: " + query);
-  con.Query(query);
+  const auto result = con.Query(query);
+  if (result->HasError()) {
+    throw std::runtime_error("Could not create schema <" + schema_name +
+                             "> in database <" + db_name + ">: " +
+                             result->GetError());
+  }
 }
 
 std::string get_default_value(duckdb::LogicalTypeId type) {
@@ -214,10 +224,10 @@ void MdSqlGenerator::create_table(
 
   ddl << ")";
 
-  auto query = ddl.str();
+  const auto query = ddl.str();
   logger->info("create_table: " + query);
 
-  auto result = con.Query(query);
+  const auto result = con.Query(query);
   if (result->HasError()) {
     throw std::runtime_error("Could not create table <" + absolute_table_name +
                              ">" + result->GetError());
