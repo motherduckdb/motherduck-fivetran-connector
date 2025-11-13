@@ -75,7 +75,12 @@ set(BUILD_UNITTESTS OFF)
 # Usually, DuckDB always statically links core_functions and parquet from extension_config.cmake.
 # However, we don't need parquet, so we only statically link core_functions.
 set(DISABLE_BUILTIN_EXTENSIONS ON)
+# Set build type to RELEASE for DuckDB because we use the release build of the MotherDuck extension
+set(CMAKE_BUILD_TYPE_BACKUP ${CMAKE_BUILD_TYPE})
+set(CMAKE_BUILD_TYPE Release)
 FetchContent_MakeAvailable(duckdb)
+# Restore build type
+set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE_BACKUP})
 
 get_target_property(DuckDB_INCLUDE_DIRS duckdb_static INTERFACE_INCLUDE_DIRECTORIES)
 
