@@ -2,12 +2,15 @@
 #include "openssl_helper.hpp"
 
 #include <cassert>
-#include <catch2/catch_all.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <cerrno>
 #include <filesystem>
 #include <fstream>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
+#include <sstream>
 #include <stdexcept>
 #include <system_error>
 
