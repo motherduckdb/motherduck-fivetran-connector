@@ -1,8 +1,12 @@
+#include "csv_arrow_ingest.hpp"
+#include "decryption.hpp"
+
 #include <arrow/buffer.h>
 #include <arrow/io/api.h>
 #include <arrow/util/compression.h>
-#include <csv_arrow_ingest.hpp>
-#include <decryption.hpp>
+#include <memory>
+#include <string>
+#include <vector>
 
 arrow::csv::ConvertOptions
 get_arrow_convert_options(const std::vector<std::string> &utf8_columns,
@@ -55,9 +59,8 @@ read_csv_stream_to_arrow_table(T &input_stream, const IngestProperties &props) {
 std::shared_ptr<arrow::Table>
 read_encrypted_csv(const IngestProperties &props) {
 
-  std::vector<unsigned char> plaintext = decrypt_file(
-      props.filename,
-      reinterpret_cast<const unsigned char *>(props.decryption_key.c_str()));
+  const std::string plaintext =
+      decrypt_file(props.filename, props.decryption_key);
   auto buffer = std::make_shared<arrow::Buffer>(
       reinterpret_cast<const uint8_t *>(plaintext.data()), plaintext.size());
   auto buffer_reader = std::make_shared<arrow::io::BufferReader>(buffer);
