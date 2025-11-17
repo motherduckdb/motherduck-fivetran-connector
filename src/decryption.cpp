@@ -3,10 +3,12 @@
 
 #include <cassert>
 #include <fstream>
-#include <iostream>
+#include <istream>
 #include <openssl/evp.h>
+#include <ostream>
 #include <sstream>
 #include <system_error>
+#include <vector>
 
 namespace {
 std::vector<unsigned char> read_iv(std::istream &input,

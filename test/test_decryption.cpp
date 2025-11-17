@@ -10,7 +10,6 @@
 #include <openssl/rand.h>
 #include <stdexcept>
 #include <system_error>
-#include <thread>
 
 #define STRING(x) #x
 #define XSTRING(s) STRING(s)
