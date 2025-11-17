@@ -251,7 +251,7 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
   fivetran_sdk::v2::FormField db_field;
   db_field.set_name(MD_PROP_DATABASE);
   db_field.set_label("Database Name");
-  db_field.set_description("The database to work in");
+  db_field.set_description("The database to work in. The database must already exist and be writable.");
   db_field.set_text_field(fivetran_sdk::v2::PlainText);
   db_field.set_required(true);
 
@@ -276,6 +276,14 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
   auto connection_test = response->add_tests();
   connection_test->set_name(CONFIG_TEST_NAME_AUTHENTICATE);
   connection_test->set_label("Test Authentication");
+
+  auto database_type_test = response->add_tests();
+  database_type_test->set_name(CONFIG_TEST_NAME_DATABASE_TYPE);
+  database_type_test->set_label("Verify database is not a MotherDuck share");
+
+  auto write_rollback_test = response->add_tests();
+  write_rollback_test->set_name(CONFIG_TEST_NAME_WRITE_ROLLBACK);
+  write_rollback_test->set_label("Test write permissions");
 
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
@@ -655,18 +663,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
-void check_csv_block_size_is_numeric(
-    const google::protobuf::Map<std::string, std::string> &config) {
-  auto token_it = config.find(MD_PROP_CSV_BLOCK_SIZE);
-
-  // missing token is fine but non-numeric token isn't
-  if (token_it != config.end() &&
-      token_it->second.find_first_not_of("0123456789") != std::string::npos) {
-    throw std::runtime_error(
-        "Maximum individual value size must be numeric if present");
-  }
-}
-
 grpc::Status
 DestinationSdkImpl::Test(::grpc::ServerContext *context,
                          const ::fivetran_sdk::v2::TestRequest *request,
@@ -686,14 +682,65 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
   }
 
   try {
+    // TODO: Should this get its own DuckDB instance that connects in workspace mode instead?
+    // If a database is specified that does not exist, then this will already fail here with
+    // "Failed to attach 'db42': no database/share named 'db42' found"
+    // If instead the tests would write the errors, we could show nicer messages to the user.
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name, logger);
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
     if (request->name() == CONFIG_TEST_NAME_AUTHENTICATE) {
       sql_generator->check_connection(*con);
-    } else if (request->name() == CONFIG_TEST_NAME_CSV_BLOCK_SIZE) {
-      check_csv_block_size_is_numeric(request->configuration());
+    } else if (request->name() == CONFIG_TEST_NAME_WRITE_ROLLBACK) {
+      // Test write permissions by creating a temp table, inserting data, and
+      // rolling back
+      auto begin_res = con->Query("BEGIN TRANSACTION");
+      if (begin_res->HasError()) {
+        throw std::runtime_error("Could not begin transaction: " +
+                                 begin_res->GetError());
+      }
+
+      auto create_res =
+          con->Query("CREATE TEMPORARY TABLE _fivetran_test_table (id INTEGER, "
+                     "value VARCHAR)");
+      if (create_res->HasError()) {
+        con->Query("ROLLBACK");
+        throw std::runtime_error("Could not create temporary table: " +
+                                 create_res->GetError());
+      }
+
+      auto insert_res = con->Query(
+          "INSERT INTO _fivetran_test_table VALUES (1, 'test_value')");
+      if (insert_res->HasError()) {
+        con->Query("ROLLBACK");
+        throw std::runtime_error("Could not insert into temporary table: " +
+                                 insert_res->GetError());
+      }
+
+      auto select_res =
+          con->Query("SELECT COUNT(*) FROM _fivetran_test_table");
+      if (select_res->HasError()) {
+        con->Query("ROLLBACK");
+        throw std::runtime_error("Could not select from temporary table: " +
+                                 select_res->GetError());
+      }
+
+      auto row_count = select_res->GetValue(0, 0).GetValue<int64_t>();
+      if (row_count != 1) {
+        con->Query("ROLLBACK");
+        throw std::runtime_error(
+            "Expected 1 row in temporary table, got " +
+            std::to_string(row_count));
+      }
+
+      auto rollback_res = con->Query("ROLLBACK");
+      if (rollback_res->HasError()) {
+        throw std::runtime_error("Could not rollback transaction: " +
+                                 rollback_res->GetError());
+      }
+
+      logger->info("Successfully tested write permissions with rollback");
     } else {
       auto const msg = "Unknown test requested: <" + request->name() + ">";
       logger->severe(msg);
@@ -702,6 +749,7 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
       return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, msg);
     }
   } catch (const std::exception &e) {
+    // TODO: Show only DuckDB error, not full error with ceremony
     auto msg = "Test <" + request->name() + "> for database <" + db_name +
                "> failed: " + std::string(e.what());
     response->set_success(false);
