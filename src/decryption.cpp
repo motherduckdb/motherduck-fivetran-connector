@@ -146,7 +146,7 @@ void decrypt_stream(std::istream &input, const std::string &input_name,
   initialize_cipher_context(ctx, input_name, iv, decryption_key);
 
   // Disable exceptions thrown during writes. We do our own error handling.
-  output.exceptions(0);
+  output.exceptions(std::ios::goodbit);
   decrypt_stream_internal(input, input_name, output, ctx);
 }
 
