@@ -1,9 +1,9 @@
 #include "motherduck_destination_server.hpp"
-#include "common.hpp"
-#include "csv_arrow_ingest.hpp"
+#include "csv_processor.hpp"
 #include "destination_sdk.grpc.pb.h"
 #include "duckdb.hpp"
 #include "fivetran_duckdb_interop.hpp"
+#include "ingest_properties.hpp"
 #include "md_logging.hpp"
 #include "sql_generator.hpp"
 
@@ -11,8 +11,6 @@
 #include <memory>
 #include <mutex>
 #include <string>
-
-#include <arrow/c/bridge.h>
 #include <grpcpp/grpcpp.h>
 
 std::string
@@ -174,60 +172,6 @@ create_ingest_props(const std::string &filename, const T &request,
       filename, request->keys(), request->file_params().encryption());
   return IngestProperties(filename, decryption_key, column_names,
                           request->file_params().null_string(), csv_block_size);
-}
-
-void validate_file(const std::string &file_path) {
-  std::ifstream fs(file_path.c_str());
-  if (fs.good()) {
-    fs.close();
-    return;
-  }
-  throw std::invalid_argument("File <" + file_path +
-                              "> is missing or inaccessible");
-}
-
-void process_file(
-    duckdb::Connection &con, const IngestProperties &props,
-    std::shared_ptr<mdlog::MdLog> &logger,
-    const std::function<void(const std::string &view_name)> &process_view) {
-
-  validate_file(props.filename);
-  logger->info("    validated file " + props.filename);
-  auto table = props.decryption_key.empty() ? read_unencrypted_csv(props)
-                                            : read_encrypted_csv(props);
-
-  auto batch_reader = std::make_shared<arrow::TableBatchReader>(*table);
-  ArrowArrayStream arrow_array_stream;
-  auto status =
-      arrow::ExportRecordBatchReader(batch_reader, &arrow_array_stream);
-  if (!status.ok()) {
-    throw std::runtime_error(
-        "Could not convert Arrow batch reader to an array stream for file <" +
-        props.filename + ">: " + status.message());
-  }
-  logger->info("    ArrowArrayStream created for file " + props.filename);
-
-  const auto con_id = con.context->GetConnectionId();
-  const auto temp_db_name = "temp_mem_db_" + std::to_string(con_id);
-
-  // Run DETACH just to be extra sure
-  con.Query("DETACH DATABASE IF EXISTS " + temp_db_name);
-  con.Query("ATTACH ':memory:' AS " + temp_db_name);
-  // Use local memory by default to prevent Arrow-based VIEW from traveling
-  // up to the cloud
-  con.Query("USE " + temp_db_name);
-
-  duckdb_connection c_con = reinterpret_cast<duckdb_connection>(&con);
-  duckdb_arrow_stream c_arrow_stream = (duckdb_arrow_stream)&arrow_array_stream;
-  logger->info("    duckdb_arrow_stream created for file " + props.filename);
-  duckdb_arrow_scan(c_con, "arrow_view", c_arrow_stream);
-  logger->info("    duckdb_arrow_scan completed for file " + props.filename);
-
-  process_view("\"" + temp_db_name + "\".\"arrow_view\"");
-  logger->info("    view processed for file " + props.filename);
-
-  con.Query("DETACH DATABASE IF EXISTS " + temp_db_name);
-  arrow_array_stream.release(&arrow_array_stream);
 }
 
 grpc::Status DestinationSdkImpl::ConfigurationForm(
@@ -509,7 +453,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                              request->file_params().null_string(),
                              csv_block_size);
 
-      process_file(*con, props, logger, [&](const std::string &view_name) {
+      csv_processor::process_file(*con, props, logger, [&](const std::string &view_name) {
         sql_generator->upsert(*con, table_name, view_name, columns_pk,
                               columns_regular);
       });
@@ -522,7 +466,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                              request->file_params().null_string(),
                              csv_block_size);
 
-      process_file(*con, props, logger, [&](const std::string &view_name) {
+      csv_processor::process_file(*con, props, logger, [&](const std::string &view_name) {
         sql_generator->update_values(
             *con, table_name, view_name, columns_pk, columns_regular,
             request->file_params().unmodified_string());
@@ -537,7 +481,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                              request->file_params().null_string(),
                              csv_block_size);
 
-      process_file(*con, props, logger, [&](const std::string &view_name) {
+      csv_processor::process_file(*con, props, logger, [&](const std::string &view_name) {
         sql_generator->delete_rows(*con, table_name, view_name, columns_pk);
       });
     }
@@ -601,7 +545,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       IngestProperties props =
           create_ingest_props(filename, request, column_names, csv_block_size);
 
-      process_file(*con, props, logger, [&](const std::string &view_name) {
+      csv_processor::process_file(*con, props, logger, [&](const std::string &view_name) {
         sql_generator->deactivate_historical_records(*con, table_name,
                                                      view_name, columns_pk);
       });
@@ -612,7 +556,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       IngestProperties props =
           create_ingest_props(filename, request, column_names, csv_block_size);
 
-      process_file(*con, props, logger, [&](const std::string &view_name) {
+      csv_processor::process_file(*con, props, logger, [&](const std::string &view_name) {
         sql_generator->add_partial_historical_values(
             *con, table_name, view_name, columns_pk, columns_regular,
             request->file_params().unmodified_string());
@@ -624,7 +568,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       logger->info("replace/upsert file " + filename);
       IngestProperties props =
           create_ingest_props(filename, request, column_names, csv_block_size);
-      process_file(*con, props, logger, [&](const std::string &view_name) {
+      csv_processor::process_file(*con, props, logger, [&](const std::string &view_name) {
         sql_generator->upsert(*con, table_name, view_name, columns_pk,
                               columns_regular);
       });
@@ -635,7 +579,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       IngestProperties props =
           create_ingest_props(filename, request, column_names, csv_block_size);
 
-      process_file(*con, props, logger, [&](const std::string &view_name) {
+      csv_processor::process_file(*con, props, logger, [&](const std::string &view_name) {
         sql_generator->delete_historical_rows(*con, table_name, view_name,
                                               columns_pk);
       });
