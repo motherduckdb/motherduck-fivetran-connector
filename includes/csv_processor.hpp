@@ -9,6 +9,27 @@
 #include <string>
 
 namespace csv_processor {
+    class CSVView {
+    public:
+        static CSVView FromArrow(duckdb::DatabaseInstance &_db, ArrowArrayStream arrow_array_stream, const std::string &filename, std::shared_ptr<mdlog::MdLog> &logger);
+
+        ~CSVView();
+
+        std::string GetFullyQualifiedName() const;
+
+        // TODO: Move constructor
+
+    private:
+        explicit CSVView(duckdb::DatabaseInstance &_db) : db(_db) {}
+
+        // Owns a database instance to be able to create/destroy temp databases in its constructor and destructor
+        duckdb::DuckDB db;
+        ArrowArrayStream arrow_array_stream;
+
+        std::string catalog;
+        std::string schema;
+        std::string view_name;
+    };
 
     /// Creates a DuckDB view that returns the contents of the CSV file located at `filepath`.
     /// Returns the fully-qualified name of the created view.

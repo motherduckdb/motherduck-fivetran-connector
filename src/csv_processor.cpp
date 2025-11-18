@@ -24,6 +24,43 @@ namespace {
 }
 
 namespace csv_processor {
+    CSVView CSVView::FromArrow(duckdb::DatabaseInstance &_db, ArrowArrayStream arrow_array_stream, const std::string &filename, std::shared_ptr<mdlog::MdLog> &logger) {
+        duckdb::Connection con(_db);
+
+        const auto con_id = con.context->GetConnectionId();
+        const auto temp_db_name = "temp_mem_db_" + std::to_string(con_id);
+
+        // Run DETACH just to be extra sure
+        con.Query("DETACH DATABASE IF EXISTS " + temp_db_name);
+        con.Query("ATTACH ':memory:' AS " + temp_db_name);
+        // Use local memory by default to prevent Arrow-based VIEW from traveling
+        // up to the cloud
+        con.Query("USE " + temp_db_name);
+
+        auto c_con = reinterpret_cast<duckdb_connection>(&con);
+        auto c_arrow_stream = (duckdb_arrow_stream)&arrow_array_stream;
+        logger->info("    duckdb_arrow_stream created for file " + filename);
+        duckdb_arrow_scan(c_con, "arrow_view", c_arrow_stream);
+        logger->info("    duckdb_arrow_scan completed for file " + filename);
+
+        CSVView csv_view(_db);
+        csv_view.catalog = temp_db_name;
+        csv_view.schema = "main";
+        csv_view.view_name = "arrow_view";
+        return csv_view;
+    }
+
+    CSVView::~CSVView() {
+        duckdb::Connection con(db);
+        // Run DETACH just to be extra sure
+        con.Query("DETACH DATABASE IF EXISTS " + catalog);
+        arrow_array_stream.release(&arrow_array_stream);
+    }
+
+    std::string CSVView::GetFullyQualifiedName() const {
+        return "\"" + catalog + "\".\"" + schema + "\".\"" + view_name + "\"";
+    }
+
     void process_file(
     duckdb::Connection &con, const IngestProperties &props,
     std::shared_ptr<mdlog::MdLog> &logger,
@@ -45,26 +82,8 @@ namespace csv_processor {
         }
         logger->info("    ArrowArrayStream created for file " + props.filename);
 
-        const auto con_id = con.context->GetConnectionId();
-        const auto temp_db_name = "temp_mem_db_" + std::to_string(con_id);
-
-        // Run DETACH just to be extra sure
-        con.Query("DETACH DATABASE IF EXISTS " + temp_db_name);
-        con.Query("ATTACH ':memory:' AS " + temp_db_name);
-        // Use local memory by default to prevent Arrow-based VIEW from traveling
-        // up to the cloud
-        con.Query("USE " + temp_db_name);
-
-        duckdb_connection c_con = reinterpret_cast<duckdb_connection>(&con);
-        duckdb_arrow_stream c_arrow_stream = (duckdb_arrow_stream)&arrow_array_stream;
-        logger->info("    duckdb_arrow_stream created for file " + props.filename);
-        duckdb_arrow_scan(c_con, "arrow_view", c_arrow_stream);
-        logger->info("    duckdb_arrow_scan completed for file " + props.filename);
-
-        process_view("\"" + temp_db_name + "\".\"arrow_view\"");
+        const auto view = CSVView::FromArrow(*con.context->db , arrow_array_stream, props.filename, logger);
+        process_view(view.GetFullyQualifiedName());
         logger->info("    view processed for file " + props.filename);
-
-        con.Query("DETACH DATABASE IF EXISTS " + temp_db_name);
-        arrow_array_stream.release(&arrow_array_stream);
     }
 } // namespace csv_processor
