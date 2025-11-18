@@ -11,7 +11,7 @@
 namespace csv_processor {
     class CSVView {
     public:
-        static CSVView FromArrow(duckdb::DatabaseInstance &_db, ArrowArrayStream arrow_array_stream, const std::string &filename, std::shared_ptr<mdlog::MdLog> &logger);
+        static CSVView FromArrow(duckdb::DatabaseInstance &_db, ArrowArrayStream &arrow_array_stream, const std::string &filename, std::shared_ptr<mdlog::MdLog> &logger);
 
         ~CSVView();
 
@@ -20,7 +20,7 @@ namespace csv_processor {
         // TODO: Move constructor
 
     private:
-        explicit CSVView(duckdb::DatabaseInstance &_db) : db(_db) {}
+        explicit CSVView(duckdb::DatabaseInstance &_db, ArrowArrayStream &_arrow_array_stream);
 
         // Owns a database instance to be able to create/destroy temp databases in its constructor and destructor
         duckdb::DuckDB db;

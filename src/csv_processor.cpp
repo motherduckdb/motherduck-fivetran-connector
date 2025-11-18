@@ -24,7 +24,7 @@ namespace {
 }
 
 namespace csv_processor {
-    CSVView CSVView::FromArrow(duckdb::DatabaseInstance &_db, ArrowArrayStream arrow_array_stream, const std::string &filename, std::shared_ptr<mdlog::MdLog> &logger) {
+    CSVView CSVView::FromArrow(duckdb::DatabaseInstance &_db, ArrowArrayStream &arrow_array_stream, const std::string &filename, std::shared_ptr<mdlog::MdLog> &logger) {
         duckdb::Connection con(_db);
 
         const auto con_id = con.context->GetConnectionId();
@@ -38,16 +38,22 @@ namespace csv_processor {
         con.Query("USE " + temp_db_name);
 
         auto c_con = reinterpret_cast<duckdb_connection>(&con);
+        // TODO: Call duckdb_destroy_arrow_stream?
         auto c_arrow_stream = (duckdb_arrow_stream)&arrow_array_stream;
         logger->info("    duckdb_arrow_stream created for file " + filename);
         duckdb_arrow_scan(c_con, "arrow_view", c_arrow_stream);
         logger->info("    duckdb_arrow_scan completed for file " + filename);
 
-        CSVView csv_view(_db);
+        CSVView csv_view(_db, arrow_array_stream);
         csv_view.catalog = temp_db_name;
         csv_view.schema = "main";
         csv_view.view_name = "arrow_view";
+
         return csv_view;
+    }
+
+    CSVView::CSVView(duckdb::DatabaseInstance &_db, ArrowArrayStream &_arrow_array_stream) : db(_db), arrow_array_stream(_arrow_array_stream) {
+        _arrow_array_stream.release = nullptr; // Prevent double free
     }
 
     CSVView::~CSVView() {
@@ -83,6 +89,11 @@ namespace csv_processor {
         logger->info("    ArrowArrayStream created for file " + props.filename);
 
         const auto view = CSVView::FromArrow(*con.context->db , arrow_array_stream, props.filename, logger);
+        if (arrow_array_stream.release != nullptr) {
+            throw std::runtime_error(
+                "Arrow array stream release function was not consumed for file <" +
+                props.filename + ">");
+        }
         process_view(view.GetFullyQualifiedName());
         logger->info("    view processed for file " + props.filename);
     }
