@@ -24,10 +24,10 @@ void validate_file(const std::string &file_path) {
 } // namespace
 
 namespace csv_processor {
-  void ProcessFile(
-      duckdb::Connection &con, const IngestProperties &props,
-      std::shared_ptr<mdlog::MdLog> &logger,
-      const std::function<void(const std::string &view_name)> &process_view) {
+void ProcessFile(
+    duckdb::Connection &con, const IngestProperties &props,
+    std::shared_ptr<mdlog::MdLog> &logger,
+    const std::function<void(const std::string &view_name)> &process_view) {
   validate_file(props.filename);
   logger->info("    validated file " + props.filename);
   auto table = props.decryption_key.empty() ? read_unencrypted_csv(props)
@@ -59,8 +59,8 @@ namespace csv_processor {
   logger->info("    duckdb_arrow_stream created for file " + props.filename);
   duckdb_state state = duckdb_arrow_scan(c_con, "arrow_view", c_arrow_stream);
   if (state != DuckDBSuccess) {
-    throw std::runtime_error(
-        "Could not scan Arrow scan for file <" + props.filename + ">");
+    throw std::runtime_error("Could not scan Arrow scan for file <" +
+                             props.filename + ">");
   }
   logger->info("    duckdb_arrow_scan completed for file " + props.filename);
 
