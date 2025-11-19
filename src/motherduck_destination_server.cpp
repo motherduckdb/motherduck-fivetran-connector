@@ -453,7 +453,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                              request->file_params().null_string(),
                              csv_block_size);
 
-      csv_processor::process_file(*con, props, logger, [&](const std::string &view_name) {
+      csv_processor::ProcessFile(*con, props, logger, [&](const std::string &view_name) {
         sql_generator->upsert(*con, table_name, view_name, columns_pk,
                               columns_regular);
       });
@@ -466,7 +466,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                              request->file_params().null_string(),
                              csv_block_size);
 
-      csv_processor::process_file(*con, props, logger, [&](const std::string &view_name) {
+      csv_processor::ProcessFile(*con, props, logger, [&](const std::string &view_name) {
         sql_generator->update_values(
             *con, table_name, view_name, columns_pk, columns_regular,
             request->file_params().unmodified_string());
@@ -481,7 +481,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                              request->file_params().null_string(),
                              csv_block_size);
 
-      csv_processor::process_file(*con, props, logger, [&](const std::string &view_name) {
+      csv_processor::ProcessFile(*con, props, logger, [&](const std::string &view_name) {
         sql_generator->delete_rows(*con, table_name, view_name, columns_pk);
       });
     }
@@ -545,7 +545,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       IngestProperties props =
           create_ingest_props(filename, request, column_names, csv_block_size);
 
-      csv_processor::process_file(*con, props, logger, [&](const std::string &view_name) {
+      csv_processor::ProcessFile(*con, props, logger, [&](const std::string &view_name) {
         sql_generator->deactivate_historical_records(*con, table_name,
                                                      view_name, columns_pk);
       });
@@ -556,7 +556,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       IngestProperties props =
           create_ingest_props(filename, request, column_names, csv_block_size);
 
-      csv_processor::process_file(*con, props, logger, [&](const std::string &view_name) {
+      csv_processor::ProcessFile(*con, props, logger, [&](const std::string &view_name) {
         sql_generator->add_partial_historical_values(
             *con, table_name, view_name, columns_pk, columns_regular,
             request->file_params().unmodified_string());
@@ -568,7 +568,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       logger->info("replace/upsert file " + filename);
       IngestProperties props =
           create_ingest_props(filename, request, column_names, csv_block_size);
-      csv_processor::process_file(*con, props, logger, [&](const std::string &view_name) {
+      csv_processor::ProcessFile(*con, props, logger, [&](const std::string &view_name) {
         sql_generator->upsert(*con, table_name, view_name, columns_pk,
                               columns_regular);
       });
@@ -579,7 +579,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       IngestProperties props =
           create_ingest_props(filename, request, column_names, csv_block_size);
 
-      csv_processor::process_file(*con, props, logger, [&](const std::string &view_name) {
+      csv_processor::ProcessFile(*con, props, logger, [&](const std::string &view_name) {
         sql_generator->delete_historical_rows(*con, table_name, view_name,
                                               columns_pk);
       });

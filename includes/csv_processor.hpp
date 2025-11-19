@@ -39,10 +39,10 @@ namespace csv_processor {
 
     /// Creates a DuckDB view that returns the contents of the CSV file located at `props.filename`.
     /// Returns the fully-qualified name of the created view.
-    CSVView create_csv_view_from_file(const duckdb::Connection &con, const IngestProperties &props, std::shared_ptr<mdlog::MdLog> &logger);
+    CSVView CreateCSVViewFromFile(const duckdb::Connection &con, const IngestProperties &props, std::shared_ptr<mdlog::MdLog> &logger);
 
     /// Creates a DuckDB view that returns the contents of the CSV file located at `props.filename`, then calls `process_view` with the fully-qualified name of the created view.
-    void process_file(
+    void ProcessFile(
     const duckdb::Connection &con, const IngestProperties &props,
     std::shared_ptr<mdlog::MdLog> &logger,
     const std::function<void(const std::string &view_name)> &process_view);

@@ -91,7 +91,7 @@ namespace csv_processor {
         return "\"" + catalog + "\".\"" + schema + "\".\"" + view_name + "\"";
     }
 
-    CSVView create_csv_view_from_file(const duckdb::Connection &con, const IngestProperties &props, std::shared_ptr<mdlog::MdLog> &logger) {
+    CSVView CreateCSVViewFromFile(const duckdb::Connection &con, const IngestProperties &props, std::shared_ptr<mdlog::MdLog> &logger) {
         validate_file(props.filename);
         logger->info("    validated file " + props.filename);
         const auto table = props.decryption_key.empty() ? read_unencrypted_csv(props) : read_encrypted_csv(props);
@@ -115,8 +115,8 @@ namespace csv_processor {
         return view;
     }
 
-    void process_file(const duckdb::Connection &con, const IngestProperties &props, std::shared_ptr<mdlog::MdLog> &logger, const std::function<void(const std::string &view_name)> &process_view) {
-        const auto view = create_csv_view_from_file(con, props, logger);
+    void ProcessFile(const duckdb::Connection &con, const IngestProperties &props, std::shared_ptr<mdlog::MdLog> &logger, const std::function<void(const std::string &view_name)> &process_view) {
+        const auto view = CreateCSVViewFromFile(con, props, logger);
         logger->info("    created CSV view for file " + props.filename);
         process_view(view.GetFullyQualifiedName());
         logger->info("    view processed for file " + props.filename);
