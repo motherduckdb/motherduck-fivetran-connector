@@ -1,3 +1,4 @@
+#include "../constants.hpp"
 #include "duckdb.hpp"
 #include "extension_helper.hpp"
 #include "motherduck_destination_server.hpp"
@@ -10,12 +11,6 @@
 #include <future>
 #include <thread>
 #include <vector>
-
-#define STRING(x) #x
-#define XSTRING(s) STRING(s)
-const std::string TEST_RESOURCES_DIR = XSTRING(TEST_RESOURCES_LOCATION);
-
-static const std::string TEST_DATABASE_NAME = "fivetran_test010";
 
 bool NO_FAIL(duckdb::unique_ptr<duckdb::MaterializedQueryResult> &result) {
   if (result->HasError()) {
