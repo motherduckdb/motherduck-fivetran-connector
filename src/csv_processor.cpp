@@ -44,7 +44,7 @@ namespace csv_processor {
         duckdb_arrow_scan(c_con, "arrow_view", c_arrow_stream);
         logger->info("    duckdb_arrow_scan completed for file " + filename);
 
-        CSVView csv_view(_db, arrow_array_stream);
+        CSVView csv_view(_db, arrow_array_stream, logger);
         csv_view.catalog = temp_db_name;
         csv_view.schema = "main";
         csv_view.view_name = "arrow_view";
@@ -54,11 +54,11 @@ namespace csv_processor {
 
     // Takes an ArrowArrayStream by reference, then copies it into the arrow_array_stream member.
     // On the original ArrowArrayStream, sets release to nullptr to prevent double free.
-    CSVView::CSVView(duckdb::DatabaseInstance &_db, ArrowArrayStream &_arrow_array_stream) : db(_db), arrow_array_stream(_arrow_array_stream) {
+    CSVView::CSVView(duckdb::DatabaseInstance &_db, ArrowArrayStream &_arrow_array_stream, std::shared_ptr<mdlog::MdLog> _logger) : db(_db), arrow_array_stream(_arrow_array_stream), logger(std::move(_logger)) {
         _arrow_array_stream.release = nullptr;
     }
 
-    CSVView::CSVView(CSVView &&other) noexcept : db(*other.db.instance), arrow_array_stream(other.arrow_array_stream),
+    CSVView::CSVView(CSVView &&other) noexcept : db(*other.db.instance), arrow_array_stream(other.arrow_array_stream), logger(std::move(other.logger)),
                                      catalog(std::move(other.catalog)),
                                      schema(std::move(other.schema)),
                                      view_name(std::move(other.view_name)) {
@@ -71,6 +71,7 @@ namespace csv_processor {
             db = duckdb::DuckDB(*other.db.instance);
             arrow_array_stream = other.arrow_array_stream;
             other.arrow_array_stream.release = nullptr;
+            logger = std::move(other.logger);
             catalog = std::move(other.catalog);
             schema = std::move(other.schema);
             view_name = std::move(other.view_name);
@@ -79,8 +80,10 @@ namespace csv_processor {
     }
 
     CSVView::~CSVView() {
+        logger->info("    Detaching temp database " + catalog + " for CSV view");
         duckdb::Connection con(db);
         con.Query("DETACH DATABASE IF EXISTS " + catalog);
+        logger->info("    Releasing Arrow array stream");
         arrow_array_stream.release(&arrow_array_stream);
     }
 
@@ -88,18 +91,14 @@ namespace csv_processor {
         return "\"" + catalog + "\".\"" + schema + "\".\"" + view_name + "\"";
     }
 
-    CSVView create_csv_view_from_file(
-    duckdb::Connection &con, const IngestProperties &props,
-    std::shared_ptr<mdlog::MdLog> &logger) {
+    CSVView create_csv_view_from_file(const duckdb::Connection &con, const IngestProperties &props, std::shared_ptr<mdlog::MdLog> &logger) {
         validate_file(props.filename);
         logger->info("    validated file " + props.filename);
-        auto table = props.decryption_key.empty() ? read_unencrypted_csv(props)
-                                                  : read_encrypted_csv(props);
+        const auto table = props.decryption_key.empty() ? read_unencrypted_csv(props) : read_encrypted_csv(props);
 
         auto batch_reader = std::make_shared<arrow::TableBatchReader>(*table);
         ArrowArrayStream arrow_array_stream;
-        auto status =
-            arrow::ExportRecordBatchReader(batch_reader, &arrow_array_stream);
+        auto status = arrow::ExportRecordBatchReader(batch_reader, &arrow_array_stream);
         if (!status.ok()) {
             throw std::runtime_error(
                 "Could not convert Arrow batch reader to an array stream for file <" +
@@ -116,11 +115,9 @@ namespace csv_processor {
         return view;
     }
 
-    void process_file(
-    duckdb::Connection &con, const IngestProperties &props,
-    std::shared_ptr<mdlog::MdLog> &logger,
-    const std::function<void(const std::string &view_name)> &process_view) {
+    void process_file(const duckdb::Connection &con, const IngestProperties &props, std::shared_ptr<mdlog::MdLog> &logger, const std::function<void(const std::string &view_name)> &process_view) {
         const auto view = create_csv_view_from_file(con, props, logger);
+        logger->info("    created CSV view for file " + props.filename);
         process_view(view.GetFullyQualifiedName());
         logger->info("    view processed for file " + props.filename);
     }

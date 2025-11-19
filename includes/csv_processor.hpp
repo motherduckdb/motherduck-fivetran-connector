@@ -9,6 +9,8 @@
 #include <string>
 
 namespace csv_processor {
+    /// Represents a DuckDB view that returns the contents of a CSV file via an Arrow array stream.
+    /// Releases the Arrow array stream when it goes out of scope.
     class CSVView {
     public:
         static CSVView FromArrow(duckdb::DatabaseInstance &_db, ArrowArrayStream &arrow_array_stream, const std::string &filename, std::shared_ptr<mdlog::MdLog> &logger);
@@ -23,21 +25,25 @@ namespace csv_processor {
         [[nodiscard]] std::string GetFullyQualifiedName() const;
 
     private:
-        explicit CSVView(duckdb::DatabaseInstance &_db, ArrowArrayStream &_arrow_array_stream);
+        explicit CSVView(duckdb::DatabaseInstance &_db, ArrowArrayStream &_arrow_array_stream, std::shared_ptr<mdlog::MdLog> logger);
 
         // Owns a database instance to be able to create/destroy temp databases in its constructor and destructor
         duckdb::DuckDB db;
         ArrowArrayStream arrow_array_stream;
+        std::shared_ptr<mdlog::MdLog> logger;
 
         std::string catalog;
         std::string schema;
         std::string view_name;
     };
 
-    /// Creates a DuckDB view that returns the contents of the CSV file located at `filepath`.
+    /// Creates a DuckDB view that returns the contents of the CSV file located at `props.filename`.
     /// Returns the fully-qualified name of the created view.
+    CSVView create_csv_view_from_file(const duckdb::Connection &con, const IngestProperties &props, std::shared_ptr<mdlog::MdLog> &logger);
+
+    /// Creates a DuckDB view that returns the contents of the CSV file located at `props.filename`, then calls `process_view` with the fully-qualified name of the created view.
     void process_file(
-    duckdb::Connection &con, const IngestProperties &props,
+    const duckdb::Connection &con, const IngestProperties &props,
     std::shared_ptr<mdlog::MdLog> &logger,
     const std::function<void(const std::string &view_name)> &process_view);
 
