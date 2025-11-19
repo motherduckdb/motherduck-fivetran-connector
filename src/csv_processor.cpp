@@ -52,13 +52,34 @@ namespace csv_processor {
         return csv_view;
     }
 
+    // Takes an ArrowArrayStream by reference, then copies it into the arrow_array_stream member.
+    // On the original ArrowArrayStream, sets release to nullptr to prevent double free.
     CSVView::CSVView(duckdb::DatabaseInstance &_db, ArrowArrayStream &_arrow_array_stream) : db(_db), arrow_array_stream(_arrow_array_stream) {
-        _arrow_array_stream.release = nullptr; // Prevent double free
+        _arrow_array_stream.release = nullptr;
+    }
+
+    CSVView::CSVView(CSVView &&other) noexcept : db(*other.db.instance), arrow_array_stream(other.arrow_array_stream),
+                                     catalog(std::move(other.catalog)),
+                                     schema(std::move(other.schema)),
+                                     view_name(std::move(other.view_name)) {
+        other.arrow_array_stream.release = nullptr;
+    }
+
+    CSVView &CSVView::operator=(CSVView &&other) noexcept {
+        if (this != &other)
+        {
+            db = duckdb::DuckDB(*other.db.instance);
+            arrow_array_stream = other.arrow_array_stream;
+            other.arrow_array_stream.release = nullptr;
+            catalog = std::move(other.catalog);
+            schema = std::move(other.schema);
+            view_name = std::move(other.view_name);
+        }
+        return *this;
     }
 
     CSVView::~CSVView() {
         duckdb::Connection con(db);
-        // Run DETACH just to be extra sure
         con.Query("DETACH DATABASE IF EXISTS " + catalog);
         arrow_array_stream.release(&arrow_array_stream);
     }

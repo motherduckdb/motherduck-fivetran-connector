@@ -13,11 +13,14 @@ namespace csv_processor {
     public:
         static CSVView FromArrow(duckdb::DatabaseInstance &_db, ArrowArrayStream &arrow_array_stream, const std::string &filename, std::shared_ptr<mdlog::MdLog> &logger);
 
+        // Deleted copy constructor and copy assignment operator because of ownership of ArrowArrayStream
+        CSVView(const CSVView &) = delete;
+        CSVView &operator=(const CSVView &) = delete;
+        CSVView(CSVView &&other) noexcept;
+        CSVView &operator=(CSVView &&other) noexcept;
         ~CSVView();
 
-        std::string GetFullyQualifiedName() const;
-
-        // TODO: Move constructor
+        [[nodiscard]] std::string GetFullyQualifiedName() const;
 
     private:
         explicit CSVView(duckdb::DatabaseInstance &_db, ArrowArrayStream &_arrow_array_stream);
