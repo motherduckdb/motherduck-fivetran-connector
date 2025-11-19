@@ -71,12 +71,24 @@ CSVView::CSVView(duckdb::DatabaseInstance &_db,
 CSVView::CSVView(CSVView &&other) noexcept
     : db(*other.db.instance), arrow_stream(other.arrow_stream), logger(std::move(other.logger)), catalog(std::move(other.catalog)),
       schema(std::move(other.schema)), view_name(std::move(other.view_name)) {
+  other.arrow_stream = nullptr;
 }
 
 CSVView &CSVView::operator=(CSVView &&other) noexcept {
   if (this != &other) {
+    // Clean up existing arrow_stream before overwriting
+    auto stream = reinterpret_cast<ArrowArrayStream *>(arrow_stream);
+    if (stream) {
+      printf("!!! Relesae A\n");
+      if (stream->release) {
+        stream->release(stream);
+      }
+      delete stream;
+    }
+
     db = duckdb::DuckDB(*other.db.instance);
     arrow_stream = other.arrow_stream;
+    other.arrow_stream = nullptr;
     logger = std::move(other.logger);
     catalog = std::move(other.catalog);
     schema = std::move(other.schema);
@@ -91,6 +103,7 @@ CSVView::~CSVView() {
   con.Query("DETACH DATABASE IF EXISTS " + catalog);
   logger->info("    Releasing Arrow array stream");
 
+  printf("!!! Relesae B\n");
   auto stream = reinterpret_cast<ArrowArrayStream *>(arrow_stream);
   if (!stream) {
     return;
@@ -100,6 +113,7 @@ CSVView::~CSVView() {
   }
   D_ASSERT(!stream->release);
 
+  delete stream;
   arrow_stream = nullptr;
 }
 
@@ -111,10 +125,6 @@ std::string CSVView::GetFullyQualifiedName() const {
   return "\"" + catalog + "\".\"" + schema + "\".\"" + view_name + "\"";
 }
 
-void MyRelease(struct ArrowArrayStream *) {
-  printf("RELEASING!!!\n");
-}
-
 CSVView CreateCSVViewFromFile(const duckdb::Connection &con,
                               const IngestProperties &props,
                               std::shared_ptr<mdlog::MdLog> &logger) {
@@ -124,18 +134,18 @@ CSVView CreateCSVViewFromFile(const duckdb::Connection &con,
                                                   : read_encrypted_csv(props);
 
   auto batch_reader = std::make_shared<arrow::TableBatchReader>(*table);
-  ArrowArrayStream arrow_array_stream;
+  auto arrow_array_stream = new ArrowArrayStream();
   auto status =
-      arrow::ExportRecordBatchReader(batch_reader, &arrow_array_stream);
+      arrow::ExportRecordBatchReader(batch_reader, arrow_array_stream);
   if (!status.ok()) {
+    delete arrow_array_stream;
     throw std::runtime_error(
         "Could not convert Arrow batch reader to an array stream for file <" +
         props.filename + ">: " + status.message());
   }
-  arrow_array_stream.release = MyRelease;
   logger->info("    ArrowArrayStream created for file " + props.filename);
 
-  auto view = CSVView::FromArrow(*con.context->db, &arrow_array_stream,
+  auto view = CSVView::FromArrow(*con.context->db, arrow_array_stream,
                                  props.filename, logger);
   return view;
 }
