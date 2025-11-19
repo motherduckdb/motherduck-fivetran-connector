@@ -15,10 +15,11 @@ namespace csv_processor {
 class CSVView {
 public:
   static CSVView FromArrow(duckdb::DatabaseInstance &_db,
-                           ArrowArrayStream &arrow_array_stream,
+                           ArrowArrayStream *arrow_stream,
                            const std::string &filename,
                            std::shared_ptr<mdlog::MdLog> &logger);
 
+  explicit CSVView() = delete;
   // Deleted copy constructor and copy assignment operator because of ownership
   // of ArrowArrayStream
   CSVView(const CSVView &) = delete;
@@ -27,17 +28,18 @@ public:
   CSVView &operator=(CSVView &&other) noexcept;
   ~CSVView();
 
+  [[nodiscard]] std::string GetCatalog() const;
   [[nodiscard]] std::string GetFullyQualifiedName() const;
 
 private:
   explicit CSVView(duckdb::DatabaseInstance &_db,
-                   ArrowArrayStream &_arrow_array_stream,
+                   duckdb_arrow_stream _arrow_stream,
                    std::shared_ptr<mdlog::MdLog> logger);
 
   // Owns a database instance to be able to create/destroy temp databases in its
   // constructor and destructor
   duckdb::DuckDB db;
-  ArrowArrayStream arrow_array_stream;
+  duckdb_arrow_stream arrow_stream;
   std::shared_ptr<mdlog::MdLog> logger;
 
   std::string catalog;

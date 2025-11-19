@@ -1,0 +1,8 @@
+id,text,description
+1,"Hello, World","Simple text with comma"
+2,"Line 1
+Line 2","Multiline text"
+3,"Quote ""inside"" text","Text with escaped quotes"
+4,"Tab	separated","Text with tab"
+5,"Special: @#$%^&*()","Special characters"
+6,"Unicode: ñ, é, ü, 中文","International characters"

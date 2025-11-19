@@ -25,7 +25,7 @@ void validate_file(const std::string &file_path) {
 
 namespace csv_processor {
 CSVView CSVView::FromArrow(duckdb::DatabaseInstance &_db,
-                           ArrowArrayStream &arrow_array_stream,
+                           ArrowArrayStream *arrow_stream,
                            const std::string &filename,
                            std::shared_ptr<mdlog::MdLog> &logger) {
   duckdb::Connection con(_db);
@@ -42,12 +42,16 @@ CSVView CSVView::FromArrow(duckdb::DatabaseInstance &_db,
 
   auto c_con = reinterpret_cast<duckdb_connection>(&con);
   // TODO: Call duckdb_destroy_arrow_stream?
-  auto c_arrow_stream = (duckdb_arrow_stream)&arrow_array_stream;
+  auto c_arrow_stream = reinterpret_cast<duckdb_arrow_stream>(arrow_stream);
   logger->info("    duckdb_arrow_stream created for file " + filename);
-  duckdb_arrow_scan(c_con, "arrow_view", c_arrow_stream);
+  duckdb_state state = duckdb_arrow_scan(c_con, "arrow_view", c_arrow_stream);
+  if (state != DuckDBSuccess) {
+    throw std::runtime_error(
+        "Could not scan Arrow scan for file <" + filename + ">");
+  }
   logger->info("    duckdb_arrow_scan completed for file " + filename);
 
-  CSVView csv_view(_db, arrow_array_stream, logger);
+  CSVView csv_view(_db, c_arrow_stream, logger);
   csv_view.catalog = temp_db_name;
   csv_view.schema = "main";
   csv_view.view_name = "arrow_view";
@@ -59,25 +63,20 @@ CSVView CSVView::FromArrow(duckdb::DatabaseInstance &_db,
 // arrow_array_stream member. On the original ArrowArrayStream, sets release to
 // nullptr to prevent double free.
 CSVView::CSVView(duckdb::DatabaseInstance &_db,
-                 ArrowArrayStream &_arrow_array_stream,
+                 duckdb_arrow_stream _arrow_stream,
                  std::shared_ptr<mdlog::MdLog> _logger)
-    : db(_db), arrow_array_stream(_arrow_array_stream),
-      logger(std::move(_logger)) {
-  _arrow_array_stream.release = nullptr;
+    : db(_db), arrow_stream(_arrow_stream), logger(std::move(_logger)) {
 }
 
 CSVView::CSVView(CSVView &&other) noexcept
-    : db(*other.db.instance), arrow_array_stream(other.arrow_array_stream),
-      logger(std::move(other.logger)), catalog(std::move(other.catalog)),
+    : db(*other.db.instance), arrow_stream(other.arrow_stream), logger(std::move(other.logger)), catalog(std::move(other.catalog)),
       schema(std::move(other.schema)), view_name(std::move(other.view_name)) {
-  other.arrow_array_stream.release = nullptr;
 }
 
 CSVView &CSVView::operator=(CSVView &&other) noexcept {
   if (this != &other) {
     db = duckdb::DuckDB(*other.db.instance);
-    arrow_array_stream = other.arrow_array_stream;
-    other.arrow_array_stream.release = nullptr;
+    arrow_stream = other.arrow_stream;
     logger = std::move(other.logger);
     catalog = std::move(other.catalog);
     schema = std::move(other.schema);
@@ -91,11 +90,29 @@ CSVView::~CSVView() {
   duckdb::Connection con(db);
   con.Query("DETACH DATABASE IF EXISTS " + catalog);
   logger->info("    Releasing Arrow array stream");
-  arrow_array_stream.release(&arrow_array_stream);
+
+  auto stream = reinterpret_cast<ArrowArrayStream *>(arrow_stream);
+  if (!stream) {
+    return;
+  }
+  if (stream->release) {
+    stream->release(stream);
+  }
+  D_ASSERT(!stream->release);
+
+  arrow_stream = nullptr;
+}
+
+std::string CSVView::GetCatalog() const {
+  return catalog;
 }
 
 std::string CSVView::GetFullyQualifiedName() const {
   return "\"" + catalog + "\".\"" + schema + "\".\"" + view_name + "\"";
+}
+
+void MyRelease(struct ArrowArrayStream *) {
+  printf("RELEASING!!!\n");
 }
 
 CSVView CreateCSVViewFromFile(const duckdb::Connection &con,
@@ -115,15 +132,11 @@ CSVView CreateCSVViewFromFile(const duckdb::Connection &con,
         "Could not convert Arrow batch reader to an array stream for file <" +
         props.filename + ">: " + status.message());
   }
+  arrow_array_stream.release = MyRelease;
   logger->info("    ArrowArrayStream created for file " + props.filename);
 
-  auto view = CSVView::FromArrow(*con.context->db, arrow_array_stream,
+  auto view = CSVView::FromArrow(*con.context->db, &arrow_array_stream,
                                  props.filename, logger);
-  if (arrow_array_stream.release != nullptr) {
-    throw std::runtime_error(
-        "Arrow array stream release function was not consumed for file <" +
-        props.filename + ">");
-  }
   return view;
 }
 
