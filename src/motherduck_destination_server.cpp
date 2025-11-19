@@ -8,10 +8,10 @@
 #include "sql_generator.hpp"
 
 #include <fstream>
+#include <grpcpp/grpcpp.h>
 #include <memory>
 #include <mutex>
 #include <string>
-#include <grpcpp/grpcpp.h>
 
 std::string
 find_property(const google::protobuf::Map<std::string, std::string> &config,
@@ -139,8 +139,9 @@ std::unique_ptr<duckdb::Connection> DestinationSdkImpl::get_connection(
 
   const auto set_res = con->Query("SET default_collation=''");
   if (set_res->HasError()) {
-    throw std::runtime_error("    get_connection: Could not SET default_collation: " +
-                             set_res->GetError());
+    throw std::runtime_error(
+        "    get_connection: Could not SET default_collation: " +
+        set_res->GetError());
   }
 
   logger->info("    get_connection: all done, returning connection");
@@ -453,10 +454,11 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                              request->file_params().null_string(),
                              csv_block_size);
 
-      csv_processor::ProcessFile(*con, props, logger, [&](const std::string &view_name) {
-        sql_generator->upsert(*con, table_name, view_name, columns_pk,
-                              columns_regular);
-      });
+      csv_processor::ProcessFile(
+          *con, props, logger, [&](const std::string &view_name) {
+            sql_generator->upsert(*con, table_name, view_name, columns_pk,
+                                  columns_regular);
+          });
     }
     for (auto &filename : request->update_files()) {
       logger->info("Processing update file " + filename);
@@ -466,11 +468,12 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                              request->file_params().null_string(),
                              csv_block_size);
 
-      csv_processor::ProcessFile(*con, props, logger, [&](const std::string &view_name) {
-        sql_generator->update_values(
-            *con, table_name, view_name, columns_pk, columns_regular,
-            request->file_params().unmodified_string());
-      });
+      csv_processor::ProcessFile(
+          *con, props, logger, [&](const std::string &view_name) {
+            sql_generator->update_values(
+                *con, table_name, view_name, columns_pk, columns_regular,
+                request->file_params().unmodified_string());
+          });
     }
     for (auto &filename : request->delete_files()) {
       logger->info("Processing delete file " + filename);
@@ -481,9 +484,10 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                              request->file_params().null_string(),
                              csv_block_size);
 
-      csv_processor::ProcessFile(*con, props, logger, [&](const std::string &view_name) {
-        sql_generator->delete_rows(*con, table_name, view_name, columns_pk);
-      });
+      csv_processor::ProcessFile(
+          *con, props, logger, [&](const std::string &view_name) {
+            sql_generator->delete_rows(*con, table_name, view_name, columns_pk);
+          });
     }
 
   } catch (const std::exception &e) {
@@ -545,10 +549,11 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       IngestProperties props =
           create_ingest_props(filename, request, column_names, csv_block_size);
 
-      csv_processor::ProcessFile(*con, props, logger, [&](const std::string &view_name) {
-        sql_generator->deactivate_historical_records(*con, table_name,
-                                                     view_name, columns_pk);
-      });
+      csv_processor::ProcessFile(*con, props, logger,
+                                 [&](const std::string &view_name) {
+                                   sql_generator->deactivate_historical_records(
+                                       *con, table_name, view_name, columns_pk);
+                                 });
     }
 
     for (auto &filename : request->update_files()) {
@@ -556,11 +561,12 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       IngestProperties props =
           create_ingest_props(filename, request, column_names, csv_block_size);
 
-      csv_processor::ProcessFile(*con, props, logger, [&](const std::string &view_name) {
-        sql_generator->add_partial_historical_values(
-            *con, table_name, view_name, columns_pk, columns_regular,
-            request->file_params().unmodified_string());
-      });
+      csv_processor::ProcessFile(
+          *con, props, logger, [&](const std::string &view_name) {
+            sql_generator->add_partial_historical_values(
+                *con, table_name, view_name, columns_pk, columns_regular,
+                request->file_params().unmodified_string());
+          });
     }
 
     // upsert files
@@ -568,10 +574,11 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       logger->info("replace/upsert file " + filename);
       IngestProperties props =
           create_ingest_props(filename, request, column_names, csv_block_size);
-      csv_processor::ProcessFile(*con, props, logger, [&](const std::string &view_name) {
-        sql_generator->upsert(*con, table_name, view_name, columns_pk,
-                              columns_regular);
-      });
+      csv_processor::ProcessFile(
+          *con, props, logger, [&](const std::string &view_name) {
+            sql_generator->upsert(*con, table_name, view_name, columns_pk,
+                                  columns_regular);
+          });
     }
 
     for (auto &filename : request->delete_files()) {
@@ -579,10 +586,11 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       IngestProperties props =
           create_ingest_props(filename, request, column_names, csv_block_size);
 
-      csv_processor::ProcessFile(*con, props, logger, [&](const std::string &view_name) {
-        sql_generator->delete_historical_rows(*con, table_name, view_name,
-                                              columns_pk);
-      });
+      csv_processor::ProcessFile(*con, props, logger,
+                                 [&](const std::string &view_name) {
+                                   sql_generator->delete_historical_rows(
+                                       *con, table_name, view_name, columns_pk);
+                                 });
     }
 
   } catch (const std::exception &e) {

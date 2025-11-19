@@ -167,8 +167,7 @@ void MdSqlGenerator::create_schema(duckdb::Connection &con,
                                    const std::string &db_name,
                                    const std::string &schema_name) {
   std::ostringstream ddl;
-  ddl << "CREATE SCHEMA "
-      << KeywordHelper::WriteQuoted(db_name, '"') << "."
+  ddl << "CREATE SCHEMA " << KeywordHelper::WriteQuoted(db_name, '"') << "."
       << KeywordHelper::WriteQuoted(schema_name, '"');
   const std::string query = ddl.str();
 
@@ -176,8 +175,8 @@ void MdSqlGenerator::create_schema(duckdb::Connection &con,
   const auto result = con.Query(query);
   if (result->HasError()) {
     throw std::runtime_error("Could not create schema <" + schema_name +
-                             "> in database <" + db_name + ">: " +
-                             result->GetError());
+                             "> in database <" + db_name +
+                             ">: " + result->GetError());
   }
 }
 

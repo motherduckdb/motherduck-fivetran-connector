@@ -6,8 +6,7 @@
 
 namespace fs = std::filesystem;
 
-TEST_CASE("CSVView drops database on cleanup") {
-}
+TEST_CASE("CSVView drops database on cleanup") {}
 
 TEST_CASE("Test can read simple CSV file") {
   const fs::path test_file = fs::path("test_data") / "simple.csv";
