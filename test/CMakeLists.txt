@@ -8,6 +8,7 @@ find_package(Catch2 3 REQUIRED PATHS ${DEPENDENCIES_DIR}/catch2 NO_DEFAULT_PATH)
 
 add_executable(integration_tests
         test_decryption.cpp
+        test_process_file.cpp
         integration/test_server.cpp
 )
 target_compile_definitions(integration_tests PRIVATE

@@ -88,11 +88,9 @@ namespace csv_processor {
         return "\"" + catalog + "\".\"" + schema + "\".\"" + view_name + "\"";
     }
 
-    void process_file(
+    CSVView create_csv_view_from_file(
     duckdb::Connection &con, const IngestProperties &props,
-    std::shared_ptr<mdlog::MdLog> &logger,
-    const std::function<void(const std::string &view_name)> &process_view) {
-
+    std::shared_ptr<mdlog::MdLog> &logger) {
         validate_file(props.filename);
         logger->info("    validated file " + props.filename);
         auto table = props.decryption_key.empty() ? read_unencrypted_csv(props)
@@ -109,12 +107,20 @@ namespace csv_processor {
         }
         logger->info("    ArrowArrayStream created for file " + props.filename);
 
-        const auto view = CSVView::FromArrow(*con.context->db , arrow_array_stream, props.filename, logger);
+        auto view = CSVView::FromArrow(*con.context->db , arrow_array_stream, props.filename, logger);
         if (arrow_array_stream.release != nullptr) {
             throw std::runtime_error(
                 "Arrow array stream release function was not consumed for file <" +
                 props.filename + ">");
         }
+        return view;
+    }
+
+    void process_file(
+    duckdb::Connection &con, const IngestProperties &props,
+    std::shared_ptr<mdlog::MdLog> &logger,
+    const std::function<void(const std::string &view_name)> &process_view) {
+        const auto view = create_csv_view_from_file(con, props, logger);
         process_view(view.GetFullyQualifiedName());
         logger->info("    view processed for file " + props.filename);
     }
