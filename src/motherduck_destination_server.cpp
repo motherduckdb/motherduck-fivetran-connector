@@ -141,8 +141,9 @@ std::unique_ptr<duckdb::Connection> DestinationSdkImpl::get_connection(
 
   const auto set_res = con->Query("SET default_collation=''");
   if (set_res->HasError()) {
-    throw std::runtime_error("    get_connection: Could not SET default_collation: " +
-                             set_res->GetError());
+    throw std::runtime_error(
+        "    get_connection: Could not SET default_collation: " +
+        set_res->GetError());
   }
 
   logger->info("    get_connection: all done, returning connection");

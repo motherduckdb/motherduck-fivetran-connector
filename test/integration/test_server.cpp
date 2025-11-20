@@ -12,6 +12,8 @@
 #include <thread>
 #include <vector>
 
+using namespace test::constants;
+
 bool NO_FAIL(duckdb::unique_ptr<duckdb::MaterializedQueryResult> &result) {
   if (result->HasError()) {
     fprintf(stderr, "Query failed with message: %s\n",

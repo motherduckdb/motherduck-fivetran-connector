@@ -7,6 +7,7 @@ endif()
 find_package(Catch2 3 REQUIRED PATHS ${DEPENDENCIES_DIR}/catch2 NO_DEFAULT_PATH)
 
 add_executable(integration_tests
+        constants.cpp
         test_main.cpp
         test_decryption.cpp
         integration/test_server.cpp
