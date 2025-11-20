@@ -137,11 +137,20 @@ std::unique_ptr<duckdb::Connection> DestinationSdkImpl::get_connection(
     logger->set_connection_id(client_ids_res->GetValue(1, 0).ToString());
   }
 
-  const auto set_res = con->Query("SET default_collation=''");
-  if (set_res->HasError()) {
+  // Set default_collation to a connection-specific default value which overwrites any global setting
+  // and ensures that client-side planning and server-side execution use the same collation.
+  const auto set_collation_res = con->Query("SET default_collation=''");
+  if (set_collation_res->HasError()) {
     throw std::runtime_error(
         "    get_connection: Could not SET default_collation: " +
-        set_res->GetError());
+        set_collation_res->GetError());
+  }
+
+  // Set the time zone to UTC. This can be removed once we do not load ICU anymore.
+  const auto set_timezone_res = con->Query("SET timezone='UTC'");
+  if (set_timezone_res->HasError()) {
+    throw std::runtime_error("    get_connection: Could not SET TimeZone: " +
+                             set_timezone_res->GetError());
   }
 
   logger->info("    get_connection: all done, returning connection");
