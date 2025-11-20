@@ -1,5 +1,7 @@
 #include "constants.hpp"
 
+#include <cstdlib>
+#include <iostream>
 #include <random>
 #include <string>
 
@@ -18,12 +20,14 @@ std::string get_motherduck_auth_token() {
     token = std::getenv("MOTHERDUCK_TOKEN");
   }
   if (!token) {
-    throw std::runtime_error(
-        "Environment variable \"motherduck_token\" is not set");
+    std::cerr << "Environment variable \"motherduck_token\" is not set"
+              << std::endl;
+    exit(2);
   }
   if (strlen(token) == 0) {
-    throw std::runtime_error(
-        "Environment variable \"motherduck_token\" is empty");
+    std::cerr << "Environment variable \"motherduck_token\" is empty"
+              << std::endl;
+    exit(3);
   }
   return std::string(token);
 }
