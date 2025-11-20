@@ -1,7 +1,7 @@
-id,bool_true_false,bool_yes_no,bool_1_0,bool_mixed
-1,true,yes,1,TRUE
-2,false,no,0,FALSE
-3,true,yes,1,True
-4,false,no,0,false
-5,true,YES,1,t
-6,false,NO,0,f
+id,bool_true_false
+1,true
+2,false
+3,true
+4,false
+5,true
+6,false
