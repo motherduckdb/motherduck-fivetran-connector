@@ -70,7 +70,7 @@ TEST_CASE("Test reading various CSV files", "[csv_processor]") {
         // should be empty
         const std::string compare_query =
             "WITH expected_data AS (FROM read_csv_auto('" + test_file.string() +
-            "', header = true)) "
+            "', header=true)) "
             "(FROM " +
             view_name +
             " EXCEPT FROM expected_data) "
@@ -81,6 +81,40 @@ TEST_CASE("Test reading various CSV files", "[csv_processor]") {
         if (compare_result->HasError()) {
           FAIL("Failed to execute comparison query: " +
                compare_result->GetError());
+        }
+        CHECK(compare_result->RowCount() == 0);
+      });
+}
+
+TEST_CASE("Test reading zstd-compressed CSV files", "[csv_processor]") {
+  const auto filename =
+      GENERATE("customers-100000.csv.zst", "train_few_shot.csv.zst");
+  const fs::path test_file =
+      fs::path(TEST_RESOURCES_DIR) / "compressed_csv" / filename;
+  CAPTURE(test_file);
+  REQUIRE(fs::exists(test_file));
+
+  duckdb::DuckDB db(nullptr);
+  duckdb::Connection con(db);
+
+  IngestProperties props(test_file.string(), "", {}, "", 1);
+  auto logger = std::make_shared<mdlog::MdLog>();
+  csv_processor::ProcessFile(
+      con, props, logger, [&con, &test_file](const std::string &view_name) {
+        // Find the difference between the view and the original CSV data;
+        // should be empty
+        const std::string compare_query =
+            "WITH expected_data AS (FROM read_csv('" + test_file.string() +
+            "', header=true, encoding='utf-8', compression='zstd')) "
+            "(FROM " +
+            view_name +
+            " EXCEPT FROM expected_data) "
+            "UNION ALL "
+            "(FROM expected_data EXCEPT FROM " +
+            view_name + ")";
+        const auto compare_result = con.Query(compare_query);
+        if (compare_result->HasError()) {
+          FAIL("Failed to execute 2 query: " + compare_result->GetError());
         }
         CHECK(compare_result->RowCount() == 0);
       });
