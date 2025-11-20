@@ -8,4 +8,6 @@ namespace test::constants {
 const std::string TEST_RESOURCES_DIR = XSTRING(TEST_RESOURCES_LOCATION);
 
 extern const std::string TEST_DATABASE_NAME;
+
+extern const std::string MD_TOKEN;
 } // namespace test::constants
