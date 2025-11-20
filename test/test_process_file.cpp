@@ -1,16 +1,18 @@
+#include "constants.hpp"
 #include "csv_processor.hpp"
 #include "duckdb.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
-#include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
 
 namespace fs = std::filesystem;
+using namespace test::constants;
 
 TEST_CASE("Test can read simple CSV file", "[csv_processor]") {
   const fs::path test_file =
-      fs::path("test") / "files" / "csv" / "small_simple.csv";
+      fs::path(TEST_RESOURCES_DIR) / "csv" / "small_simple.csv";
+  CAPTURE(test_file);
   REQUIRE(fs::exists(test_file));
 
   duckdb::DuckDB db(nullptr);
@@ -49,17 +51,16 @@ TEST_CASE("Test can read simple CSV file", "[csv_processor]") {
 }
 
 TEST_CASE("Test reading various CSV files", "[csv_processor]") {
-  const auto filename = GENERATE(
-      "booleans", "dates_and_times", "large", "many_columns", "mixed_types",
-      "nulls_and_empty", "numeric_types", "single_column", "special_chars");
-  const fs::path test_file =
-      fs::path("test") / "files" / "csv" / (std::string(filename) + ".csv");
+  const auto filename =
+      GENERATE("booleans.csv", "dates_and_times.csv", "large.csv",
+               "many_columns.csv", "mixed_types.csv", "nulls_and_empty.csv",
+               "numeric_types.csv", "single_column.csv", "special_chars.csv");
+  const fs::path test_file = fs::path(TEST_RESOURCES_DIR) / "csv" / filename;
+  CAPTURE(test_file);
   REQUIRE(fs::exists(test_file));
 
   duckdb::DuckDB db(nullptr);
   duckdb::Connection con(db);
-
-  CAPTURE(filename);
 
   IngestProperties props(test_file.string(), "", {}, "", 1);
   auto logger = std::make_shared<mdlog::MdLog>();
