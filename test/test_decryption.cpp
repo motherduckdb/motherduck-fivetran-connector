@@ -2,14 +2,23 @@
 #include "openssl_helper.hpp"
 
 #include <cassert>
-#include <catch2/catch_all.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <cerrno>
 #include <filesystem>
+#include <fstream>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
+#include <sstream>
 #include <stdexcept>
 #include <system_error>
-#include <thread>
+
+#define STRING(x) #x
+#define XSTRING(s) STRING(s)
+const std::string TEST_RESOURCES_DIR = XSTRING(TEST_RESOURCES_LOCATION);
+
+namespace fs = std::filesystem;
 
 namespace {
 std::string generate_random_string(const size_t length) {
@@ -59,13 +68,13 @@ void encrypt_stream(std::istream &input, std::ostream &output,
 
   // Sets up cipher context ctx for encryption with cipher type aes_impl.
   // PKCS padding is enabled by default.
-  const auto init_result = EVP_EncryptInit_ex2(
-      ctx, aes_impl, reinterpret_cast<const unsigned char *>(key.c_str()),
-      reinterpret_cast<const unsigned char *>(iv.c_str()), nullptr);
+  const int init_result = EVP_EncryptInit_ex2(
+      ctx, aes_impl, reinterpret_cast<const unsigned char *>(key.data()),
+      reinterpret_cast<const unsigned char *>(iv.data()), nullptr);
   // Decrease reference count of aes_impl; EVP_EncryptInit_ex2 has incremented
   // the reference count
   EVP_CIPHER_free(aes_impl);
-  if (init_result != 1) {
+  if (1 != init_result) {
     openssl_helper::raise_openssl_error(
         "Failed to initialize encryption cipher context for " +
         std::string(algorithm));
@@ -90,7 +99,7 @@ void encrypt_stream(std::istream &input, std::ostream &output,
   while (input.read(reinterpret_cast<char *>(input_buffer), buffer_size) ||
          input.gcount() > 0) {
     // Stream is only allowed to fail if EOF has been reached
-    if (input.bad() || (input.fail() && !input.eof())) {
+    if (input.fail() && !input.eof()) {
       throw std::system_error(errno, std::iostream_category(),
                               "Error when reading input stream");
     }
@@ -104,14 +113,14 @@ void encrypt_stream(std::istream &input, std::ostream &output,
                  ciphertext_length);
   }
 
-  if (!EVP_EncryptFinal_ex(ctx, ciphertext_buffer, &ciphertext_length)) {
+  if (1 != EVP_EncryptFinal_ex(ctx, ciphertext_buffer, &ciphertext_length)) {
     openssl_helper::raise_openssl_error("Error during encryption finalization");
   }
   output.write(reinterpret_cast<char *>(ciphertext_buffer), ciphertext_length);
 }
 } // namespace
 
-TEST_CASE("Decrypt is inverse function of encrypt") {
+TEST_CASE("Decrypt is inverse function of encrypt", "[decryption]") {
   // 32 bytes for AES-256 key
   std::string key = generate_random_string(32);
 
@@ -121,10 +130,147 @@ TEST_CASE("Decrypt is inverse function of encrypt") {
   std::stringstream ciphertext_stream;
   encrypt_stream(plaintext_stream, ciphertext_stream, key);
 
-  auto result =
-      decrypt_stream(ciphertext_stream, "<memory stream>",
-                     reinterpret_cast<const unsigned char *>(key.c_str()));
-  std::string result_str(result.begin(), result.end());
+  std::ostringstream result;
+  decrypt_stream(ciphertext_stream, "<memory stream>", result, key);
 
-  REQUIRE(result_str == plaintext);
+  REQUIRE(result.str() == plaintext);
+}
+
+TEST_CASE("Decrypt file that was encrypted using openssl util produces "
+          "original plaintext",
+          "[decryption]") {
+
+  std::string key, decrypted_text, plaintext;
+
+  {
+    const auto key_path =
+        fs::path(TEST_RESOURCES_DIR) / "encrypted" / "customers-100000.key";
+    std::ifstream key_file(key_path, std::ios::binary);
+    REQUIRE((key_file && key_file.is_open()));
+    std::getline(key_file, key);
+  }
+
+  {
+    const auto encrypted_file_path =
+        fs::path(TEST_RESOURCES_DIR) / "encrypted" / "customers-100000.csv.enc";
+    decrypted_text = decrypt_file(encrypted_file_path.string(), key);
+  }
+
+  {
+    const auto plaintext_file_path =
+        fs::path(TEST_RESOURCES_DIR) / "encrypted" / "customers-100000.csv";
+    std::ifstream plaintext_file(plaintext_file_path);
+    REQUIRE((plaintext_file && plaintext_file.is_open()));
+    plaintext = std::string((std::istreambuf_iterator<char>(plaintext_file)),
+                            std::istreambuf_iterator<char>());
+  }
+
+  REQUIRE(decrypted_text == plaintext);
+}
+
+TEST_CASE("Decryption functions throw correct errors", "[decryption]") {
+  SECTION("decrypt_file throws if file does not exist") {
+    REQUIRE_THROWS_WITH(
+        decrypt_file("non_existent_file.csv.enc", "somekey"),
+        Catch::Matchers::ContainsSubstring("No such file or directory"));
+  }
+
+  SECTION("decrypt_stream throws on invalid key") {
+    std::istringstream input;
+    std::ostringstream output;
+
+    REQUIRE_THROWS_WITH(
+        decrypt_stream(input, "<memory stream>", output, "too_short_key"),
+        Catch::Matchers::ContainsSubstring(
+            "Decryption key must be 32 bytes long for AES-256-CBC"));
+  }
+
+  SECTION("decrypt_stream throws if file is empty") {
+    std::stringstream input;
+    std::ostringstream output;
+    std::string key = generate_random_string(32);
+
+    REQUIRE_THROWS_WITH(decrypt_stream(input, "<memory stream>", output, key),
+                        Catch::Matchers::ContainsSubstring(
+                            "Unexpected end of file while reading IV"));
+  }
+
+  SECTION("decrypt_stream throws if file is too short") {
+    std::stringstream input;
+    input << "too_little_data";
+    std::ostringstream output;
+    std::string key = generate_random_string(32);
+
+    REQUIRE_THROWS_WITH(decrypt_stream(input, "<memory stream>", output, key),
+                        Catch::Matchers::ContainsSubstring(
+                            "Unexpected end of file while reading IV"));
+  }
+
+  SECTION("decrypt_stream throws if input stream contains garbage") {
+    std::stringstream input;
+    // Make input long enough to successfully read IV
+    input << "1111111111111111_garbage_data";
+    std::ostringstream output;
+    std::string key = generate_random_string(32);
+
+    REQUIRE_THROWS_WITH(decrypt_stream(input, "<memory stream>", output, key),
+                        Catch::Matchers::ContainsSubstring(
+                            "Error during decrypt finalization"));
+  }
+
+  SECTION("decrypt_stream throws if input contains garbage in the middle of "
+          "the stream") {
+    std::string key = generate_random_string(32);
+    // Make string bigger than one buffer size (64 KiB).
+    std::string plaintext = generate_random_string(1000);
+    std::istringstream plaintext_stream(plaintext);
+
+    std::stringstream ciphertext_stream;
+    encrypt_stream(plaintext_stream, ciphertext_stream, key);
+    std::string ciphertext = ciphertext_stream.str();
+    // Corrupt data, but don't change length of ciphertext
+    ciphertext.replace(500, 10, "garbage!!!");
+    ciphertext_stream.str(ciphertext);
+
+    std::ostringstream output;
+    // Decryption still succeeds because ciphertext length was not changed
+    decrypt_stream(ciphertext_stream, "<memory stream>", output, key);
+    REQUIRE(output.str() != plaintext);
+  }
+
+  SECTION("decrypt_stream throws if input is too short") {
+    std::string key = generate_random_string(32);
+    // Make string bigger than one buffer size (64 KiB).
+    std::string plaintext = generate_random_string(100000);
+    std::istringstream plaintext_stream(plaintext);
+
+    std::stringstream ciphertext_stream;
+    encrypt_stream(plaintext_stream, ciphertext_stream, key);
+    std::string ciphertext = ciphertext_stream.str();
+    // Remove a few characters after the first iteration (after 64 KiB).
+    ciphertext.replace(90000, 10, "");
+    ciphertext_stream.str(ciphertext);
+
+    std::ostringstream output;
+    REQUIRE_THROWS_WITH(
+        decrypt_stream(ciphertext_stream, "<memory stream>", output, key),
+        Catch::Matchers::ContainsSubstring("wrong final block length"));
+  }
+
+  SECTION("decrypt_stream throws if it cannot write to the output stream") {
+    std::string key = generate_random_string(32);
+    std::string plaintext = generate_random_string(100);
+    std::istringstream plaintext_stream(plaintext);
+
+    std::stringstream ciphertext_stream;
+    encrypt_stream(plaintext_stream, ciphertext_stream, key);
+
+    std::ostringstream output;
+    // Make writes fail
+    output.setstate(std::ios::failbit);
+
+    REQUIRE_THROWS_WITH(
+        decrypt_stream(ciphertext_stream, "<memory stream>", output, key),
+        Catch::Matchers::ContainsSubstring("Error writing to output stream"));
+  }
 }
