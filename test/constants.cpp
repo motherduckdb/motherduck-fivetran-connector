@@ -1,6 +1,7 @@
 #include "constants.hpp"
 
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <random>
 #include <string>
