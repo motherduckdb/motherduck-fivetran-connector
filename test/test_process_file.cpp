@@ -1,9 +1,9 @@
-#include "catch2/generators/catch_generators.hpp"
-#include "catch2/matchers/catch_matchers.hpp"
-#include "catch2/matchers/catch_matchers_string.hpp"
 #include "csv_processor.hpp"
 #include "duckdb.hpp"
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
+#include <catch2/matchers/catch_matchers.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
 
 namespace fs = std::filesystem;
@@ -65,12 +65,17 @@ TEST_CASE("Test reading various CSV files", "[csv_processor]") {
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
       con, props, logger, [&con, &test_file](const std::string &view_name) {
-        // Find the difference between the view and the original CSV data; should be empty
+        // Find the difference between the view and the original CSV data;
+        // should be empty
         const std::string compare_query =
-            "WITH expected_data AS (FROM read_csv_auto('" + test_file.string() + "', header = true)) "
-            "(FROM " + view_name + " EXCEPT FROM expected_data) "
+            "WITH expected_data AS (FROM read_csv_auto('" + test_file.string() +
+            "', header = true)) "
+            "(FROM " +
+            view_name +
+            " EXCEPT FROM expected_data) "
             "UNION ALL "
-            "(FROM expected_data EXCEPT FROM " + view_name + ")";
+            "(FROM expected_data EXCEPT FROM " +
+            view_name + ")";
         const auto compare_result = con.Query(compare_query);
         if (compare_result->HasError()) {
           FAIL("Failed to execute comparison query: " +
