@@ -1,0 +1,7 @@
+**/configuration.json
+/*.csv
+/*.zst
+/*.zstd
+/*.aes
+/*.tmp
+/*.key

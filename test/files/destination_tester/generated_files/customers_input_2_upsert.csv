@@ -1,0 +1,7 @@
+email,first_name,loyalty_tier,_fivetran_synced,customer_id,last_name,registration_date,total_spent
+alice.j@example.com,Alice,null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP,2025-11-21T14:54:16Z,101,Johnson,2023-01-15,1500.75
+bob.w@example.com,Bob,null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP,2025-11-21T14:54:16Z,102,Williams,2023-02-20,850.5
+charlie.b@example.com,Charlie,null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP,2025-11-21T14:54:16Z,103,Brown,2023-03-10,2300.0
+diana.m@example.com,Diana,null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP,2025-11-21T14:54:16Z,104,Miller,2023-04-05,450.25
+alice.j@example.com,Alice,Platinum,2025-11-21T14:54:16Z,103,Johnson,2024-06-01,3300.5
+eve.d@example.com,Eve,Bronze,2025-11-21T14:54:16Z,105,Davis,2024-06-01,120.0

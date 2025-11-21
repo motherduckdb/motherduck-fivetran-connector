@@ -1,0 +1,2 @@
+string_val,short_val,long_val,binary_val,double_val,naive_datetime_val,_fivetran_synced,json_val,naive_date_val,decimal_val,float_val,int_val,utc_datetime_val,bool_val
+test1,1,1234567890123,0111111010111001,100.123456789,2024-01-01T10:00:00,2025-11-21T16:24:40.623Z,"{""a"":123}",2024-01-01,12345.123456789011,10.12,99999999,2024-01-01T10:00:00Z,true

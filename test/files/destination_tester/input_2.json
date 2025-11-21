@@ -1,0 +1,127 @@
+{
+  "create_table": {
+    "customers": {
+      "columns": {
+        "customer_id": "LONG",
+        "first_name": "STRING",
+        "last_name": "STRING",
+        "email": "STRING",
+        "registration_date": "NAIVE_DATE",
+        "total_spent": "DECIMAL"
+      },
+      "primary_key": ["customer_id"],
+      "history_mode": false
+    },
+    "products": {
+      "columns": {
+        "product_name": "STRING",
+        "category": "STRING",
+        "unit_price": "DOUBLE",
+        "stock_count": "INT",
+        "is_active": "BOOLEAN",
+        "specs_json": "JSON",
+        "manual_xml": "STRING"
+      },
+      "history_mode": false
+    },
+    "orders": {
+      "columns": {
+        "order_id": "STRING",
+        "customer_id": "LONG",
+        "order_date": "UTC_DATETIME",
+        "status": "STRING",
+        "total_amount": "FLOAT"
+      },
+      "primary_key": ["order_id"],
+      "history_mode": false
+    }
+  },
+  "alter_table": {
+    "customers": {
+      "columns": {
+        "customer_id": "LONG",
+        "first_name": "STRING",
+        "last_name": "STRING",
+        "email": "STRING",
+        "registration_date": "NAIVE_DATE",
+        "total_spent": {"type": "DECIMAL", "precision": 12, "scale": 2},
+        "loyalty_tier": "STRING"
+      },
+      "primary_key": ["customer_id"],
+      "history_mode": false
+    }
+  },
+  "describe_table": [
+    "customers",
+    "orders"
+  ],
+  "ops": [
+    {
+      "upsert": {
+        "customers": [
+          {"customer_id": 101, "first_name": "Alice", "last_name": "Johnson", "email": "alice.j@example.com", "registration_date": "2023-01-15", "total_spent": 1500.75, "loyalty_tier": null},
+          {"customer_id": 102, "first_name": "Bob", "last_name": "Williams", "email": "bob.w@example.com", "registration_date": "2023-02-20", "total_spent": 850.50, "loyalty_tier": null},
+          {"customer_id": 103, "first_name": "Charlie", "last_name": "Brown", "email": "charlie.b@example.com", "registration_date": "2023-03-10", "total_spent": 2300.00, "loyalty_tier": null},
+          {"customer_id": 104, "first_name": "Diana", "last_name": "Miller", "email": "diana.m@example.com", "registration_date": "2023-04-05", "total_spent": 450.25, "loyalty_tier": null}
+        ],
+        "products": [
+          {"_fivetran_id": "prod_A1B2", "product_name": "Quantum Laptop", "category": "Electronics", "unit_price": 1299.99, "stock_count": 50, "is_active": true, "specs_json": "{\"cpu\": \"i9\", \"ram_gb\": 32, \"storage_tb\": 1}", "manual_xml": "<manual><section title='Setup'><step>Unbox</step></section></manual>"},
+          {"_fivetran_id": "prod_C3D4", "product_name": "Ergo Keyboard", "category": "Accessories", "unit_price": 79.99, "stock_count": 200, "is_active": true, "specs_json": "{\"layout\": \"US\", \"type\": \"mechanical\"}", "manual_xml": null},
+          {"_fivetran_id": "prod_E5F6", "product_name": "4K Monitor", "category": "Electronics", "unit_price": 449.50, "stock_count": 100, "is_active": false, "specs_json": "{\"resolution\": \"3840x2160\", \"size_inch\": 27}", "manual_xml": "<manual><section title='Display'><setting>Brightness</setting></section></manual>"}
+        ]
+      }
+    },
+    {
+      "upsert": {
+        "orders": [
+          {"order_id": "ORD-001", "customer_id": 101, "order_date": "2024-05-10T10:30:00Z", "status": "Shipped", "total_amount": 1299.99},
+          {"order_id": "ORD-002", "customer_id": 102, "order_date": "2024-05-11T14:00:00Z", "status": "Processing", "total_amount": 79.99},
+          {"order_id": "ORD-003", "customer_id": 101, "order_date": "2024-05-12T09:00:00Z", "status": "Pending", "total_amount": 79.99}
+        ]
+      }
+    },
+    {
+      "update": {
+        "customers": [
+          {"customer_id": 101, "total_spent": 2500.80, "loyalty_tier": "Gold"},
+          {"customer_id": 102, "loyalty_tier": "Silver"}
+        ],
+        "orders": [
+          {"order_id": "ORD-002", "status": "Shipped"},
+          {"order_id": "ORD-003", "status": "Processing"}
+        ]
+      }
+    },
+    {
+      "truncate_before": [
+        "products"
+      ]
+    },
+    {
+      "upsert": {
+        "customers": [
+          {"customer_id": 103, "first_name": "Alice", "last_name": "Johnson", "email": "alice.j@example.com", "registration_date": "2024-06-01", "total_spent": 3300.50, "loyalty_tier": "Platinum"},
+          {"customer_id": 105, "first_name": "Eve", "last_name": "Davis", "email": "eve.d@example.com", "registration_date": "2024-06-01", "total_spent": 120.00, "loyalty_tier": "Bronze"}
+        ],
+        "products": [
+          {"_fivetran_id": "prod_G7H8", "product_name": "Wireless Mouse", "category": "Accessories", "unit_price": 49.99, "stock_count": 500, "is_active": true, "specs_json": "{\"dpi\": 16000}", "manual_xml": null},
+          {"_fivetran_id": "prod_I9J0", "product_name": "USB-C Hub", "category": "Accessories", "unit_price": 39.99, "stock_count": 300, "is_active": true, "specs_json": "{\"ports\": 7}", "manual_xml": "<manual><section title='Ports'><port>HDMI</port></section></manual>"}
+        ]
+      }
+    },
+    {
+      "delete": {
+        "customers": [
+          {"customer_id": 104}
+        ]
+      }
+    },
+    {
+        "soft_delete": {
+            "orders": [
+            {"order_id": "ORD-001"}
+            ]
+        }
+    }
+  ]
+}

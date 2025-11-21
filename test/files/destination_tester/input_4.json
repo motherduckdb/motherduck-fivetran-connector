@@ -1,0 +1,50 @@
+{
+  "create_table" : {
+    "mixed_data": {
+      "columns": {
+        "bool_val": "BOOLEAN",
+        "short_val" : "SHORT",
+        "int_val": "INT",
+        "long_val": "LONG",
+        "float_val": "FLOAT",
+        "double_val": "DOUBLE",
+        "decimal_val": {
+          "type": "DECIMAL",
+          "precision": 38,
+          "scale": 10
+        },
+        "naive_date_val": "NAIVE_DATE",
+        "naive_datetime_val": "NAIVE_DATETIME",
+        "utc_datetime_val": "UTC_DATETIME",
+        "binary_val": "BINARY",
+        "json_val": "JSON",
+        "string_val": "STRING"
+      },
+      "primary_key": ["int_val"],
+      "history_mode": false
+    }
+  },
+  "ops" : [
+    {
+      "upsert": {
+        "mixed_data": [
+          {
+            "bool_val": true,
+            "short_val": 1,
+            "int_val": 99999999,
+            "long_val": 1234567890123,
+            "float_val": 10.12,
+            "double_val": 100.123456789,
+            "decimal_val": 12345.123456789012345,
+            "naive_date_val": "2024-01-01",
+            "naive_datetime_val": "2024-01-01T10:00:00",
+            "utc_datetime_val": "2024-01-01T10:00:00Z",
+            "binary_val": "0111111010111001",
+            "json_val": "{\"a\":123}",
+            "string_val": "test1"
+          }
+        ]
+      }
+    }
+  ]
+}
