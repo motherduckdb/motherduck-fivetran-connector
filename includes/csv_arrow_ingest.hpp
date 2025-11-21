@@ -1,4 +1,4 @@
-#include "common.hpp"
+#include "ingest_properties.hpp"
 #include <arrow/csv/api.h>
 
 std::shared_ptr<arrow::Table> read_encrypted_csv(const IngestProperties &props);

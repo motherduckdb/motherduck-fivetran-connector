@@ -10,6 +10,7 @@ add_executable(integration_tests
         constants.cpp
         test_main.cpp
         test_decryption.cpp
+        test_process_file.cpp
         integration/test_server.cpp
 )
 target_compile_definitions(integration_tests PRIVATE

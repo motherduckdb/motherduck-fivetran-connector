@@ -16,7 +16,7 @@ struct IngestProperties {
 
   const std::string filename;
   const std::string decryption_key;
-  const std::vector<std::string> &utf8_columns;
+  const std::vector<std::string> utf8_columns;
   const std::string null_value;
   const int csv_block_size_mb;
 };
