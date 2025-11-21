@@ -20,5 +20,6 @@ docker run --interactive --tty --rm \
   --tester-type destination --port 50052 --disable-operation-delay --batch-file-type CSV [--plain-text]
 ```
 
-The files in _generated_files_ were modified as follows:
-- Extract and remove IV from generated .aes file: 
+This generates a X.csv.zstd.aes file in the working directory.
+Get the decryption key and put it into a file X.csv.zstd.aes.key (e.g., by letting the motherduck_destination_server generate this file).
+Then use decrypt.py to decrypt the file.
