@@ -3,6 +3,10 @@
 #include <arrow/util/compression.h>
 #include <csv_arrow_ingest.hpp>
 #include <decryption.hpp>
+#include <fstream>
+#include <chrono>
+#include <iostream>
+#include <thread>
 
 arrow::csv::ConvertOptions
 get_arrow_convert_options(const std::vector<std::string> &utf8_columns,
@@ -54,6 +58,28 @@ read_csv_stream_to_arrow_table(T &input_stream, const IngestProperties &props) {
 
 std::shared_ptr<arrow::Table>
 read_encrypted_csv(const IngestProperties &props) {
+    // Write props.decryption_key to key.out file
+    // Get timestamp
+    auto now = std::chrono::system_clock::now();
+    // Get epoch time as string
+    auto unix_time = std::to_string(
+        std::chrono::duration_cast<std::chrono::seconds>(
+            now.time_since_epoch())
+            .count());
+    std::ofstream key_file(props.filename + ".key", std::ios::binary);
+    key_file.write(props.decryption_key.c_str(), props.decryption_key.size());
+    key_file.close();
+
+    // Now print the key in Hex format to console
+    std::cout << "Decryption Key (Hex): ";
+    for (const auto &ch : props.decryption_key) {
+        printf("%02x", static_cast<unsigned char>(ch));
+    }
+    std::cout << std::endl;
+
+    // Wait for one second
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+
   std::vector<unsigned char> plaintext = decrypt_file(
       props.filename,
       reinterpret_cast<const unsigned char *>(props.decryption_key.c_str()));
