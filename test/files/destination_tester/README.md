@@ -22,4 +22,4 @@ docker run --interactive --tty --rm \
 
 This generates a X.csv.zstd.aes file in the working directory.
 Get the decryption key and put it into a file X.csv.zstd.aes.key (e.g., by letting the motherduck_destination_server generate this file).
-Then use decrypt.py to decrypt the file.
+Then use decrypt.py from test/utils to decrypt the file.

@@ -58,7 +58,7 @@ def decrypt_file(key_file, encrypted_file, output_file):
         print(f"Error: {e}")
         return False
 
-if __name__ == "__main__":
+def main():
     if len(sys.argv) != 2:
         print(f"Usage: {sys.argv[0]} <encrypted_file.aes>")
         sys.exit(1)
@@ -84,3 +84,6 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         sys.exit(1)
+
+if __name__ == "__main__":
+    main()
