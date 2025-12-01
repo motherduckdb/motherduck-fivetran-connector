@@ -33,8 +33,6 @@ fivetran_sdk::v2::DataType get_fivetran_type(const LogicalTypeId &duckdb_type) {
   }
 }
 
-// TODO: Support naive time
-// TODO: Is the conversion correct for binary?
 LogicalTypeId get_duckdb_type(const fivetran_sdk::v2::DataType &fivetranType) {
   switch (fivetranType) {
   case fivetran_sdk::v2::BOOLEAN:
