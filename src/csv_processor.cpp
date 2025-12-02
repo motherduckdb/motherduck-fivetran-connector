@@ -1,12 +1,10 @@
 #include "csv_processor.hpp"
 
-#include "csv_arrow_ingest.hpp"
 #include "decryption.hpp"
 #include "duckdb.hpp"
 #include "ingest_properties.hpp"
 #include "md_logging.hpp"
 
-#include <arrow/c/bridge.h>
 #include <fstream>
 #include <functional>
 #include <memory>
@@ -182,24 +180,22 @@ void ProcessFile(
   // Run DETACH just to be extra sure
   con.Query("DETACH DATABASE IF EXISTS " + temp_db_name);
   con.Query("ATTACH ':memory:' AS " + temp_db_name);
-  // Use local memory by default to prevent Arrow-based VIEW from traveling
-  // up to the cloud
-  con.Query("USE " + temp_db_name);
+
+  std::string view_name = "\"" + temp_db_name + "\".\"main\".\"csv_view\"";
 
   // TODO: Move CREATE VIEW into generate function
   auto create_view_res =
-      con.Query("CREATE VIEW " + temp_db_name + ".main.arrow_view AS " +
+      con.Query("CREATE VIEW " + view_name + " AS " +
                 generate_read_csv_query(ddb_file_path, {}, props, compression));
   if (create_view_res->HasError()) {
     create_view_res->ThrowError("Failed to create view for CSV file <" + props.filename + ">");
   }
   logger->info("    view created for file " + props.filename);
 
-  process_view("\"" + temp_db_name + "\".\"arrow_view\"");
+  process_view(view_name);
   logger->info("    view processed for file " + props.filename);
 
   logger->info("    Detaching temp database " + temp_db_name + " for CSV view");
   con.Query("DETACH DATABASE IF EXISTS " + temp_db_name);
-  arrow_array_stream.release(&arrow_array_stream);
 }
 } // namespace csv_processor
