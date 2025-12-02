@@ -1,0 +1,4 @@
+status,order_id,_fivetran_deleted,order_date,_fivetran_synced,customer_id,total_amount
+Shipped,ORD-002,false,"unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3",2025-11-21T14:54:16Z,"unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3","unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3"
+Processing,ORD-003,false,"unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3",2025-11-21T14:54:16Z,"unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3","unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3"
+"unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3",ORD-001,true,"unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3",2025-11-21T14:54:16Z,"unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3","unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3"

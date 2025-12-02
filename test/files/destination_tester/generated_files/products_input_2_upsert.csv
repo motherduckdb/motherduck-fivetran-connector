@@ -1,0 +1,6 @@
+category,stock_count,_fivetran_synced,product_name,_fivetran_id,manual_xml,is_active,specs_json,unit_price
+Electronics,50,2025-11-21T14:54:16Z,"Quantum Laptop",prod_A1B2,"<manual><section title='Setup'><step>Unbox</step></section></manual>",true,"{""cpu"": ""i9"", ""ram_gb"": 32, ""storage_tb"": 1}",1299.99
+Accessories,200,2025-11-21T14:54:16Z,"Ergo Keyboard",prod_C3D4,null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP,true,"{""layout"": ""US"", ""type"": ""mechanical""}",79.99
+Electronics,100,2025-11-21T14:54:16Z,"4K Monitor",prod_E5F6,"<manual><section title='Display'><setting>Brightness</setting></section></manual>",false,"{""resolution"": ""3840x2160"", ""size_inch"": 27}",449.5
+Accessories,500,2025-11-21T14:54:16Z,"Wireless Mouse",prod_G7H8,null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP,true,"{""dpi"": 16000}",49.99
+Accessories,300,2025-11-21T14:54:16Z,"USB-C Hub",prod_I9J0,"<manual><section title='Ports'><port>HDMI</port></section></manual>",true,"{""ports"": 7}",39.99
