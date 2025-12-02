@@ -1,22 +1,13 @@
 #pragma once
 
 #include "duckdb.hpp"
+#include "types.hpp"
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <vector>
 
-struct column_def {
-  std::string name;
-  duckdb::LogicalTypeId type;
-  bool primary_key;
-  unsigned int width;
-  unsigned int scale;
-};
-
-struct table_def {
-  std::string db_name;
-  std::string schema_name;
-  std::string table_name;
-
-  std::string to_escaped_string() const;
-};
 
 void find_primary_keys(
     const std::vector<column_def> &cols,

@@ -187,11 +187,11 @@ get_encryption_key(const std::string &filename,
 template <typename T>
 IngestProperties
 create_ingest_props(const std::string &filename, const T &request,
-                    const std::vector<std::string> &column_names,
+                    const std::vector<column_def> &cols,
                     int csv_block_size) {
   const std::string decryption_key = get_encryption_key(
       filename, request->keys(), request->file_params().encryption());
-  return IngestProperties(filename, decryption_key, column_names,
+  return IngestProperties(filename, decryption_key, cols,
                           request->file_params().null_string(), csv_block_size);
 }
 
@@ -458,19 +458,12 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       throw std::invalid_argument("No primary keys found");
     }
 
-    // update file fields have to be read in as strings to allow
-    // "unmodified_string"/"null_string". Replace (upsert) files have to be read
-    // in as strings to allow "null_string".
-    std::vector<std::string> column_names(cols.size());
-    std::transform(cols.begin(), cols.end(), column_names.begin(),
-                   [](const column_def &col) { return col.name; });
-
     for (auto &filename : request->replace_files()) {
       logger->info("Processing replace file " + filename);
       const auto decryption_key = get_encryption_key(
           filename, request->keys(), request->file_params().encryption());
 
-      IngestProperties props(filename, decryption_key, column_names,
+      IngestProperties props(filename, decryption_key, cols,
                              request->file_params().null_string(),
                              csv_block_size);
 
@@ -484,7 +477,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       logger->info("Processing update file " + filename);
       auto decryption_key = get_encryption_key(
           filename, request->keys(), request->file_params().encryption());
-      IngestProperties props(filename, decryption_key, column_names,
+      IngestProperties props(filename, decryption_key, cols,
                              request->file_params().null_string(),
                              csv_block_size);
 
@@ -499,7 +492,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       logger->info("Processing delete file " + filename);
       auto decryption_key = get_encryption_key(
           filename, request->keys(), request->file_params().encryption());
-      std::vector<std::string> empty;
+      std::vector<column_def> empty; //TODO: Why empty?
       IngestProperties props(filename, decryption_key, empty,
                              request->file_params().null_string(),
                              csv_block_size);
@@ -556,18 +549,11 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       throw std::invalid_argument("No primary keys found");
     }
 
-    // update file fields have to be read in as strings to allow
-    // "unmodified_string"/"null_string". Replace (upsert) files have to be read
-    // in as strings to allow "null_string".
-    std::vector<std::string> column_names(cols.size());
-    std::transform(cols.begin(), cols.end(), column_names.begin(),
-                   [](const column_def &col) { return col.name; });
-
     // delete overlapping records
     for (auto &filename : request->earliest_start_files()) {
       logger->info("Processing earliest start file " + filename);
       IngestProperties props =
-          create_ingest_props(filename, request, column_names, csv_block_size);
+          create_ingest_props(filename, request, cols, csv_block_size);
 
       csv_processor::ProcessFile(*con, props, logger,
                                  [&](const std::string &view_name) {
@@ -579,7 +565,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     for (auto &filename : request->update_files()) {
       logger->info("update file " + filename);
       IngestProperties props =
-          create_ingest_props(filename, request, column_names, csv_block_size);
+          create_ingest_props(filename, request, cols, csv_block_size);
 
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
@@ -593,7 +579,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     for (auto &filename : request->replace_files()) {
       logger->info("replace/upsert file " + filename);
       IngestProperties props =
-          create_ingest_props(filename, request, column_names, csv_block_size);
+          create_ingest_props(filename, request, cols, csv_block_size);
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
             sql_generator->upsert(*con, table_name, view_name, columns_pk,
@@ -604,7 +590,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     for (auto &filename : request->delete_files()) {
       logger->info("delete file " + filename);
       IngestProperties props =
-          create_ingest_props(filename, request, column_names, csv_block_size);
+          create_ingest_props(filename, request, cols, csv_block_size);
 
       csv_processor::ProcessFile(*con, props, logger,
                                  [&](const std::string &view_name) {
