@@ -144,6 +144,7 @@ target_include_directories(duckdb_static INTERFACE "${CMAKE_CURRENT_LIST_DIR}/li
 ### MotherDuck destination connector ###
 add_library(motherduck_destination_sources STATIC
         src/csv_arrow_ingest.cpp
+        src/csv_processor.cpp
         src/decryption.cpp
         src/extension_helper.cpp
         src/fivetran_duckdb_interop.cpp

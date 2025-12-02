@@ -1,0 +1,8 @@
+id,_fivetran_deleted,_fivetran_synced,desc,amount
+1,false,2025-11-21T14:59:47.315Z,null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP,100.45
+2,false,2025-11-21T14:59:47.315Z,two,150.33
+3,false,2025-11-21T14:59:47.315Z,two,150.33
+4,false,2025-11-21T14:59:47.315Z,two,150.33
+10,false,2025-11-21T14:59:47.315Z,three,200
+10,false,2025-11-21T14:59:47.315Z,thee,100
+20,false,2025-11-21T14:59:47.315Z,mone,50

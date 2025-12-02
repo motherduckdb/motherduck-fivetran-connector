@@ -54,7 +54,6 @@ read_csv_stream_to_arrow_table(T &input_stream, const IngestProperties &props) {
 
 std::shared_ptr<arrow::Table>
 read_encrypted_csv(const IngestProperties &props) {
-
   std::vector<unsigned char> plaintext = decrypt_file(
       props.filename,
       reinterpret_cast<const unsigned char *>(props.decryption_key.c_str()));
@@ -113,8 +112,8 @@ read_unencrypted_csv(const IngestProperties &props) {
     }
 
     // Check for ZSTD magic number (0x28B52FFD in little-endian)
-    is_zstd_compressed = (magic_bytes[0] == 0x28 && magic_bytes[1] == 0xB5 &&
-                          magic_bytes[2] == 0x2F && magic_bytes[3] == 0xFD);
+    is_zstd_compressed = magic_bytes[0] == 0x28 && magic_bytes[1] == 0xB5 &&
+                         magic_bytes[2] == 0x2F && magic_bytes[3] == 0xFD;
 
     // Seek back to the beginning
     auto maybe_seek = file_stream->Seek(0);
@@ -143,7 +142,6 @@ read_unencrypted_csv(const IngestProperties &props) {
     }
     auto compressed_input_stream =
         std::move(maybe_compressed_input_stream.ValueOrDie());
-
     return read_csv_stream_to_arrow_table(compressed_input_stream, props);
   } else {
     // File is uncompressed
