@@ -454,6 +454,11 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     std::vector<const column_def *> columns_regular;
     find_primary_keys(cols, columns_pk, &columns_regular);
 
+    std::cout << "Columns: " << std::endl;
+    for (const auto &col : cols) {
+        std::cout << col.name << ": " << duckdb::EnumUtil::ToString(col.type) << std::endl;
+    }
+
     if (columns_pk.empty()) {
       throw std::invalid_argument("No primary keys found");
     }

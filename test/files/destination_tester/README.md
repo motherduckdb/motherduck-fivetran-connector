@@ -1,3 +1,5 @@
+Find the readme for the destination tester [here])(https://github.com/fivetran/fivetran_partner_sdk/tree/main/tools/destination-connector-tester).
+
 Get the Docker image for the destination tester: 
 ```
 docker pull us-docker.pkg.dev/build-286712/public-docker-us/sdktesters-v2/sdk-tester:<tag>
@@ -9,7 +11,7 @@ Find the latest tag [here](https://console.cloud.google.com/artifacts/docker/bui
 Then run it
 
 ```
-cd test/destination_tester_input
+cd test/files/destination_tester
 mkdir -p generated_files
 docker run --interactive --tty --rm \
   --network=host \

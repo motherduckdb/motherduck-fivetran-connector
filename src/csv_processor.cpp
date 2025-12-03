@@ -44,7 +44,15 @@ namespace {
       return;
     }
 
-    if (props.columns.empty()) {
+    bool are_column_types_specified = false;
+    for (const auto &column : props.columns) {
+      if (column.type != duckdb::LogicalTypeId::INVALID) {
+        are_column_types_specified = true;
+        break;
+      }
+    }
+
+    if (!are_column_types_specified) {
       // Try auto-detecting types if no columns are provided
       query << ", auto_detect=true";
       return;
@@ -56,6 +64,10 @@ namespace {
     // But I can use column_types to specify a mapping from column name to type: column_types={'colB': 'VARCHAR', 'colA': 'INT'}
     query << ", column_types = {";
     for (const auto &column : props.columns) {
+      if (column.type == duckdb::LogicalTypeId::INVALID) {
+        continue;
+      }
+
       // DuckDB can handle trailing comma
       query << duckdb::KeywordHelper::WriteQuoted(column.name, '\'') << ": '" << duckdb::EnumUtil::ToString(column.type) << "',";
 
@@ -67,7 +79,9 @@ namespace {
       // }
     }
     query << "}";
-    query << ", auto_detect=false";
+    // We still need auto-detection for DuckDB to find out which columns exist, even though we provide types.
+    // TODO: I should write tests for DuckDB's CSV reader that validate some assumptions I make.
+    query << ", auto_detect=true";
   }
 
   // allow_quoted_nulls = false: We want to interpret "NULL" as a literal string
@@ -117,7 +131,8 @@ std::string generate_read_csv_query(const std::string &filepath,
   // Times have millisecond precision if I'm not mistaken
   // We here use nanoseconds
   // Example: 2024-01-09T04:10:19.156057706Z
-  query << ", timestampformat='%Y-%m-%dT%H:%M:%S.%nZ'";
+  // TODO: We have to support both naive time and UTC time. Which timestamp format to use? Auto-detect?
+  // query << ", timestampformat='%Y-%m-%dT%H:%M:%S.%nZ'";
   if (!props.null_value.empty()) {
     query << ", nullstr='" << props.null_value << "'";
   }
