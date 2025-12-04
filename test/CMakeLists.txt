@@ -10,6 +10,7 @@ add_executable(integration_tests
         constants.cpp
         test_main.cpp
         test_decryption.cpp
+        test_memory_backed_file.cpp
         test_process_file.cpp
         integration/test_server.cpp
 )
