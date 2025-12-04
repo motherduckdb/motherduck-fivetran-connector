@@ -7,8 +7,8 @@
 #include <fstream>
 #include <vector>
 
-
-TEST_CASE("MemoryBackedFile::Create gives valid file constructor", "[memory_backed_file]") {
+TEST_CASE("MemoryBackedFile::Create gives valid file constructor",
+          "[memory_backed_file]") {
   constexpr int file_size = 512;
   auto memfile = MemoryBackedFile::Create(file_size);
 
@@ -21,7 +21,8 @@ TEST_CASE("MemoryBackedFile with zero size is valid", "[memory_backed_file]") {
   REQUIRE(memfile.fd >= 0);
 }
 
-TEST_CASE("MemoryBackedFile is zero-filled after creation", "[memory_backed_file]") {
+TEST_CASE("MemoryBackedFile is zero-filled after creation",
+          "[memory_backed_file]") {
   constexpr int file_size = 4096;
   auto memfile = MemoryBackedFile::Create(file_size);
 
@@ -37,7 +38,8 @@ TEST_CASE("MemoryBackedFile is zero-filled after creation", "[memory_backed_file
   }
 }
 
-TEST_CASE("MemoryBackedFile can be written to and read from", "[memory_backed_file]") {
+TEST_CASE("MemoryBackedFile can be written to and read from",
+          "[memory_backed_file]") {
   const std::string test_data = "Hello, MemoryBackedFile!";
   auto memfile = MemoryBackedFile::Create(test_data.size() + 1);
 
@@ -51,13 +53,11 @@ TEST_CASE("MemoryBackedFile can be written to and read from", "[memory_backed_fi
     std::ifstream in(memfile.path, std::ios::binary);
     REQUIRE(in.is_open());
 
-    // On BSD/OSX, the cursor is shared between file descriptors: https://man.freebsd.org/cgi/man.cgi?fdescfs
-    // "if the file descriptor is open	and the	mode the file is being opened with is a	subset
-    // of the mode of the existing descriptor, the call:
-    // fd	= open("/dev/fd/0", mode);
-    // and the call:
-    // fd	= fcntl(0, F_DUPFD, 0);
-    // are equivalent."
+    // On BSD/OSX, the cursor is shared between file descriptors:
+    // https://man.freebsd.org/cgi/man.cgi?fdescfs: "if the file descriptor is
+    // open and the mode the file is being opened with is a subset of the
+    // mode of the existing descriptor, the call: `fd = open("/dev/fd/0",
+    // mode);` and the call: `fd = fcntl(0, F_DUPFD, 0);` are equivalent."
 #ifdef __APPLE__
     in.seekg(0);
 #endif
@@ -68,10 +68,12 @@ TEST_CASE("MemoryBackedFile can be written to and read from", "[memory_backed_fi
   }
 }
 
-TEST_CASE("MemoryBackedFile growth in size when writing many bytes", "[memory_backed_file]") {
+TEST_CASE("MemoryBackedFile growth in size when writing many bytes",
+          "[memory_backed_file]") {
   auto memfile = MemoryBackedFile::Create(10);
 
-  const std::string test_data = "This data exceeds the initial size of the MemoryBackedFile.";
+  const std::string test_data =
+      "This data exceeds the initial size of the MemoryBackedFile.";
 
   {
     std::ofstream out(memfile.path);
@@ -94,7 +96,8 @@ TEST_CASE("MemoryBackedFile growth in size when writing many bytes", "[memory_ba
   }
 }
 
-TEST_CASE("MemoryBackedFile is not visible in filesystem", "[memory_backed_file]") {
+TEST_CASE("MemoryBackedFile is not visible in filesystem",
+          "[memory_backed_file]") {
   auto memfile = MemoryBackedFile::Create(256);
 
 // The underlying temp file is unlinked immediately after creation.
@@ -123,7 +126,9 @@ TEST_CASE("MemoryBackedFile is temporary", "[memory_backed_file]") {
   }
 
   // After destruction, the memfile should no longer be accessible
-  REQUIRE_THROWS_WITH(std::filesystem::exists(captured_path), Catch::Matchers::ContainsSubstring("Bad file descriptor"));
+  REQUIRE_THROWS_WITH(
+      std::filesystem::exists(captured_path),
+      Catch::Matchers::ContainsSubstring("Bad file descriptor"));
 }
 
 TEST_CASE("Multiple MemoryBackedFiles can coexist", "[memory_backed_file]") {
