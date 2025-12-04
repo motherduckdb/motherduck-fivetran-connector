@@ -17,7 +17,7 @@ public:
   MemoryBackedFile &operator=(MemoryBackedFile &&other) noexcept;
 
   int fd;
-  // On BSD/OSX, the cursor is shared between file descriptors
+  // On BSD/macOS, the cursor is shared between file descriptors
   // (https://man.freebsd.org/cgi/man.cgi?fdescfs): "if the file descriptor is
   // open and the mode the file is being opened with is a subset of the
   // mode of the existing descriptor, the call: `fd = open("/dev/fd/0",

@@ -7,7 +7,7 @@
 #include <fstream>
 #include <vector>
 
-TEST_CASE("MemoryBackedFile::Create gives valid file constructor",
+TEST_CASE("MemoryBackedFile::Create gives valid file descriptor",
           "[memory_backed_file]") {
   constexpr int file_size = 512;
   auto memfile = MemoryBackedFile::Create(file_size);
@@ -63,7 +63,7 @@ TEST_CASE("MemoryBackedFile can be written to and read from",
   }
 }
 
-TEST_CASE("MemoryBackedFile growth in size when writing many bytes",
+TEST_CASE("MemoryBackedFile grows in size when writing many bytes",
           "[memory_backed_file]") {
   auto memfile = MemoryBackedFile::Create(10);
 
@@ -73,6 +73,7 @@ TEST_CASE("MemoryBackedFile growth in size when writing many bytes",
   {
     std::ofstream out(memfile.path);
     REQUIRE(out.is_open());
+    // Write more data than the initial size
     out << test_data << std::endl;
     REQUIRE(out.bad() == false);
   }
@@ -86,7 +87,6 @@ TEST_CASE("MemoryBackedFile growth in size when writing many bytes",
 
     std::string result;
     std::getline(in, result);
-    // The read should be truncated to the first 10 bytes
     REQUIRE(result == test_data);
   }
 }
