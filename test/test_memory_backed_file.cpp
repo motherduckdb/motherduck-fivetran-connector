@@ -53,11 +53,6 @@ TEST_CASE("MemoryBackedFile can be written to and read from",
     std::ifstream in(memfile.path, std::ios::binary);
     REQUIRE(in.is_open());
 
-    // On BSD/OSX, the cursor is shared between file descriptors:
-    // https://man.freebsd.org/cgi/man.cgi?fdescfs: "if the file descriptor is
-    // open and the mode the file is being opened with is a subset of the
-    // mode of the existing descriptor, the call: `fd = open("/dev/fd/0",
-    // mode);` and the call: `fd = fcntl(0, F_DUPFD, 0);` are equivalent."
 #ifdef __APPLE__
     in.seekg(0);
 #endif

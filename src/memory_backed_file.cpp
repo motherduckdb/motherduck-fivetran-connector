@@ -5,7 +5,7 @@
 #include <system_error>
 #include <unistd.h>
 
-MemoryBackedFile MemoryBackedFile::Create(const int file_size) {
+MemoryBackedFile MemoryBackedFile::Create(const size_t file_size) {
 #ifdef __linux__
   // /dev/shm is guaranteed tmpfs (in RAM) on Linux
   const std::string tmp_dir = "/dev/shm/fivetran";
@@ -43,6 +43,24 @@ MemoryBackedFile MemoryBackedFile::Create(const int file_size) {
   }
 
   return MemoryBackedFile(fd);
+}
+
+MemoryBackedFile::MemoryBackedFile(MemoryBackedFile &&other) noexcept
+    : fd(other.fd), path(std::move(other.path)) {
+  other.fd = -1;
+}
+
+MemoryBackedFile &
+MemoryBackedFile::operator=(MemoryBackedFile &&other) noexcept {
+  if (this != &other) {
+    if (fd >= 0) {
+      close(fd);
+    }
+    fd = other.fd;
+    path = std::move(other.path);
+    other.fd = -1;
+  }
+  return *this;
 }
 
 MemoryBackedFile::~MemoryBackedFile() {

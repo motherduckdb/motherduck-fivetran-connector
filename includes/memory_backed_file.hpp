@@ -7,12 +7,22 @@
 /// descriptor.
 class MemoryBackedFile {
 public:
-  static MemoryBackedFile Create(int file_size);
+  [[nodiscard]] static MemoryBackedFile Create(size_t file_size);
 
   ~MemoryBackedFile();
 
-  const int fd;
-  const std::string path;
+  MemoryBackedFile(const MemoryBackedFile &) = delete;
+  MemoryBackedFile &operator=(const MemoryBackedFile &) = delete;
+  MemoryBackedFile(MemoryBackedFile &&other) noexcept;
+  MemoryBackedFile &operator=(MemoryBackedFile &&other) noexcept;
+
+  int fd;
+  // On BSD/OSX, the cursor is shared between file descriptors
+  // (https://man.freebsd.org/cgi/man.cgi?fdescfs): "if the file descriptor is
+  // open and the mode the file is being opened with is a subset of the
+  // mode of the existing descriptor, the call: `fd = open("/dev/fd/0",
+  // mode);` and the call: `fd = fcntl(0, F_DUPFD, 0);` are equivalent."
+  std::string path;
 
 private:
   // The file descriptor can be accessed via /dev/fd/<fd> on both Linux and
