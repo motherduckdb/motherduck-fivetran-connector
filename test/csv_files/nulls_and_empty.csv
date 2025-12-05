@@ -1,7 +1,0 @@
-id,nullable_string,nullable_int,nullable_float
-1,value,100,1.5
-2,,200,2.5
-3,another,,3.5
-4,text,300,
-5,,,
-6,"",0,0.0
