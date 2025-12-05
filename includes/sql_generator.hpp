@@ -8,7 +8,6 @@
 #include <string>
 #include <vector>
 
-
 void find_primary_keys(
     const std::vector<column_def> &cols,
     std::vector<const column_def *> &columns_pk,

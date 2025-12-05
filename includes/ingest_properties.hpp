@@ -23,5 +23,5 @@ struct IngestProperties {
   const std::vector<column_def> columns;
   const std::string null_value;
   const int csv_block_size_mb;
-    bool allow_unmodified_string;
+  bool allow_unmodified_string;
 };

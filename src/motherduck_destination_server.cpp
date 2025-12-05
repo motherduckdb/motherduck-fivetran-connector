@@ -187,8 +187,7 @@ get_encryption_key(const std::string &filename,
 template <typename T>
 IngestProperties
 create_ingest_props(const std::string &filename, const T &request,
-                    const std::vector<column_def> &cols,
-                    int csv_block_size) {
+                    const std::vector<column_def> &cols, int csv_block_size) {
   const std::string decryption_key = get_encryption_key(
       filename, request->keys(), request->file_params().encryption());
   return IngestProperties(filename, decryption_key, cols,
@@ -456,7 +455,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     std::cout << "Columns: " << std::endl;
     for (const auto &col : cols) {
-        std::cout << col.name << ": " << duckdb::EnumUtil::ToString(col.type) << std::endl;
+      std::cout << col.name << ": " << duckdb::EnumUtil::ToString(col.type)
+                << std::endl;
     }
 
     if (columns_pk.empty()) {
@@ -497,7 +497,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       logger->info("Processing delete file " + filename);
       auto decryption_key = get_encryption_key(
           filename, request->keys(), request->file_params().encryption());
-      std::vector<column_def> empty; //TODO: Why empty?
+      std::vector<column_def> empty; // TODO: Why empty?
       IngestProperties props(filename, decryption_key, empty,
                              request->file_params().null_string(),
                              csv_block_size);
