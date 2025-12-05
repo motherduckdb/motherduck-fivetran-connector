@@ -128,6 +128,10 @@ TEST_CASE("Test reading CSV file with columns out of order",
 // cases like overflow
 // - various error paths
 // - CSV block size
+// - Pass encryption key when file not encrypted
+// - Different encoding
+// - Different newline
+// - Different delimiter??
 
 TEST_CASE("Test reading various CSV files", "[csv_processor]") {
   auto [filename, row_count, columns] = GENERATE(table<std::string, size_t,
@@ -371,7 +375,7 @@ TEST_CASE("Test reading zstd-compressed CSV files", "[csv_processor]") {
             {.name = "Phone 2", .type = duckdb::LogicalTypeId::VARCHAR},
             {.name = "Email", .type = duckdb::LogicalTypeId::VARCHAR},
             {.name = "Subscription Date", .type = duckdb::LogicalTypeId::DATE},
-            {.name = "Website", .type = duckdb::LogicalTypeId::DATE}}),
+            {.name = "Website", .type = duckdb::LogicalTypeId::VARCHAR}}),
        std::make_tuple<std::string, size_t, std::vector<column_def>>(
            "train_few_shot.csv.zst", 40000,
            {{.name = "text", .type = duckdb::LogicalTypeId::VARCHAR},

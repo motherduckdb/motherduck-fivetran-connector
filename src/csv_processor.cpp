@@ -88,6 +88,9 @@ void add_type_options(std::ostringstream &query,
   query << ", auto_detect=true";
 }
 
+// TODO: max_line_size
+// TODO: buffer_size
+
 // allow_quoted_nulls = false: We want to interpret "NULL" as a literal string
 // escape???
 // force_not_null: Define columns where there cannot be a null-string to skip
@@ -150,6 +153,8 @@ std::string generate_read_csv_query(const std::string &filepath,
 
   // Select columns explicitly to enforce order
   add_projections(query, props.columns);
+
+  printf("QUERY: %s\n", query.str().c_str());
 
   return query.str();
 }
