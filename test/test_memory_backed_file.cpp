@@ -8,13 +8,15 @@
 #include <system_error>
 #include <vector>
 
+namespace fs = std::filesystem;
+
 TEST_CASE("MemoryBackedFile::Create gives valid file descriptor",
           "[memory_backed_file]") {
   constexpr int file_size = 512;
   auto memfile = MemoryBackedFile::Create(file_size);
 
   REQUIRE(memfile.fd >= 0);
-  REQUIRE(std::filesystem::file_size(memfile.path) == file_size);
+  REQUIRE(fs::file_size(memfile.path) == file_size);
 }
 
 TEST_CASE("MemoryBackedFile with zero size is valid", "[memory_backed_file]") {
@@ -104,13 +106,13 @@ TEST_CASE("MemoryBackedFile is not visible in filesystem",
   const std::string tmp_dir = "/tmp/fivetran";
 #endif
 
-  if (!std::filesystem::exists(tmp_dir)) {
+  if (!fs::exists(tmp_dir)) {
     return;
   }
 
-  REQUIRE(std::filesystem::is_empty(tmp_dir));
+  REQUIRE(fs::is_empty(tmp_dir));
   // But the file is still accessible via the /dev/fd path
-  REQUIRE(std::filesystem::exists(memfile.path));
+  REQUIRE(fs::exists(memfile.path));
 }
 
 TEST_CASE("MemoryBackedFile is temporary", "[memory_backed_file]") {
@@ -118,12 +120,12 @@ TEST_CASE("MemoryBackedFile is temporary", "[memory_backed_file]") {
   {
     auto memfile = MemoryBackedFile::Create(256);
     captured_path = memfile.path;
-    REQUIRE(std::filesystem::exists(captured_path));
+    REQUIRE(fs::exists(captured_path));
   }
 
   // After destruction, the memfile should no longer be accessible
   std::error_code error_code;
-  const auto exists = std::filesystem::exists(captured_path, error_code);
+  const auto exists = fs::exists(captured_path, error_code);
   REQUIRE((exists == false || error_code == std::errc::bad_file_descriptor));
 }
 
@@ -138,7 +140,7 @@ TEST_CASE("Multiple MemoryBackedFiles can coexist", "[memory_backed_file]") {
   REQUIRE(memfile1.fd != memfile3.fd);
 
   // Each memfile should have correct size
-  REQUIRE(std::filesystem::file_size(memfile1.path) == 1024);
-  REQUIRE(std::filesystem::file_size(memfile2.path) == 2048);
-  REQUIRE(std::filesystem::file_size(memfile3.path) == 512);
+  REQUIRE(fs::file_size(memfile1.path) == 1024);
+  REQUIRE(fs::file_size(memfile2.path) == 2048);
+  REQUIRE(fs::file_size(memfile3.path) == 512);
 }
