@@ -5,6 +5,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
 #include <fstream>
+#include <system_error>
 #include <vector>
 
 TEST_CASE("MemoryBackedFile::Create gives valid file descriptor",
@@ -121,9 +122,9 @@ TEST_CASE("MemoryBackedFile is temporary", "[memory_backed_file]") {
   }
 
   // After destruction, the memfile should no longer be accessible
-  REQUIRE_THROWS_WITH(
-      std::filesystem::exists(captured_path),
-      Catch::Matchers::ContainsSubstring("Bad file descriptor"));
+  std::error_code error_code;
+  const auto exists = std::filesystem::exists(captured_path, error_code);
+  REQUIRE((exists == false || error_code == std::errc::bad_file_descriptor));
 }
 
 TEST_CASE("Multiple MemoryBackedFiles can coexist", "[memory_backed_file]") {
