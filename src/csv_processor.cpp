@@ -250,7 +250,7 @@ void ProcessFile(
                 generate_read_csv_query(ddb_file_path, props, compression));
   if (create_view_res->HasError()) {
     create_view_res->ThrowError("Failed to create view for CSV file <" +
-                                props.filename + ">");
+                                props.filename + ">: ");
   }
   logger->info("    view created for file " + props.filename);
 

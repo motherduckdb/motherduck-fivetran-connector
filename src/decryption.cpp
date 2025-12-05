@@ -1,6 +1,7 @@
 #include "decryption.hpp"
 #include "openssl_helper.hpp"
 
+#include <cstring>
 #include <fstream>
 #include <openssl/evp.h>
 
@@ -15,6 +16,16 @@ std::vector<unsigned char> decrypt_stream(std::istream &input,
   // PKCS5Padding. You can find the encryption key for each batch file in the
   // WriteBatchRequest#keys field. First 16 bytes of each batch file hold the
   // IV vector."
+
+  // Check that decryption_key is 32 bytes
+  if (decryption_key == nullptr) {
+    throw std::invalid_argument("Decryption key is null for file " +
+                                input_name);
+  }
+  if (std::strlen(reinterpret_cast<const char *>(decryption_key)) != 32) {
+    throw std::invalid_argument("Decryption key must be 32 bytes for file " +
+                                input_name);
+  }
 
   constexpr int iv_length = 16;
   std::vector<unsigned char> iv(iv_length);
