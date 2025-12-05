@@ -148,6 +148,7 @@ add_library(motherduck_destination_sources STATIC
         src/decryption.cpp
         src/extension_helper.cpp
         src/fivetran_duckdb_interop.cpp
+        src/memory_backed_file.cpp
         src/md_logging.cpp
         src/motherduck_destination_server.cpp
         src/openssl_helper.cpp
