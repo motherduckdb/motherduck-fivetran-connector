@@ -3,7 +3,6 @@
 #include "duckdb.hpp"
 #include "ingest_properties.hpp"
 #include "md_logging.hpp"
-#include "sql_generator.hpp"
 
 #include <functional>
 #include <memory>

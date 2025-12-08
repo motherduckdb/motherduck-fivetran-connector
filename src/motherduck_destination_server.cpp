@@ -187,11 +187,11 @@ get_encryption_key(const std::string &filename,
 template <typename T>
 IngestProperties
 create_ingest_props(const std::string &filename, const T &request,
-                    const std::vector<column_def> &cols, int csv_block_size) {
+                    const std::vector<column_def> &cols, int csv_block_size, UnmodifiedMarker allow_unmodified_string) {
   const std::string decryption_key = get_encryption_key(
       filename, request->keys(), request->file_params().encryption());
   return IngestProperties(filename, decryption_key, cols,
-                          request->file_params().null_string(), csv_block_size);
+                          request->file_params().null_string(), csv_block_size, allow_unmodified_string);
 }
 
 grpc::Status DestinationSdkImpl::ConfigurationForm(
@@ -470,7 +470,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
       IngestProperties props(filename, decryption_key, cols,
                              request->file_params().null_string(),
-                             csv_block_size);
+                             csv_block_size, UnmodifiedMarker::Disallowed);
 
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
@@ -484,7 +484,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
           filename, request->keys(), request->file_params().encryption());
       IngestProperties props(filename, decryption_key, cols,
                              request->file_params().null_string(),
-                             csv_block_size);
+                             csv_block_size, UnmodifiedMarker::Allowed);
 
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
@@ -500,7 +500,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       std::vector<column_def> empty; // TODO: Why empty?
       IngestProperties props(filename, decryption_key, empty,
                              request->file_params().null_string(),
-                             csv_block_size);
+                             csv_block_size, UnmodifiedMarker::Disallowed);
 
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
@@ -558,7 +558,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     for (auto &filename : request->earliest_start_files()) {
       logger->info("Processing earliest start file " + filename);
       IngestProperties props =
-          create_ingest_props(filename, request, cols, csv_block_size);
+          create_ingest_props(filename, request, cols, csv_block_size, UnmodifiedMarker::Disallowed);
 
       csv_processor::ProcessFile(*con, props, logger,
                                  [&](const std::string &view_name) {
@@ -570,7 +570,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     for (auto &filename : request->update_files()) {
       logger->info("update file " + filename);
       IngestProperties props =
-          create_ingest_props(filename, request, cols, csv_block_size);
+          create_ingest_props(filename, request, cols, csv_block_size, UnmodifiedMarker::Allowed);
 
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
@@ -584,7 +584,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     for (auto &filename : request->replace_files()) {
       logger->info("replace/upsert file " + filename);
       IngestProperties props =
-          create_ingest_props(filename, request, cols, csv_block_size);
+          create_ingest_props(filename, request, cols, csv_block_size, UnmodifiedMarker::Disallowed);
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
             sql_generator->upsert(*con, table_name, view_name, columns_pk,
@@ -595,7 +595,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     for (auto &filename : request->delete_files()) {
       logger->info("delete file " + filename);
       IngestProperties props =
-          create_ingest_props(filename, request, cols, csv_block_size);
+          create_ingest_props(filename, request, cols, csv_block_size, UnmodifiedMarker::Disallowed);
 
       csv_processor::ProcessFile(*con, props, logger,
                                  [&](const std::string &view_name) {

@@ -7,6 +7,8 @@
 
 enum class CompressionType { None = 0, ZSTD = 1 };
 
+enum class UnmodifiedMarker { Disallowed = 0, Allowed = 1 };
+
 struct IngestProperties {
 
   IngestProperties(const std::string &_filename,
@@ -14,14 +16,12 @@ struct IngestProperties {
                    const std::vector<column_def> &_columns,
                    const std::string &_null_value,
                    const int &_csv_block_size_mb,
-                   const bool _allow_unmodified_string)
+                   const UnmodifiedMarker _allow_unmodified_string)
       : filename(_filename), decryption_key(_decryption_key),
-        compression(CompressionType::None), columns(_columns),
-        null_value(_null_value), csv_block_size_mb(_csv_block_size_mb), allow_unmodified_string(_allow_unmodified_string) {}
+        columns(_columns), null_value(_null_value), csv_block_size_mb(_csv_block_size_mb), allow_unmodified_string(_allow_unmodified_string == UnmodifiedMarker::Allowed) {}
 
   const std::string filename;
   const std::string decryption_key;
-  const CompressionType compression;
   /// Columns of the table that is being ingested into. Columns must be in the same order as they appear in the table.
   const std::vector<column_def> columns;
   /// String that represents NULL values in the CSV file.

@@ -17,6 +17,93 @@
 namespace fs = std::filesystem;
 
 namespace {
+
+void validate_file(const std::string &file_path) {
+  const std::ifstream fs(file_path);
+  if (fs.fail()) {
+    throw std::system_error(errno, std::generic_category(),
+                            "Failed to open file <" + file_path + ">");
+  }
+}
+
+MemoryBackedFile create_file_with_decrypted_content(const std::string &encrypted_file_path, const std::string &decryption_key) {
+  // TODO: Let decrypt_file write into the memory-backed file directly to avoid double buffering
+  const std::vector<unsigned char> plaintext = decrypt_file(
+      encrypted_file_path,
+      reinterpret_cast<const unsigned char *>(decryption_key.c_str()));
+
+  // Be defensive about casting errors from size_t (unsigned) to std::streamsize (signed)
+  constexpr auto max_file_size = static_cast<size_t>(std::numeric_limits<std::streamsize>::max());
+  if (plaintext.size() > max_file_size) {
+    throw std::runtime_error("Decrypted file size exceeds limit of " + std::to_string(max_file_size) + " bytes");
+  }
+
+  auto temp_file = MemoryBackedFile::Create(plaintext.size());
+  const auto decrypted_file_path = temp_file.path;
+
+  std::ofstream ofs(decrypted_file_path, std::ios::binary);
+  if (ofs.fail()) {
+    throw std::system_error(errno, std::generic_category(),
+                            "Failed to open temporary output file for decrypted data with path <" + decrypted_file_path + ">");
+  }
+
+  ofs.write(reinterpret_cast<const char *>(plaintext.data()), static_cast<std::streamsize>(plaintext.size()));
+  if (ofs.fail()) {
+    throw std::system_error(errno, std::generic_category(),
+                            "Failed to write decrypted data to temporary file with path <" + decrypted_file_path + ">");
+  }
+
+  ofs.flush();
+  if (ofs.fail()) {
+    throw std::system_error(errno, std::generic_category(),
+                            "Failed to flush ofstream for path <" + decrypted_file_path + ">");
+  }
+
+  // Reset cursor to the beginning in case the reader expects this. See memory_backed_file.hpp.
+  ofs.seekp(0);
+  if (ofs.fail()) {
+    throw std::system_error(errno, std::generic_category(),
+                            "Failed to seek to beginning of ofstream for path <" + decrypted_file_path + ">");
+  }
+
+  // Close explicitly to check for errors
+  ofs.close();
+  if (ofs.fail()) {
+    throw std::system_error(errno, std::generic_category(),
+                            "Failed to close ofstream for path <" + decrypted_file_path + ">");
+  }
+
+  return temp_file;
+}
+
+CompressionType determine_compression_type(const std::string &file_path) {
+  std::ifstream fs(file_path, std::ios::binary);
+  if (fs.fail()) {
+    throw std::system_error(errno, std::generic_category(),
+                            "Failed to open file <" + file_path + ">");
+  }
+
+  constexpr int MAGIC_SIZE = 4;
+  uint8_t magic_bytes[MAGIC_SIZE];
+  fs.read(reinterpret_cast<char *>(magic_bytes), sizeof(magic_bytes));
+
+  if (fs.fail() && !fs.eof()) {
+    throw std::system_error(errno, std::generic_category(),
+                            "Failed trying to read zstd magic bytes from file <" + file_path + ">");
+  }
+
+  // File has fewer than 4 bytes, hence cannot be zstd-compressed
+  if (fs.gcount() < MAGIC_SIZE) {
+    return CompressionType::None;
+  }
+
+  // Check for ZSTD magic number (0x28B52FFD in little-endian)
+  const bool is_zstd_compressed =
+      magic_bytes[0] == 0x28 && magic_bytes[1] == 0xB5 &&
+      magic_bytes[2] == 0x2F && magic_bytes[3] == 0xFD;
+  return is_zstd_compressed ? CompressionType::ZSTD : CompressionType::None;
+}
+
 /// Adds a SELECT clause with the specified columns to the query
 void add_projections(std::ostringstream &query,
                      const std::vector<column_def> &columns) {
@@ -90,12 +177,13 @@ std::string generate_read_csv_query(const std::string &filepath,
   // Date format: 2025-12-31
   query << ", dateformat='%Y-%m-%d'";
   if (!props.null_value.empty()) {
-    query << ", nullstr='" << props.null_value << "'";
+    query << ", nullstr=" << duckdb::KeywordHelper::WriteQuoted(props.null_value, '\'');
     query << ", allow_quoted_nulls=true";
   }
   // The default max_line_size is 2MB. The default buffer size is 16*max_line_size=32MB.
   // We only set this option to a higher value if requested.
-  if (props.csv_block_size_mb > 32) {
+  constexpr std::uint32_t default_csv_block_size_mb = 32;
+  if (props.csv_block_size_mb > default_csv_block_size_mb) {
     const auto max_line_size = props.csv_block_size_mb * 1000 * 1000 / 16;
     query << ", max_line_size=" << std::to_string(max_line_size);
     query << ", buffer_size=" << std::to_string(max_line_size * 16);
@@ -120,42 +208,6 @@ std::string generate_read_csv_query(const std::string &filepath,
 
   return query.str();
 }
-
-void validate_file(const std::string &file_path) {
-  const std::ifstream fs(file_path);
-  if (fs.fail()) {
-    throw std::system_error(errno, std::generic_category(),
-                            "Failed to open file <" + file_path + ">");
-  }
-}
-
-CompressionType determine_compression_type(const std::string &file_path) {
-  std::ifstream fs(file_path, std::ios::binary);
-  if (fs.fail()) {
-    throw std::system_error(errno, std::generic_category(),
-                            "Failed to open file <" + file_path + ">");
-  }
-
-  constexpr int MAGIC_SIZE = 4;
-  uint8_t magic_bytes[MAGIC_SIZE];
-  fs.read(reinterpret_cast<char *>(magic_bytes), sizeof(magic_bytes));
-
-  if (fs.fail() && !fs.eof()) {
-    throw std::system_error(errno, std::generic_category(),
-                            "Failed trying to read zstd magic bytes from file <" + file_path + ">");
-  }
-
-  // File has fewer than 4 bytes, hence cannot be zstd-compressed
-  if (fs.gcount() < MAGIC_SIZE) {
-    return CompressionType::None;
-  }
-
-  // Check for ZSTD magic number (0x28B52FFD in little-endian)
-  const bool is_zstd_compressed =
-      magic_bytes[0] == 0x28 && magic_bytes[1] == 0xB5 &&
-      magic_bytes[2] == 0x2F && magic_bytes[3] == 0xFD;
-  return is_zstd_compressed ? CompressionType::ZSTD : CompressionType::None;
-}
 } // namespace
 
 namespace csv_processor {
@@ -169,45 +221,15 @@ void ProcessFile(
 
   const auto is_file_encrypted = !props.decryption_key.empty();
   std::string decrypted_file_path;
-  MemoryBackedFile temp_file; // Only used if file is encrypted
+  // Only used if file is encrypted to ensure MemoryBackedFile lives long enough
+  std::optional<MemoryBackedFile> temp_file;
   if (is_file_encrypted) {
-    // TODO: Move to separate function
-    std::vector<unsigned char> plaintext = decrypt_file(
-        props.filename,
-        reinterpret_cast<const unsigned char *>(props.decryption_key.c_str()));
-
-    // Be defensive about casting errors from size_t (unsigned) to std::streamsize (signed)
-    constexpr auto max_file_size = static_cast<size_t>(std::numeric_limits<std::streamsize>::max());
-    if (plaintext.size() > max_file_size) {
-      throw std::runtime_error("Decrypted file size exceeds limit of " + std::to_string(max_file_size) + " bytes");
-    }
-
-    temp_file = MemoryBackedFile::Create(plaintext.size());
-    decrypted_file_path = temp_file.path;
-
-    std::ofstream ofs(decrypted_file_path, std::ios::binary);
-    if (ofs.fail()) {
-      throw std::system_error(errno, std::generic_category(),
-                              "Failed to open temporary output file for decrypted data with path <" + decrypted_file_path + ">");
-    }
-
-    ofs.write(reinterpret_cast<const char *>(plaintext.data()), static_cast<std::streamsize>(plaintext.size()));
-    if (ofs.fail()) {
-      throw std::system_error(errno, std::generic_category(),
-                              "Failed to write decrypted data to temporary file with path <" + decrypted_file_path + ">");
-    }
-
-    // Close explicitly to check for errors
-    ofs.close();
-    if (ofs.fail()) {
-      throw std::system_error(errno, std::generic_category(),
-                              "Failed to close ofstream for path <" + decrypted_file_path + ">");
-    }
-
-    logger->info("Wrote temporary unencrypted file " + decrypted_file_path);
+    temp_file = create_file_with_decrypted_content(props.filename, props.decryption_key);
+    decrypted_file_path = temp_file.value().path;
+    logger->info("    wrote temporary unencrypted file " + decrypted_file_path);
   } else {
     decrypted_file_path = props.filename;
-    logger->info("File is not encrypted");
+    logger->info("    file is not encrypted");
   }
 
   auto compression = determine_compression_type(decrypted_file_path);
@@ -237,7 +259,7 @@ void ProcessFile(
   process_view(view_name);
   logger->info("    view processed for file " + props.filename);
 
-  logger->info("    Detaching temp database " + temp_db_name + " for CSV view");
+  logger->info("    detaching temp database " + temp_db_name + " for CSV view");
 
   // Ignore errors during DETACH
   con.Query("DETACH DATABASE IF EXISTS " + temp_db_name);
