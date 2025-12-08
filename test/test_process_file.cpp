@@ -28,7 +28,8 @@ TEST_CASE("Test can read simple CSV file", "[csv_processor]") {
       column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
       column_def{.name = "name", .type = duckdb::LogicalType::VARCHAR},
       column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT}};
-  IngestProperties props(test_file.string(), "", columns, "", 1, UnmodifiedMarker::Disallowed);
+  IngestProperties props(test_file.string(), "", columns, "", 1,
+                         UnmodifiedMarker::Disallowed);
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &view_name) {
@@ -73,7 +74,8 @@ TEST_CASE("Test reading CSV file with auto-detection of column types",
       column_def{.name = "id", .type = duckdb::LogicalType::INVALID},
       column_def{.name = "name", .type = duckdb::LogicalType::INVALID},
       column_def{.name = "age", .type = duckdb::LogicalType::INVALID}};
-  IngestProperties props(test_file.string(), "", columns, "", 1, UnmodifiedMarker::Disallowed);
+  IngestProperties props(test_file.string(), "", columns, "", 1,
+                         UnmodifiedMarker::Disallowed);
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &view_name) {
@@ -92,35 +94,38 @@ TEST_CASE("Test reading CSV file with auto-detection of column types",
 }
 
 // TODO: With not all columns specified to test auto-detection
-TEST_CASE("Test reading CSV file when not all column types specified",  "[csv_processor]") {
- const fs::path test_file = fs::path(TEST_RESOURCES_DIR) / "csv" / "small_simple.csv";
- CAPTURE(test_file);
- REQUIRE(fs::exists(test_file));
+TEST_CASE("Test reading CSV file when not all column types specified",
+          "[csv_processor]") {
+  const fs::path test_file =
+      fs::path(TEST_RESOURCES_DIR) / "csv" / "small_simple.csv";
+  CAPTURE(test_file);
+  REQUIRE(fs::exists(test_file));
 
- duckdb::DuckDB db(nullptr);
- duckdb::Connection con(db);
+  duckdb::DuckDB db(nullptr);
+  duckdb::Connection con(db);
 
- // In the CSV file, the order is id, name, age
- std::vector<column_def> columns{
-  column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
-  column_def{.name = "name", .type = duckdb::LogicalType::VARCHAR},
-  // Column "age" is not added to column_types
-  column_def{.name = "age", .type = duckdb::LogicalType::INVALID},
-};
- IngestProperties props(test_file.string(), "", columns, "", 1, UnmodifiedMarker::Disallowed);
- auto logger = std::make_shared<mdlog::MdLog>();
- csv_processor::ProcessFile(
-     con, props, logger, [&con](const std::string &view_name) {
-       const auto res = con.Query("FROM " + view_name);
-       REQUIRE_FALSE(res->HasError());
-       REQUIRE(res->ColumnCount() == 3);
-       CHECK(res->RowCount() == 3);
+  // In the CSV file, the order is id, name, age
+  std::vector<column_def> columns{
+      column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
+      column_def{.name = "name", .type = duckdb::LogicalType::VARCHAR},
+      // Column "age" is not added to column_types
+      column_def{.name = "age", .type = duckdb::LogicalType::INVALID},
+  };
+  IngestProperties props(test_file.string(), "", columns, "", 1,
+                         UnmodifiedMarker::Disallowed);
+  auto logger = std::make_shared<mdlog::MdLog>();
+  csv_processor::ProcessFile(
+      con, props, logger, [&con](const std::string &view_name) {
+        const auto res = con.Query("FROM " + view_name);
+        REQUIRE_FALSE(res->HasError());
+        REQUIRE(res->ColumnCount() == 3);
+        CHECK(res->RowCount() == 3);
 
-       CHECK(res->types[0].id() == duckdb::LogicalTypeId::INTEGER);
-       CHECK(res->types[1].id() == duckdb::LogicalTypeId::VARCHAR);
-      // Auto-detected type for "age" column
-       CHECK(res->types[2].id() == duckdb::LogicalTypeId::BIGINT);
-     });
+        CHECK(res->types[0].id() == duckdb::LogicalTypeId::INTEGER);
+        CHECK(res->types[1].id() == duckdb::LogicalTypeId::VARCHAR);
+        // Auto-detected type for "age" column
+        CHECK(res->types[2].id() == duckdb::LogicalTypeId::BIGINT);
+      });
 }
 
 TEST_CASE("Test reading CSV file with columns out of order",
@@ -139,7 +144,8 @@ TEST_CASE("Test reading CSV file with columns out of order",
       column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT},
       column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
   };
-  IngestProperties props(test_file.string(), "", columns, "", 1, UnmodifiedMarker::Disallowed);
+  IngestProperties props(test_file.string(), "", columns, "", 1,
+                         UnmodifiedMarker::Disallowed);
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &view_name) {
@@ -156,24 +162,26 @@ TEST_CASE("Test reading CSV file with columns out of order",
 }
 
 TEST_CASE("Test reading CSV file with quotes in filename", "[csv_processor]") {
- const fs::path test_file =
-     fs::path(TEST_RESOURCES_DIR) / "csv" / "filename_with_'quotes'.csv";
- CAPTURE(test_file);
- REQUIRE(fs::exists(test_file));
+  const fs::path test_file =
+      fs::path(TEST_RESOURCES_DIR) / "csv" / "filename_with_'quotes'.csv";
+  CAPTURE(test_file);
+  REQUIRE(fs::exists(test_file));
 
- duckdb::DuckDB db(nullptr);
- duckdb::Connection con(db);
+  duckdb::DuckDB db(nullptr);
+  duckdb::Connection con(db);
 
- std::vector<column_def> columns{ column_def{.name = "a", .type = duckdb::LogicalType::SMALLINT} };
- IngestProperties props(test_file.string(), "", columns, "", 1, UnmodifiedMarker::Disallowed);
- auto logger = std::make_shared<mdlog::MdLog>();
- csv_processor::ProcessFile(
-     con, props, logger, [&con](const std::string &view_name) {
-       const auto res = con.Query("FROM " + view_name);
-       REQUIRE_FALSE(res->HasError());
-       REQUIRE(res->ColumnCount() == 1);
-       CHECK(res->RowCount() == 1);
-     });
+  std::vector<column_def> columns{
+      column_def{.name = "a", .type = duckdb::LogicalType::SMALLINT}};
+  IngestProperties props(test_file.string(), "", columns, "", 1,
+                         UnmodifiedMarker::Disallowed);
+  auto logger = std::make_shared<mdlog::MdLog>();
+  csv_processor::ProcessFile(con, props, logger,
+                             [&con](const std::string &view_name) {
+                               const auto res = con.Query("FROM " + view_name);
+                               REQUIRE_FALSE(res->HasError());
+                               REQUIRE(res->ColumnCount() == 1);
+                               CHECK(res->RowCount() == 1);
+                             });
 }
 
 // TODO: Test cases:
@@ -318,7 +326,8 @@ TEST_CASE("Test reading various CSV files", "[csv_processor]") {
   duckdb::DuckDB db(nullptr);
   duckdb::Connection con(db);
 
-  IngestProperties props(test_file.string(), "", columns, "", 1, UnmodifiedMarker::Disallowed);
+  IngestProperties props(test_file.string(), "", columns, "", 1,
+                         UnmodifiedMarker::Disallowed);
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
       con, props, logger,
@@ -345,7 +354,8 @@ TEST_CASE("Test reading CSV file with special null string", "[csv_processor]") {
       column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT},
       column_def{.name = "country", .type = duckdb::LogicalType::VARCHAR}};
   const std::string null_string = "special-null";
-  IngestProperties props(test_file.string(), "", columns, null_string, 1, UnmodifiedMarker::Disallowed);
+  IngestProperties props(test_file.string(), "", columns, null_string, 1,
+                         UnmodifiedMarker::Disallowed);
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &view_name) {
@@ -371,27 +381,28 @@ TEST_CASE("Test reading CSV file with special null string", "[csv_processor]") {
 }
 
 TEST_CASE("Test reading CSV file with escaped string", "[csv_processor]") {
- const fs::path test_file =
-     fs::path(TEST_RESOURCES_DIR) / "csv" / "escaped_string.csv";
- REQUIRE(fs::exists(test_file));
+  const fs::path test_file =
+      fs::path(TEST_RESOURCES_DIR) / "csv" / "escaped_string.csv";
+  REQUIRE(fs::exists(test_file));
 
- duckdb::DuckDB db(nullptr);
- duckdb::Connection con(db);
+  duckdb::DuckDB db(nullptr);
+  duckdb::Connection con(db);
 
- const std::vector<column_def> columns{
-  column_def{.name = "escaped_string", .type = duckdb::LogicalType::VARCHAR}};
+  const std::vector<column_def> columns{column_def{
+      .name = "escaped_string", .type = duckdb::LogicalType::VARCHAR}};
 
- IngestProperties props(test_file.string(), "", columns, "", 1, UnmodifiedMarker::Disallowed);
- auto logger = std::make_shared<mdlog::MdLog>();
- csv_processor::ProcessFile(
-     con, props, logger, [&con](const std::string &view_name) {
-       const auto res = con.Query("FROM " + view_name);
-       REQUIRE_FALSE(res->HasError());
-       REQUIRE(res->ColumnCount() == 1);
-       REQUIRE(res->RowCount() == 1);
+  IngestProperties props(test_file.string(), "", columns, "", 1,
+                         UnmodifiedMarker::Disallowed);
+  auto logger = std::make_shared<mdlog::MdLog>();
+  csv_processor::ProcessFile(
+      con, props, logger, [&con](const std::string &view_name) {
+        const auto res = con.Query("FROM " + view_name);
+        REQUIRE_FALSE(res->HasError());
+        REQUIRE(res->ColumnCount() == 1);
+        REQUIRE(res->RowCount() == 1);
 
-       REQUIRE("t\"\"es\"t\"1" == res->GetValue(0, 0).ToString());
-     });
+        REQUIRE("t\"\"es\"t\"1" == res->GetValue(0, 0).ToString());
+      });
 }
 
 TEST_CASE("Test reading CSV file with unmodified string setting",
@@ -408,7 +419,8 @@ TEST_CASE("Test reading CSV file with unmodified string setting",
       column_def{.name = "name", .type = duckdb::LogicalType::VARCHAR},
       column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT}};
 
-  IngestProperties props(test_file.string(), "", columns, "", 1, UnmodifiedMarker::Allowed);
+  IngestProperties props(test_file.string(), "", columns, "", 1,
+                         UnmodifiedMarker::Allowed);
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &view_name) {
@@ -467,7 +479,8 @@ TEST_CASE("Test reading zstd-compressed CSV files", "[csv_processor]") {
   duckdb::DuckDB db(nullptr);
   duckdb::Connection con(db);
 
-  IngestProperties props(test_file.string(), "", columns, "", 1, UnmodifiedMarker::Disallowed);
+  IngestProperties props(test_file.string(), "", columns, "", 1,
+                         UnmodifiedMarker::Disallowed);
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
       con, props, logger,
@@ -486,8 +499,8 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
   const auto file_extension = GENERATE(".csv", ".csv.zstd", ".csv.zstd.aes");
 
   auto [filename, row_count, null_string, can_contain_unmodified,
-        columns] = GENERATE(table<std::string, size_t, std::string, UnmodifiedMarker,
-                                  std::vector<column_def>>({
+        columns] = GENERATE(table<std::string, size_t, std::string,
+                                  UnmodifiedMarker, std::vector<column_def>>({
       std::make_tuple<std::string, size_t, std::string, UnmodifiedMarker,
                       std::vector<column_def>>(
           "campaign_input_1_upsert", 3, "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP",

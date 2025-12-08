@@ -17,17 +17,22 @@ struct IngestProperties {
                    const std::string &_null_value,
                    const int &_csv_block_size_mb,
                    const UnmodifiedMarker _allow_unmodified_string)
-      : filename(_filename), decryption_key(_decryption_key),
-        columns(_columns), null_value(_null_value), csv_block_size_mb(_csv_block_size_mb), allow_unmodified_string(_allow_unmodified_string == UnmodifiedMarker::Allowed) {}
+      : filename(_filename), decryption_key(_decryption_key), columns(_columns),
+        null_value(_null_value), csv_block_size_mb(_csv_block_size_mb),
+        allow_unmodified_string(_allow_unmodified_string ==
+                                UnmodifiedMarker::Allowed) {}
 
   const std::string filename;
   const std::string decryption_key;
-  /// Columns of the table that is being ingested into. Columns must be in the same order as they appear in the table.
+  /// Columns of the table that is being ingested into. Columns must be in the
+  /// same order as they appear in the table.
   const std::vector<column_def> columns;
   /// String that represents NULL values in the CSV file.
   const std::string null_value;
   const std::uint32_t csv_block_size_mb;
-  /// Indicates that the CSV file may contain "unmodified_string" values that should be treated as strings even if the target column is of a different type.
-  /// In that case, the CSV file is read with all_varchar=true and type conversion is deferred to later stages (i.e., UPDATE).
+  /// Indicates that the CSV file may contain "unmodified_string" values that
+  /// should be treated as strings even if the target column is of a different
+  /// type. In that case, the CSV file is read with all_varchar=true and type
+  /// conversion is deferred to later stages (i.e., UPDATE).
   const bool allow_unmodified_string;
 };
