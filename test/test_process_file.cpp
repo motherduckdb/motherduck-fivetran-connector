@@ -123,6 +123,39 @@ TEST_CASE("Test reading CSV file with columns out of order",
       });
 }
 
+// TODO: With not all columns specified to test auto-detection
+TEST_CASE("Test reading CSV file with columns out of order",
+          "[csv_processor]") {
+ const fs::path test_file =
+     fs::path(TEST_RESOURCES_DIR) / "csv" / "small_simple.csv";
+ CAPTURE(test_file);
+ REQUIRE(fs::exists(test_file));
+
+ duckdb::DuckDB db(nullptr);
+ duckdb::Connection con(db);
+
+ // In the CSV file, the order is id, name, age
+ std::vector<column_def> columns{
+  column_def{.name = "name", .type = duckdb::LogicalType::VARCHAR},
+  column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT},
+  column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
+};
+ IngestProperties props(test_file.string(), "", columns, "", 1);
+ auto logger = std::make_shared<mdlog::MdLog>();
+ csv_processor::ProcessFile(
+     con, props, logger, [&con](const std::string &view_name) {
+       const std::string query = "FROM " + view_name + " ORDER BY id LIMIT 1";
+       auto res = con.Query(query);
+       REQUIRE_FALSE(res->HasError());
+       REQUIRE(res->ColumnCount() == 3);
+       CHECK(res->RowCount() == 1);
+
+       REQUIRE(res->GetValue(0, 0).ToString() == "Alice");
+       REQUIRE(res->GetValue(1, 0).GetValue<int>() == 30);
+       REQUIRE(res->GetValue(2, 0).GetValue<int>() == 1);
+     });
+}
+
 // TODO: Test cases:
 // - Test with different column data types (e.g. different int types). Also edge
 // cases like overflow
@@ -315,6 +348,30 @@ TEST_CASE("Test reading CSV file with special null string", "[csv_processor]") {
           }
         }
       });
+}
+
+TEST_CASE("Test reading CSV file with escaped string", "[csv_processor]") {
+ const fs::path test_file =
+     fs::path(TEST_RESOURCES_DIR) / "csv" / "escaped_string.csv";
+ REQUIRE(fs::exists(test_file));
+
+ duckdb::DuckDB db(nullptr);
+ duckdb::Connection con(db);
+
+ const std::vector<column_def> columns{
+  column_def{.name = "escaped_string", .type = duckdb::LogicalType::VARCHAR}};
+
+ IngestProperties props(test_file.string(), "", columns, "", 1, false);
+ auto logger = std::make_shared<mdlog::MdLog>();
+ csv_processor::ProcessFile(
+     con, props, logger, [&con](const std::string &view_name) {
+       const auto res = con.Query("FROM " + view_name);
+       REQUIRE_FALSE(res->HasError());
+       REQUIRE(res->ColumnCount() == 1);
+       REQUIRE(res->RowCount() == 1);
+
+       REQUIRE("t\"\"es\"t\"1" == res->GetValue(0, 0).ToString());
+     });
 }
 
 TEST_CASE("Test reading CSV file with unmodified string setting",

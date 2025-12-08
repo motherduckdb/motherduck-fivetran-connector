@@ -8,6 +8,7 @@
 
 #include <fstream>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -15,6 +16,7 @@
 namespace fs = std::filesystem;
 
 namespace {
+/// Adds a SELECT clause with the specified columns to the query
 void add_projections(std::ostringstream &query,
                      const std::vector<column_def> &columns) {
   query << " SELECT";
@@ -30,97 +32,42 @@ void add_projections(std::ostringstream &query,
   }
 }
 
-// TODO: Should take columns and allow_unmodified_string separately
-void add_type_options(std::ostringstream &query,
-                      const IngestProperties &props) {
-  // We set all_varchar=true because we have to deal with
-  // `unmodified_string`. Those are string values that represent an
-  // unchanged value in an UPDATE or UPSERT, and they break type conversion
-  // in the CSV reader. We do the conversion later during the UPDATE/UPSERT.
-  // TODO: Can we push down type conversion to the CSV reader if there is no
-  // `unmodified_string` specified? For all than update_files
-  if (props.allow_unmodified_string) {
+/// Adds CSV reader options related to column types to the query (all_varchar or column_types)
+void add_type_options(std::ostringstream &query, const std::vector<column_def> &columns, const bool allow_unmodified_string) {
+  // We set all_varchar=true if we have to deal with `unmodified_string`. Those are string values that represent an unchanged value in an UPDATE or UPSERT, and they break type conversion
+  // in the CSV reader. DuckDB does an implicit conversion later during the UPDATE/UPSERT.
+  // If `unmodified_string` is not set (for UPSERT and DELETE), we push down the type conversion to the CSV reader.
+  if (allow_unmodified_string) {
     query << ", all_varchar=true";
     return;
   }
 
-  bool are_column_types_specified = false;
-  for (const auto &column : props.columns) {
-    if (column.type != duckdb::LogicalTypeId::INVALID) {
-      are_column_types_specified = true;
-      break;
-    }
-  }
-
-  if (!are_column_types_specified) {
-    // Try auto-detecting types if no columns are provided
-    query << ", auto_detect=true";
-    return;
-  }
-
-  // TODO: Can columns be empty?
-  // We cannot assume the order of columns :-(
+  // We cannot assume the order of columns. From the Fivetran Partner SDK docs:
   // "Always read the CSV file header to determine the column order."
-  // But I can use column_types to specify a mapping from column name to type:
-  // column_types={'colB': 'VARCHAR', 'colA': 'INT'}
-  query << ", column_types = {";
-  for (const auto &column : props.columns) {
+  // Therefore, we do not set the `columns` parameter, but `column_types` which is a mapping from a column name to a type:
+  // column_types={'colB':'VARCHAR','colA':'INTEGER'}.
+  // DuckDB detects the order of columns by reading the header row.
+  // If no columns are specified, DuckDB will auto-detect all column types.
+  query << ", column_types={";
+  for (const auto &column : columns) {
+    // Even if we do not specify the type for this column, DuckDB will figure it out itself because of auto_detect=true
     if (column.type == duckdb::LogicalTypeId::INVALID) {
       continue;
     }
 
-    // DuckDB can handle trailing comma
-    query << duckdb::KeywordHelper::WriteQuoted(column.name, '\'') << ": '"
-          << duckdb::EnumUtil::ToString(column.type) << "',";
+    query << duckdb::KeywordHelper::WriteQuoted(column.name, '\'') << ":";
 
-    // TODO:
-    // For DECIMAL types, include precision and scale if provided
-    // if (column.type == duckdb::LogicalTypeId::DECIMAL &&
-    //           column.width > 0) {
-    //   query << "DECIMAL(" << column.width << "," << column.scale << ")";
-    // }
+    query << "'" << duckdb::EnumUtil::ToString(column.type);
+    if (column.type == duckdb::LogicalTypeId::DECIMAL && column.width > 0) {
+      query << "(" << std::to_string(column.width) << "," << std::to_string(column.scale) + ")";
+    }
+    // DuckDB can handle trailing comma
+    query << "',";
   }
   query << "}";
-  // We still need auto-detection for DuckDB to find out which columns exist,
-  // even though we provide types.
-  // TODO: I should write tests for DuckDB's CSV reader that validate some
-  // assumptions I make.
-  query << ", auto_detect=true";
 }
 
-// TODO: max_line_size
-// TODO: buffer_size
-
-// allow_quoted_nulls = false: We want to interpret "NULL" as a literal string
-// escape???
-// force_not_null: Define columns where there cannot be a null-string to skip
-// comparison there ignore_errors? How do we want to handle errors? Can we use
-// the reject_table? It should work because the read is local. max_line_size?
-// Is the default of 2000000 bytes fine? new_line should probably be set to
-// '\n' columns or column_types
-
-// Configure preserve_insertion_order
-// Other configuration options: TimeZone?
-// autoinstall_known_extensions, autoload_known_extensions should be false
-// Disable HTTP file system
-// Check which DuckDB extensions are installed. Should be none by default.
-// Can we get rid of old_implicit_casting?
-// preserve_identifier_case to make identifiers case-insensitive. Any benefit?
-// enable_progress_bar = false
-// At some point, I can enable profiling
-
-// unmodified_string indicates that the value in this column of the tuple was
-// not changed. Can we do something smart with this while reading already?
-
-// Test reading CSV with escape character in quoted string (should be ""?)
-
-// I need a test with unmodified_string. How do I deal with the fact that this
-// string does not match the column type?
-
-// When do I get an unmodified_string? Only for updates/upserts? Then I can
-// have special handling for this and otherwise give the CSV reader its types?
-
-// TODO: Mention that columns must be in order
+/// Generates a DuckDB SQL query string to read a CSV file with the specified properties
 std::string generate_read_csv_query(const std::string &filepath,
                                     const IngestProperties &props,
                                     const CompressionType compression) {
@@ -128,33 +75,48 @@ std::string generate_read_csv_query(const std::string &filepath,
   // TODO: Need to escape filename? Write test for this
   query << "FROM read_csv("
         << duckdb::KeywordHelper::WriteQuoted(filepath, '\'');
+  // We set auto_detect=true so that DuckDB can detect the dialect options that we do not set explicitly.
+  // It further helps with detecting column types if there happen to be columns whose type we did not set explicitly.
+  // This is not expected to happen, but is more robust this way.
+  query << ", auto_detect=true";
   query << ", delim=','";
   query << ", encoding='utf-8'";
-  query << ", escape='\"'"; // TODO: Is this correct?
+  // Escaped string in CSV looks like this: "A ""quoted"" word"
+  query << ", escape='\"'";
   query << ", header=true";
   query << ", new_line='\\n'";
   query << ", quote='\"'";
-  // TODO: Specify DateFormat
-  // Times have millisecond precision if I'm not mistaken
-  // We here use nanoseconds
-  // Example: 2024-01-09T04:10:19.156057706Z
-  // TODO: We have to support both naive time and UTC time. Which timestamp
-  // format to use? Auto-detect? query << ",
-  // timestampformat='%Y-%m-%dT%H:%M:%S.%nZ'";
+  // We do not specify timestampformat, see below.
+  // Date format: 2025-12-31
+  query << ", dateformat='%Y-%m-%d'";
   if (!props.null_value.empty()) {
     query << ", nullstr='" << props.null_value << "'";
+    query << ", allow_quoted_nulls=true";
+  }
+  // The default max_line_size is 2MB. The default buffer size is 16*max_line_size=32MB.
+  // We only set this option to a higher value if requested.
+  if (props.csv_block_size_mb > 32) {
+    const auto max_line_size = props.csv_block_size_mb * 1000 * 1000 / 16;
+    query << ", max_line_size=" << std::to_string(max_line_size);
+    query << ", buffer_size=" << std::to_string(max_line_size * 16);
   }
   query << ", compression="
         << (compression == CompressionType::ZSTD ? "'zstd'" : "'none'");
 
-  add_type_options(query, props);
+  // We do not specify timestampformat because CSV files can contain two different formats:
+  // - %Y-%m-%dT%H:%M:%S.%nZ (UTC time) and
+  // - %Y-%m-%dT%H:%M:%S.%n (naive time)
+  // We cannot specify both formats at the same time, hence DuckDB needs to auto-detect them.
+  // Times have millisecond precision if I'm not mistaken
+  // We here use nanoseconds
+  // Example: 2024-01-09T04:10:19.156057706Z
+
+  add_type_options(query, props.columns, props.allow_unmodified_string);
 
   query << ")";
 
   // Select columns explicitly to enforce order
   add_projections(query, props.columns);
-
-  printf("QUERY: %s\n", query.str().c_str());
 
   return query.str();
 }
@@ -162,29 +124,28 @@ std::string generate_read_csv_query(const std::string &filepath,
 void validate_file(const std::string &file_path) {
   const std::ifstream fs(file_path);
   if (fs.fail()) {
-    // TODO: Throw with errno
-    throw std::invalid_argument("File <" + file_path +
-                                "> is missing or inaccessible");
+    throw std::system_error(errno, std::generic_category(),
+                            "Failed to open file <" + file_path + ">");
   }
 }
 
 CompressionType determine_compression_type(const std::string &file_path) {
   std::ifstream fs(file_path, std::ios::binary);
   if (fs.fail()) {
-    // TODO: Throw with errno
-    throw std::invalid_argument("File <" + file_path + "> could not be open");
+    throw std::system_error(errno, std::generic_category(),
+                            "Failed to open file <" + file_path + ">");
   }
 
   constexpr int MAGIC_SIZE = 4;
   uint8_t magic_bytes[MAGIC_SIZE];
   fs.read(reinterpret_cast<char *>(magic_bytes), sizeof(magic_bytes));
 
-  if (!fs && !fs.eof()) {
-    // TODO: Throw with errno
-    throw std::invalid_argument("File <" + file_path +
-                                "> failed to read magic bytes");
+  if (fs.fail() && !fs.eof()) {
+    throw std::system_error(errno, std::generic_category(),
+                            "Failed trying to read zstd magic bytes from file <" + file_path + ">");
   }
 
+  // File has fewer than 4 bytes, hence cannot be zstd-compressed
   if (fs.gcount() < MAGIC_SIZE) {
     return CompressionType::None;
   }
@@ -213,25 +174,36 @@ void ProcessFile(
     std::vector<unsigned char> plaintext = decrypt_file(
         props.filename,
         reinterpret_cast<const unsigned char *>(props.decryption_key.c_str()));
-    // Create a new temporary file
+
+    // Be defensive about casting errors from size_t (unsigned) to std::streamsize (signed)
+    constexpr auto max_file_size = static_cast<size_t>(std::numeric_limits<std::streamsize>::max());
+    if (plaintext.size() > max_file_size) {
+      throw std::runtime_error("Decrypted file size exceeds limit of " + std::to_string(max_file_size) + " bytes");
+    }
+
     // TODO: Use memory-backed file
     fs::path temp_dir = fs::temp_directory_path();
     fs::path temp_file = temp_dir / "temp_csv_file.csv";
 
-    std::cout << "Temporary file: " << temp_file << "\n";
-
-    // Create and write to the file
-    std::ofstream ofs(temp_file,
-                      std::ios::out | std::ios::binary | std::ios::trunc);
-    if (!ofs) {
-      // TODO: Throw with errno
-      throw std::runtime_error(
-          "Error opening temporary file for decrypted data");
+    std::ofstream ofs(temp_file, std::ios::binary | std::ios::trunc);
+    if (ofs.fail()) {
+      throw std::system_error(errno, std::generic_category(),
+                              "Failed to open temporary output file for decrypted data with path <" + temp_file.string() + ">");
     }
-    // TODO: Check write success
-    ofs.write(reinterpret_cast<const char *>(plaintext.data()),
-              plaintext.size());
+
+    ofs.write(reinterpret_cast<const char *>(plaintext.data()), static_cast<std::streamsize>(plaintext.size());
+    if (ofs.fail()) {
+      throw std::system_error(errno, std::generic_category(),
+                              "Failed to write decrypted data to temporary file with path <" + temp_file.string() + ">");
+    }
+
+    // Close explicitly to check for errors
     ofs.close();
+    if (ofs.fail()) {
+      throw std::system_error(errno, std::generic_category(),
+                              "Failed to close ofstream for path <" + temp_file.string() + ">");
+    }
+
     ddb_file_path = temp_file;
     logger->info("Wrote temporary unencrypted file " + ddb_file_path);
   } else {
@@ -247,12 +219,13 @@ void ProcessFile(
   con.Query("DETACH DATABASE IF EXISTS " + temp_db_name);
   con.Query("ATTACH ':memory:' AS " + temp_db_name);
 
-  std::string view_name = "\"" + temp_db_name + "\".\"main\".\"csv_view\"";
+  std::string view_name = "\"" + temp_db_name + R"("."main"."csv_view")";
 
   // TODO: Move CREATE VIEW into generate function
-  auto create_view_res =
-      con.Query("CREATE VIEW " + view_name + " AS " +
-                generate_read_csv_query(ddb_file_path, props, compression));
+  const auto final_query = "CREATE VIEW " + view_name + " AS " +
+                generate_read_csv_query(ddb_file_path, props, compression);
+  logger->info("    creating view: " + final_query);
+  auto create_view_res = con.Query(final_query);
   if (create_view_res->HasError()) {
     create_view_res->ThrowError("Failed to create view for CSV file <" +
                                 props.filename + ">: ");

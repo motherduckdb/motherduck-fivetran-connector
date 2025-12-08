@@ -1,6 +1,7 @@
 #pragma once
 
 #include "schema_types.hpp"
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -21,8 +22,12 @@ struct IngestProperties {
   const std::string filename;
   const std::string decryption_key;
   const CompressionType compression;
+  /// Columns of the table that is being ingested into. Columns must be in the same order as they appear in the table.
   const std::vector<column_def> columns;
+  /// String that represents NULL values in the CSV file.
   const std::string null_value;
-  const int csv_block_size_mb;
+  const std::uint32_t csv_block_size_mb;
+  /// Indicates that the CSV file may contain "unmodified_string" values that should be treated as strings even if the target column is of a different type.
+  /// In that case, the CSV file is read with all_varchar=true and type conversion is deferred to later stages (i.e., UPDATE).
   const bool allow_unmodified_string;
 };
