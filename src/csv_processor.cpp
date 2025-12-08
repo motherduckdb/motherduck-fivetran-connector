@@ -4,7 +4,7 @@
 #include "duckdb.hpp"
 #include "ingest_properties.hpp"
 #include "md_logging.hpp"
-#include "types.hpp"
+#include "schema_types.hpp"
 
 #include <fstream>
 #include <functional>

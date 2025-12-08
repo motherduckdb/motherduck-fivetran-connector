@@ -16,14 +16,6 @@ std::ostream &operator<<(std::ostream &os, const column_def &col) {
   return os;
 }
 
-std::string table_def::to_escaped_string() const {
-  std::ostringstream out;
-  out << KeywordHelper::WriteQuoted(db_name, '"') << "."
-      << KeywordHelper::WriteQuoted(schema_name, '"') << "."
-      << KeywordHelper::WriteQuoted(table_name, '"');
-  return out.str();
-}
-
 const auto print_column = [](const std::string &quoted_col,
                              std::ostringstream &out) { out << quoted_col; };
 

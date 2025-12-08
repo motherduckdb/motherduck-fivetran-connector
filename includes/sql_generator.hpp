@@ -1,7 +1,7 @@
 #pragma once
 
 #include "duckdb.hpp"
-#include "types.hpp"
+#include "schema_types.hpp"
 #include <map>
 #include <memory>
 #include <set>

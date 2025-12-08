@@ -1,7 +1,7 @@
 #include "constants.hpp"
 #include "csv_processor.hpp"
 #include "duckdb.hpp"
-#include "types.hpp"
+#include "schema_types.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
