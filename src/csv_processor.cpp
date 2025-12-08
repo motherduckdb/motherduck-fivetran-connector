@@ -73,7 +73,6 @@ std::string generate_read_csv_query(const std::string &filepath,
                                     const IngestProperties &props,
                                     const CompressionType compression) {
   std::ostringstream query;
-  // TODO: Need to escape filename? Write test for this
   query << "FROM read_csv("
         << duckdb::KeywordHelper::WriteQuoted(filepath, '\'');
   // We set auto_detect=true so that DuckDB can detect the dialect options that we do not set explicitly.
@@ -192,7 +191,7 @@ void ProcessFile(
                               "Failed to open temporary output file for decrypted data with path <" + decrypted_file_path + ">");
     }
 
-    ofs.write(reinterpret_cast<const char *>(plaintext.data()), static_cast<std::streamsize>(plaintext.size());
+    ofs.write(reinterpret_cast<const char *>(plaintext.data()), static_cast<std::streamsize>(plaintext.size()));
     if (ofs.fail()) {
       throw std::system_error(errno, std::generic_category(),
                               "Failed to write decrypted data to temporary file with path <" + decrypted_file_path + ">");

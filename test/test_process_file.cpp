@@ -145,7 +145,7 @@ TEST_CASE("Test reading CSV file with columns out of order",
  csv_processor::ProcessFile(
      con, props, logger, [&con](const std::string &view_name) {
        const std::string query = "FROM " + view_name + " ORDER BY id LIMIT 1";
-       auto res = con.Query(query);
+       const auto res = con.Query(query);
        REQUIRE_FALSE(res->HasError());
        REQUIRE(res->ColumnCount() == 3);
        CHECK(res->RowCount() == 1);
@@ -153,6 +153,27 @@ TEST_CASE("Test reading CSV file with columns out of order",
        REQUIRE(res->GetValue(0, 0).ToString() == "Alice");
        REQUIRE(res->GetValue(1, 0).GetValue<int>() == 30);
        REQUIRE(res->GetValue(2, 0).GetValue<int>() == 1);
+     });
+}
+
+TEST_CASE("Test reading CSV file with quotes in filename", "[csv_processor]") {
+ const fs::path test_file =
+     fs::path(TEST_RESOURCES_DIR) / "csv" / "filename_with_'quotes'.csv";
+ CAPTURE(test_file);
+ REQUIRE(fs::exists(test_file));
+
+ duckdb::DuckDB db(nullptr);
+ duckdb::Connection con(db);
+
+ std::vector<column_def> columns{ column_def{.name = "a", .type = duckdb::LogicalType::SMALLINT} };
+ IngestProperties props(test_file.string(), "", columns, "", 1, false);
+ auto logger = std::make_shared<mdlog::MdLog>();
+ csv_processor::ProcessFile(
+     con, props, logger, [&con](const std::string &view_name) {
+       const auto res = con.Query("FROM " + view_name);
+       REQUIRE_FALSE(res->HasError());
+       REQUIRE(res->ColumnCount() == 1);
+       CHECK(res->RowCount() == 1);
      });
 }
 
