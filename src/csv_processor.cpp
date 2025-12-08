@@ -13,6 +13,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <unistd.h>
 
 namespace fs = std::filesystem;
 
@@ -92,25 +93,35 @@ create_file_with_decrypted_content(const std::string &encrypted_file_path,
   return temp_file;
 }
 
+void reset_file_cursor(int file_descriptor) {
+  // For memory-backed files accessed via /dev/fd/<n>, the cursor is shared
+  // across all file descriptors on macOS. Reset it to the beginning so that
+  // subsequent reads start from the beginning.
+  if (lseek(file_descriptor, 0, SEEK_SET) == -1) {
+    throw std::system_error(
+        errno, std::generic_category(), "Failed to reset file cursor");
+  }
+}
+
 CompressionType determine_compression_type(const std::string &file_path) {
-  std::ifstream fs(file_path, std::ios::binary);
-  if (fs.fail()) {
+  std::ifstream ifs(file_path, std::ios::binary);
+  if (ifs.fail()) {
     throw std::system_error(errno, std::generic_category(),
                             "Failed to open file <" + file_path + ">");
   }
 
   constexpr int MAGIC_SIZE = 4;
   uint8_t magic_bytes[MAGIC_SIZE];
-  fs.read(reinterpret_cast<char *>(magic_bytes), sizeof(magic_bytes));
+  ifs.read(reinterpret_cast<char *>(magic_bytes), sizeof(magic_bytes));
 
-  if (fs.fail() && !fs.eof()) {
+  if (ifs.fail() && !ifs.eof()) {
     throw std::system_error(
         errno, std::generic_category(),
         "Failed trying to read zstd magic bytes from file <" + file_path + ">");
   }
 
   // File has fewer than 4 bytes, hence cannot be zstd-compressed
-  if (fs.gcount() < MAGIC_SIZE) {
+  if (ifs.gcount() < MAGIC_SIZE) {
     return CompressionType::None;
   }
 
@@ -263,7 +274,15 @@ void ProcessFile(
     logger->info("    file is not encrypted");
   }
 
+  if (temp_file.has_value()) {
+    reset_file_cursor(temp_file.value().fd);
+  }
+
   auto compression = determine_compression_type(decrypted_file_path);
+
+  if (temp_file.has_value()) {
+    reset_file_cursor(temp_file.value().fd);
+  }
 
   const auto con_id = con.context->GetConnectionId();
   const auto temp_db_name = "temp_mem_db_" + std::to_string(con_id);
