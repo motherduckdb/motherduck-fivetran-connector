@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.10...3.20)
 project(MotherDuckFivetranDestination C CXX)
 
+set(CMAKE_CXX_STANDARD 20)
+
 # Debug Asan/Ubsan
 if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT DISABLE_SANITIZER)
   if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang$")
