@@ -22,7 +22,7 @@ MemoryBackedFile MemoryBackedFile::Create(const size_t file_size) {
 
   // Template for mkstemp. XXXXXX will be replaced with unique characters.
   std::string tmp_path = tmp_dir + "/decrypted.csv.XXXXXX";
-  int fd = mkstemp(tmp_path.data());
+  const int fd = mkstemp(tmp_path.data());
   if (fd == -1) {
     throw std::system_error(errno, std::generic_category(),
                             "Failed to create temp memfile " + tmp_path);

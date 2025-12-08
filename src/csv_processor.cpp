@@ -3,6 +3,7 @@
 #include "decryption.hpp"
 #include "duckdb.hpp"
 #include "ingest_properties.hpp"
+#include "memory_backed_file.hpp"
 #include "md_logging.hpp"
 #include "schema_types.hpp"
 
@@ -168,7 +169,8 @@ void ProcessFile(
   logger->info("    validated file " + props.filename);
 
   const auto is_file_encrypted = !props.decryption_key.empty();
-  std::string ddb_file_path = props.filename;
+  std::string decrypted_file_path;
+  MemoryBackedFile temp_file; // Only used if file is encrypted
   if (is_file_encrypted) {
     // TODO: Move to separate function
     std::vector<unsigned char> plaintext = decrypt_file(
@@ -181,49 +183,50 @@ void ProcessFile(
       throw std::runtime_error("Decrypted file size exceeds limit of " + std::to_string(max_file_size) + " bytes");
     }
 
-    // TODO: Use memory-backed file
-    fs::path temp_dir = fs::temp_directory_path();
-    fs::path temp_file = temp_dir / "temp_csv_file.csv";
+    temp_file = MemoryBackedFile::Create(plaintext.size());
+    decrypted_file_path = temp_file.path;
 
-    std::ofstream ofs(temp_file, std::ios::binary | std::ios::trunc);
+    std::ofstream ofs(decrypted_file_path, std::ios::binary);
     if (ofs.fail()) {
       throw std::system_error(errno, std::generic_category(),
-                              "Failed to open temporary output file for decrypted data with path <" + temp_file.string() + ">");
+                              "Failed to open temporary output file for decrypted data with path <" + decrypted_file_path + ">");
     }
 
     ofs.write(reinterpret_cast<const char *>(plaintext.data()), static_cast<std::streamsize>(plaintext.size());
     if (ofs.fail()) {
       throw std::system_error(errno, std::generic_category(),
-                              "Failed to write decrypted data to temporary file with path <" + temp_file.string() + ">");
+                              "Failed to write decrypted data to temporary file with path <" + decrypted_file_path + ">");
     }
 
     // Close explicitly to check for errors
     ofs.close();
     if (ofs.fail()) {
       throw std::system_error(errno, std::generic_category(),
-                              "Failed to close ofstream for path <" + temp_file.string() + ">");
+                              "Failed to close ofstream for path <" + decrypted_file_path + ">");
     }
 
-    ddb_file_path = temp_file;
-    logger->info("Wrote temporary unencrypted file " + ddb_file_path);
+    logger->info("Wrote temporary unencrypted file " + decrypted_file_path);
   } else {
+    decrypted_file_path = props.filename;
     logger->info("File is not encrypted");
   }
 
-  auto compression = determine_compression_type(ddb_file_path);
+  auto compression = determine_compression_type(decrypted_file_path);
 
   const auto con_id = con.context->GetConnectionId();
   const auto temp_db_name = "temp_mem_db_" + std::to_string(con_id);
 
   // Run DETACH just to be extra sure
   con.Query("DETACH DATABASE IF EXISTS " + temp_db_name);
-  con.Query("ATTACH ':memory:' AS " + temp_db_name);
+  const auto attach_res = con.Query("ATTACH ':memory:' AS " + temp_db_name);
+  if (attach_res->HasError()) {
+    attach_res->ThrowError("Failed to attach in-memory database \"" + temp_db_name + "\": ");
+  }
 
   std::string view_name = "\"" + temp_db_name + R"("."main"."csv_view")";
 
-  // TODO: Move CREATE VIEW into generate function
   const auto final_query = "CREATE VIEW " + view_name + " AS " +
-                generate_read_csv_query(ddb_file_path, props, compression);
+                generate_read_csv_query(decrypted_file_path, props, compression);
   logger->info("    creating view: " + final_query);
   auto create_view_res = con.Query(final_query);
   if (create_view_res->HasError()) {
@@ -236,6 +239,8 @@ void ProcessFile(
   logger->info("    view processed for file " + props.filename);
 
   logger->info("    Detaching temp database " + temp_db_name + " for CSV view");
+
+  // Ignore errors during DETACH
   con.Query("DETACH DATABASE IF EXISTS " + temp_db_name);
 }
 } // namespace csv_processor
