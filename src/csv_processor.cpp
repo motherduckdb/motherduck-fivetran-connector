@@ -99,8 +99,8 @@ void reset_file_cursor(int file_descriptor) {
   // across all file descriptors on macOS. Reset it to the beginning so that
   // subsequent reads start from the beginning.
   if (lseek(file_descriptor, 0, SEEK_SET) == -1) {
-    throw std::system_error(
-        errno, std::generic_category(), "Failed to reset file cursor");
+    throw std::system_error(errno, std::generic_category(),
+                            "Failed to reset file cursor");
   }
 }
 
@@ -162,6 +162,20 @@ void add_type_options(std::ostringstream &query,
   // reader.
   if (allow_unmodified_string) {
     query << ", all_varchar=true";
+    return;
+  }
+
+  bool has_valid_column_types = false;
+  for (const auto &column : columns) {
+    if (column.type != duckdb::LogicalTypeId::INVALID) {
+      has_valid_column_types = true;
+      break;
+    }
+  }
+
+  if (!has_valid_column_types) {
+    // No valid column types. We need to back out because column_types must not
+    // be an empty struct.
     return;
   }
 
@@ -281,6 +295,7 @@ void ProcessFile(
 
   auto compression = determine_compression_type(decrypted_file_path);
 
+  // The last function call read four bytes. Reset to the beginning again.
   if (temp_file.has_value()) {
     reset_file_cursor(temp_file.value().fd);
   }
@@ -308,6 +323,12 @@ void ProcessFile(
                                 props.filename + ">: ");
   }
   logger->info("    view created for file " + props.filename);
+
+  // `read_csv` opened and read the file for binding. Reset the file cursor
+  // again for execution.
+  if (temp_file.has_value()) {
+    reset_file_cursor(temp_file.value().fd);
+  }
 
   process_view(view_name);
   logger->info("    view processed for file " + props.filename);

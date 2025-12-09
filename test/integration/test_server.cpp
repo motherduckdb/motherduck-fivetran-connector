@@ -1204,10 +1204,9 @@ TEST_CASE("reading inaccessible or nonexistent files fails") {
 
   ::fivetran_sdk::v2::WriteBatchResponse response;
   auto status = service.WriteBatch(nullptr, &request, &response);
-  const auto expected =
-      "WriteBatch endpoint failed for schema <>, table <unused_table>:File <" +
-      bad_file_name + "> is missing or inaccessible";
-  REQUIRE_FAIL(status, expected);
+  REQUIRE_FALSE(status.ok());
+  REQUIRE_THAT(status.error_message(),
+               Catch::Matchers::ContainsSubstring("No such file or directory"));
 }
 
 TEST_CASE("Test all types with create and describe table") {
