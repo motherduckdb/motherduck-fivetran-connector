@@ -559,8 +559,15 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     // delete overlapping records
     for (auto &filename : request->earliest_start_files()) {
       logger->info("Processing earliest start file " + filename);
+      // "This file contains a single record for each primary key in the incoming batch, with the earliest _fivetran_start"
+      std::vector<column_def> earliest_start_cols;
+      earliest_start_cols.reserve(columns_pk.size() + 1);
+      for (const auto &col : columns_pk) {
+        earliest_start_cols.push_back(*col);
+      }
+      earliest_start_cols.push_back({.name = "_fivetran_start", .type = duckdb::LogicalTypeId::TIMESTAMP_TZ });
       IngestProperties props =
-          create_ingest_props(filename, request, cols, csv_block_size,
+          create_ingest_props(filename, request, earliest_start_cols, csv_block_size,
                               UnmodifiedMarker::Disallowed);
 
       csv_processor::ProcessFile(*con, props, logger,
