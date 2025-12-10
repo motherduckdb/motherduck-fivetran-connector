@@ -182,8 +182,8 @@ void add_type_options(std::ostringstream &query,
     // Even if we do not specify the type for this column, DuckDB will figure it
     // out itself because of auto_detect=true
     if (column.type == duckdb::LogicalTypeId::INVALID) {
-      logger->warning("Column '" + column.name +
-                      "' has no type specified, will be auto-detected");
+      logger->warning("Column \"" + column.name +
+                      "\" has no type specified, will be auto-detected");
       continue;
     }
 
