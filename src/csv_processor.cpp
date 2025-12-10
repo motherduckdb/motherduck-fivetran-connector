@@ -283,7 +283,7 @@ void ProcessFile(
     temp_file = decrypt_file_into_memory(props.filename,
                                                    props.decryption_key);
     decrypted_file_path = temp_file.value().path;
-    logger->info("    wrote temporary unencrypted file " + decrypted_file_path);
+    logger->info("    wrote decrypted data to ephemeral memory-backed storage " + decrypted_file_path);
   } else {
     decrypted_file_path = props.filename;
     logger->info("    file is not encrypted");
