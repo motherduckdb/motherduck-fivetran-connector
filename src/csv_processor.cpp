@@ -30,7 +30,7 @@ void validate_file(const std::string &file_path) {
 
 MemoryBackedFile
 decrypt_file_into_memory(const std::string &encrypted_file_path,
-                                   const std::string &decryption_key) {
+                         const std::string &decryption_key) {
   // TODO: Let decrypt_file write into the memory-backed file directly to avoid
   // double buffering
   const std::vector<unsigned char> plaintext = decrypt_file(
@@ -143,7 +143,8 @@ void add_projections(std::ostringstream &query,
 /// column_types)
 void add_type_options(std::ostringstream &query,
                       const std::vector<column_def> &columns,
-                      const bool allow_unmodified_string) {
+                      const bool allow_unmodified_string,
+                      const std::shared_ptr<mdlog::MdLog> &logger) {
   // We set all_varchar=true if we have to deal with `unmodified_string`. Those
   // are string values that represent an unchanged value in an UPDATE or UPSERT,
   // and they break type conversion in the CSV reader. DuckDB does an implicit
@@ -181,6 +182,8 @@ void add_type_options(std::ostringstream &query,
     // Even if we do not specify the type for this column, DuckDB will figure it
     // out itself because of auto_detect=true
     if (column.type == duckdb::LogicalTypeId::INVALID) {
+      logger->warning("Column '" + column.name +
+                      "' has no type specified, will be auto-detected");
       continue;
     }
 
@@ -199,9 +202,11 @@ void add_type_options(std::ostringstream &query,
 
 /// Generates a DuckDB SQL query string to read a CSV file with the specified
 /// properties
-std::string generate_read_csv_query(const std::string &filepath,
-                                    const IngestProperties &props,
-                                    const CompressionType compression) {
+std::string
+generate_read_csv_query(const std::string &filepath,
+                        const IngestProperties &props,
+                        const CompressionType compression,
+                        const std::shared_ptr<mdlog::MdLog> &logger) {
   std::ostringstream query;
   query << "FROM read_csv("
         << duckdb::KeywordHelper::WriteQuoted(filepath, '\'');
@@ -225,10 +230,10 @@ std::string generate_read_csv_query(const std::string &filepath,
           << duckdb::KeywordHelper::WriteQuoted(props.null_value, '\'');
     query << ", allow_quoted_nulls=true";
   }
-  // TODO: Change configuration form to talk about max_line_size instead of block size.
-  // The block size maps roughly to the buffer size in DuckDB.
-  // The buffer size is 16*max_line_size by default.
-  // The default max_line_size is 2MB, hence the default buffer size is 32MB.
+  // TODO: Change configuration form to talk about max_line_size instead of
+  // block size. The block size maps roughly to the buffer size in DuckDB. The
+  // buffer size is 16*max_line_size by default. The default max_line_size is
+  // 2MB, hence the default buffer size is 32MB.
   constexpr std::uint32_t default_csv_buffer_size = 32;
   if (props.csv_block_size_mb > default_csv_buffer_size) {
     const auto max_line_size = props.csv_block_size_mb * 1000 * 1000 / 16;
@@ -245,7 +250,7 @@ std::string generate_read_csv_query(const std::string &filepath,
   // auto-detect them. Times have millisecond precision if I'm not mistaken We
   // here use nanoseconds Example: 2024-01-09T04:10:19.156057706Z
 
-  add_type_options(query, props.columns, props.allow_unmodified_string);
+  add_type_options(query, props.columns, props.allow_unmodified_string, logger);
 
   query << ")";
 
@@ -270,10 +275,11 @@ void ProcessFile(
   // Only used if file is encrypted to ensure MemoryBackedFile lives long enough
   std::optional<MemoryBackedFile> temp_file;
   if (is_file_encrypted) {
-    temp_file = decrypt_file_into_memory(props.filename,
-                                                   props.decryption_key);
+    temp_file = decrypt_file_into_memory(props.filename, props.decryption_key);
     decrypted_file_path = temp_file.value().path;
-    logger->info("    wrote decrypted data to ephemeral memory-backed storage " + decrypted_file_path);
+    logger->info(
+        "    wrote decrypted data to ephemeral memory-backed storage " +
+        decrypted_file_path);
   } else {
     decrypted_file_path = props.filename;
     logger->info("    file is not encrypted");
@@ -305,7 +311,7 @@ void ProcessFile(
 
   const auto final_query =
       "CREATE VIEW " + view_name + " AS " +
-      generate_read_csv_query(decrypted_file_path, props, compression);
+      generate_read_csv_query(decrypted_file_path, props, compression, logger);
   logger->info("    creating view: " + final_query);
   auto create_view_res = con.Query(final_query);
   if (create_view_res->HasError()) {
