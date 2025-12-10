@@ -1807,7 +1807,7 @@ TEST_CASE("WriteBatchHistory with update files", "[integration][write-batch]") {
         "SELECT id, title, magic_number, _fivetran_deleted, _fivetran_synced, "
         "_fivetran_active, _fivetran_start, _fivetran_end"
         " FROM " +
-        table_name + " ORDER BY id");
+        table_name + " ORDER BY id, _fivetran_start");
     REQUIRE_NO_FAIL(res);
 
     REQUIRE(res->RowCount() == 3);
