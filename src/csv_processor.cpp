@@ -235,14 +235,14 @@ std::string generate_read_csv_query(const std::string &filepath,
           << duckdb::KeywordHelper::WriteQuoted(props.null_value, '\'');
     query << ", allow_quoted_nulls=true";
   }
-  // The default max_line_size is 2MB. The default buffer size is
-  // 16*max_line_size=32MB. We only set this option to a higher value if
-  // requested.
-  constexpr std::uint32_t default_csv_block_size_mb = 32;
-  if (props.csv_block_size_mb > default_csv_block_size_mb) {
+  // TODO: Change configuration form to talk about max_line_size instead of block size.
+  // The block size maps roughly to the buffer size in DuckDB.
+  // The buffer size is 16*max_line_size by default.
+  // The default max_line_size is 2MB, hence the default buffer size is 32MB.
+  constexpr std::uint32_t default_csv_buffer_size = 32;
+  if (props.csv_block_size_mb > default_csv_buffer_size) {
     const auto max_line_size = props.csv_block_size_mb * 1000 * 1000 / 16;
     query << ", max_line_size=" << std::to_string(max_line_size);
-    query << ", buffer_size=" << std::to_string(max_line_size * 16);
   }
   query << ", compression="
         << (compression == CompressionType::ZSTD ? "'zstd'" : "'none'");
