@@ -12,6 +12,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include "md_error.hpp"
 
 std::string
 find_property(const google::protobuf::Map<std::string, std::string> &config,
@@ -86,7 +87,18 @@ DestinationSdkImpl::get_duckdb(const std::string &md_token,
     config.SetOptionByName("motherduck_attach_mode", "single");
     logger->info("    initialize_db: created configuration");
 
-    db = duckdb::DuckDB("md:" + db_name, &config);
+    // TODO: catch an exception and throw a task exception here
+      try
+      {
+        db = duckdb::DuckDB("md:" + db_name, &config);
+      }
+      catch (std::exception &e)
+      {
+          throw md_error::ExceptionWithTaskResolution(
+          "    initialize_db: failed to create database instance: (" + db_name + ")" + std::string(e.what())
+          );
+      }
+
     logger->info("    initialize_db: created database instance");
 
     duckdb::Connection con(db);
@@ -292,6 +304,12 @@ grpc::Status DestinationSdkImpl::DescribeTable(
       }
     }
 
+  } catch (const md_error::ExceptionWithTaskResolution &mde) {
+      logger->warning("DescribeTable endpoint failed for schema <" +
+               request->schema_name() + ">, table <" +
+               request->table_name() + ">:" + std::string(mde.what()));
+      response->mutable_task()->set_message(mde.what());
+      return ::grpc::Status(::grpc::StatusCode::OK, "");
   } catch (const std::exception &e) {
     logger->severe("DescribeTable endpoint failed for schema <" +
                    request->schema_name() + ">, table <" +
@@ -328,6 +346,12 @@ grpc::Status DestinationSdkImpl::CreateTable(
     const auto cols = get_duckdb_columns(request->table().columns());
     sql_generator->create_table(*con, table, cols, {});
     response->set_success(true);
+  } catch (const md_error::ExceptionWithTaskResolution &mde) {
+      logger->warning("CreateTable endpoint failed for schema <" +
+                   request->schema_name() + ">, table <" +
+                   request->table().name() + ">:" + std::string(mde.what()));
+      response->mutable_task()->set_message(mde.what());
+      return ::grpc::Status(::grpc::StatusCode::OK, "");
   } catch (const std::exception &e) {
     logger->severe("CreateTable endpoint failed for schema <" +
                    request->schema_name() + ">, table <" +
@@ -359,6 +383,12 @@ grpc::Status DestinationSdkImpl::AlterTable(
     sql_generator->alter_table(*con, table_name,
                                get_duckdb_columns(request->table().columns()));
     response->set_success(true);
+  } catch (const md_error::ExceptionWithTaskResolution &mde) {
+      logger->severe("AlterTable endpoint failed for schema <" +
+                   request->schema_name() + ">, table <" +
+                   request->table().name() + ">:" + std::string(mde.what()));
+      response->mutable_task()->set_message(mde.what());
+      return ::grpc::Status(::grpc::StatusCode::OK, "");
   } catch (const std::exception &e) {
     logger->severe("AlterTable endpoint failed for schema <" +
                    request->schema_name() + ">, table <" +
@@ -405,6 +435,12 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
                       ">; not truncated");
     }
 
+  } catch (const md_error::ExceptionWithTaskResolution &mde) {
+      logger->warning("Truncate endpoint failed for schema <" +
+                   request->schema_name() + ">, table <" +
+                   request->table_name() + ">:" + std::string(mde.what()));
+      response->mutable_task()->set_message(mde.what());
+      return ::grpc::Status(::grpc::StatusCode::OK, "");
   } catch (const std::exception &e) {
     logger->severe("Truncate endpoint failed for schema <" +
                    request->schema_name() + ">, table <" +
@@ -501,8 +537,14 @@ grpc::Status DestinationSdkImpl::WriteBatch(
           });
     }
 
+  } catch (const md_error::ExceptionWithTaskResolution &mde) {
+      auto const msg = "WriteBatch endpoint failed for schema <" +
+                 request->schema_name() + ">, table <" +
+                 request->table().name() + ">:" + std::string(mde.what());
+      logger->warning(msg);
+      response->mutable_task()->set_message(msg);
+      return ::grpc::Status(::grpc::StatusCode::OK, "");
   } catch (const std::exception &e) {
-
     auto const msg = "WriteBatch endpoint failed for schema <" +
                      request->schema_name() + ">, table <" +
                      request->table().name() + ">:" + std::string(e.what());
@@ -604,8 +646,13 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                                  });
     }
 
+  } catch (const md_error::ExceptionWithTaskResolution &mde) {
+      auto const msg = "WriteBatch endpoint failed for schema <" +
+                       request->schema_name() + ">, table <" +
+                       request->table().name() + ">:" + std::string(mde.what());
+      response->mutable_task()->set_message(mde.what());
+      return ::grpc::Status(::grpc::StatusCode::OK, "");
   } catch (const std::exception &e) {
-
     auto const msg = "WriteBatch endpoint failed for schema <" +
                      request->schema_name() + ">, table <" +
                      request->table().name() + ">:" + std::string(e.what());

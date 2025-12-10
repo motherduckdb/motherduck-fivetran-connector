@@ -1,6 +1,7 @@
 #include <arrow/buffer.h>
 #include <arrow/io/api.h>
 #include <arrow/util/compression.h>
+#include <md_error.hpp>
 #include <csv_arrow_ingest.hpp>
 #include <decryption.hpp>
 
@@ -44,7 +45,7 @@ read_csv_stream_to_arrow_table(T &input_stream, const IngestProperties &props) {
 
   auto maybe_table = table_reader->Read();
   if (!maybe_table.ok()) {
-    throw std::runtime_error("Could not read CSV <" + props.filename +
+    throw md_error::ExceptionWithTaskResolution("Could not read CSV <" + props.filename +
                              ">: " + maybe_table.status().message());
   }
   auto table = std::move(maybe_table.ValueOrDie());
