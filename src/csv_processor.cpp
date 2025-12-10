@@ -29,7 +29,7 @@ void validate_file(const std::string &file_path) {
 }
 
 MemoryBackedFile
-create_file_with_decrypted_content(const std::string &encrypted_file_path,
+decrypt_file_into_memory(const std::string &encrypted_file_path,
                                    const std::string &decryption_key) {
   // TODO: Let decrypt_file write into the memory-backed file directly to avoid
   // double buffering
@@ -280,7 +280,7 @@ void ProcessFile(
   // Only used if file is encrypted to ensure MemoryBackedFile lives long enough
   std::optional<MemoryBackedFile> temp_file;
   if (is_file_encrypted) {
-    temp_file = create_file_with_decrypted_content(props.filename,
+    temp_file = decrypt_file_into_memory(props.filename,
                                                    props.decryption_key);
     decrypted_file_path = temp_file.value().path;
     logger->info("    wrote temporary unencrypted file " + decrypted_file_path);
