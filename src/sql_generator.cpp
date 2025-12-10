@@ -615,8 +615,7 @@ void MdSqlGenerator::deactivate_historical_records(
 
   const std::string absolute_table_name = table.to_escaped_string();
 
-  // persist the data (it's only 2 columns) because Arrow streams can only be
-  // read once
+  // persist the data (it's only 2 columns) to not read CSV file twice
   const std::string temp_earliest_table_name = "local_earliest_file";
   con.Query("CREATE TABLE " + temp_earliest_table_name + " AS SELECT * FROM " +
             staging_table_name);
