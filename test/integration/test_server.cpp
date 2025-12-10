@@ -964,10 +964,11 @@ TEST_CASE("Table with large json row", "[integration][write-batch]") {
 
     ::fivetran_sdk::v2::WriteBatchResponse response;
     auto status = service.WriteBatch(nullptr, &request, &response);
-    REQUIRE_FALSE(status.ok());
-    CHECK_THAT(status.error_message(),
-               Catch::Matchers::ContainsSubstring(
-                   "straddling object straddles two block boundaries"));
+
+    REQUIRE(status.ok());
+    REQUIRE(status.error_message().empty());
+    CHECK_THAT(response.task().message(),
+     Catch::Matchers::ContainsSubstring("straddling object straddles two block boundaries"));
   }
 
   {
@@ -996,10 +997,11 @@ TEST_CASE("Table with large json row", "[integration][write-batch]") {
 
     ::fivetran_sdk::v2::WriteBatchResponse response;
     auto status = service.WriteBatch(nullptr, &request, &response);
-    REQUIRE_FALSE(status.ok());
-    CHECK_THAT(status.error_message(),
-               Catch::Matchers::ContainsSubstring(
-                   "straddling object straddles two block boundaries"));
+    REQUIRE(status.ok());
+    REQUIRE(status.error_message().empty());
+    CHECK_THAT(response.task().message(),
+     Catch::Matchers::ContainsSubstring(
+         "straddling object straddles two block boundaries"));
   }
 
   {
