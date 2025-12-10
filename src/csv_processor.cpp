@@ -73,16 +73,6 @@ decrypt_file_into_memory(const std::string &encrypted_file_path,
                                 decrypted_file_path + ">");
   }
 
-  // Reset cursor to the beginning in case the reader expects this. See
-  // memory_backed_file.hpp.
-  ofs.seekp(0);
-  if (ofs.fail()) {
-    throw std::system_error(
-        errno, std::generic_category(),
-        "Failed to seek to beginning of ofstream for path <" +
-            decrypted_file_path + ">");
-  }
-
   // Close explicitly to check for errors
   ofs.close();
   if (ofs.fail()) {
