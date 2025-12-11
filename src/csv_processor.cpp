@@ -247,8 +247,9 @@ generate_read_csv_query(const std::string &filepath,
   // - %Y-%m-%dT%H:%M:%S.%nZ (UTC time) and
   // - %Y-%m-%dT%H:%M:%S.%n (naive time)
   // We cannot specify both formats at the same time, hence DuckDB needs to
-  // auto-detect them. Times have millisecond precision if I'm not mistaken. We
-  // here use nanoseconds Example: 2024-01-09T04:10:19.156057706Z
+  // auto-detect them. Another problem is that WriteBatch files seem to use
+  // seconds precision, while WriteHistoryBatch files use milliseconds
+  // precision. Example: 2024-01-09T04:10:19.156057706Z
 
   add_type_options(query, props.columns, props.allow_unmodified_string, logger);
 
