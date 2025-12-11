@@ -500,10 +500,14 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       logger->info("Processing delete file " + filename);
       auto decryption_key = get_encryption_key(
           filename, request->keys(), request->file_params().encryption());
-      std::vector<column_def> empty; // TODO: Why empty?
-      IngestProperties props(
-          filename, decryption_key, empty, request->file_params().null_string(),
-          csv_block_size, UnmodifiedMarker::Disallowed, temp_db.name);
+      std::vector<column_def> cols_to_read;
+      for (const auto &col : columns_pk) {
+        cols_to_read.push_back(*col);
+      }
+      IngestProperties props(filename, decryption_key, cols_to_read,
+                             request->file_params().null_string(),
+                             csv_block_size, UnmodifiedMarker::Disallowed,
+                             temp_db.name);
 
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
