@@ -29,7 +29,7 @@ TEST_CASE("Test can read simple CSV file", "[csv_processor]") {
       column_def{.name = "name", .type = duckdb::LogicalType::VARCHAR},
       column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT}};
   IngestProperties props(test_file.string(), "", columns, "", 1,
-                         UnmodifiedMarker::Disallowed);
+                         UnmodifiedMarker::Disallowed, "memory");
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &view_name) {
@@ -75,7 +75,7 @@ TEST_CASE("Test reading CSV file with auto-detection of column types",
       column_def{.name = "name", .type = duckdb::LogicalType::INVALID},
       column_def{.name = "age", .type = duckdb::LogicalType::INVALID}};
   IngestProperties props(test_file.string(), "", columns, "", 1,
-                         UnmodifiedMarker::Disallowed);
+                         UnmodifiedMarker::Disallowed, "memory");
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &view_name) {
@@ -112,7 +112,7 @@ TEST_CASE("Test reading CSV file when not all column types specified",
       column_def{.name = "age", .type = duckdb::LogicalType::INVALID},
   };
   IngestProperties props(test_file.string(), "", columns, "", 1,
-                         UnmodifiedMarker::Disallowed);
+                         UnmodifiedMarker::Disallowed, "memory");
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &view_name) {
@@ -145,7 +145,7 @@ TEST_CASE("Test reading CSV file with columns out of order",
       column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
   };
   IngestProperties props(test_file.string(), "", columns, "", 1,
-                         UnmodifiedMarker::Disallowed);
+                         UnmodifiedMarker::Disallowed, "memory");
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &view_name) {
@@ -173,7 +173,7 @@ TEST_CASE("Test reading CSV file with quotes in filename", "[csv_processor]") {
   std::vector<column_def> columns{
       column_def{.name = "a", .type = duckdb::LogicalType::SMALLINT}};
   IngestProperties props(test_file.string(), "", columns, "", 1,
-                         UnmodifiedMarker::Disallowed);
+                         UnmodifiedMarker::Disallowed, "memory");
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(con, props, logger,
                              [&con](const std::string &view_name) {
@@ -327,7 +327,7 @@ TEST_CASE("Test reading various CSV files", "[csv_processor]") {
   duckdb::Connection con(db);
 
   IngestProperties props(test_file.string(), "", columns, "", 1,
-                         UnmodifiedMarker::Disallowed);
+                         UnmodifiedMarker::Disallowed, "memory");
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
       con, props, logger,
@@ -355,7 +355,7 @@ TEST_CASE("Test reading CSV file with special null string", "[csv_processor]") {
       column_def{.name = "country", .type = duckdb::LogicalType::VARCHAR}};
   const std::string null_string = "special-null";
   IngestProperties props(test_file.string(), "", columns, null_string, 1,
-                         UnmodifiedMarker::Disallowed);
+                         UnmodifiedMarker::Disallowed, "memory");
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &view_name) {
@@ -392,7 +392,7 @@ TEST_CASE("Test reading CSV file with escaped string", "[csv_processor]") {
       .name = "escaped_string", .type = duckdb::LogicalType::VARCHAR}};
 
   IngestProperties props(test_file.string(), "", columns, "", 1,
-                         UnmodifiedMarker::Disallowed);
+                         UnmodifiedMarker::Disallowed, "memory");
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &view_name) {
@@ -420,7 +420,7 @@ TEST_CASE("Test reading CSV file with unmodified string setting",
       column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT}};
 
   IngestProperties props(test_file.string(), "", columns, "", 1,
-                         UnmodifiedMarker::Allowed);
+                         UnmodifiedMarker::Allowed, "memory");
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &view_name) {
@@ -480,7 +480,7 @@ TEST_CASE("Test reading zstd-compressed CSV files", "[csv_processor]") {
   duckdb::Connection con(db);
 
   IngestProperties props(test_file.string(), "", columns, "", 1,
-                         UnmodifiedMarker::Disallowed);
+                         UnmodifiedMarker::Disallowed, "memory");
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
       con, props, logger,
@@ -775,7 +775,7 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
   }
 
   IngestProperties props(test_file.string(), decryption_key, columns,
-                         null_string, 1, can_contain_unmodified);
+                         null_string, 1, can_contain_unmodified, "memory");
 
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(

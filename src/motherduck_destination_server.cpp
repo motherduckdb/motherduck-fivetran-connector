@@ -7,6 +7,7 @@
 #include "ingest_properties.hpp"
 #include "md_logging.hpp"
 #include "sql_generator.hpp"
+#include "temp_database.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -187,13 +188,15 @@ get_encryption_key(const std::string &filename,
 template <typename T>
 IngestProperties
 create_ingest_props(const std::string &filename, const T &request,
-                    const std::vector<column_def> &cols, int csv_block_size,
-                    UnmodifiedMarker allow_unmodified_string) {
+                    const std::vector<column_def> &cols,
+                    const int csv_block_size,
+                    const UnmodifiedMarker allow_unmodified_string,
+                    const std::string &temp_db_name) {
   const std::string decryption_key = get_encryption_key(
       filename, request->keys(), request->file_params().encryption());
   return IngestProperties(filename, decryption_key, cols,
                           request->file_params().null_string(), csv_block_size,
-                          allow_unmodified_string);
+                          allow_unmodified_string, temp_db_name);
 }
 
 grpc::Status DestinationSdkImpl::ConfigurationForm(
@@ -459,14 +462,16 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       throw std::invalid_argument("No primary keys found");
     }
 
+    TempDatabase temp_db(*con, logger);
+
     for (auto &filename : request->replace_files()) {
       logger->info("Processing replace file " + filename);
       const auto decryption_key = get_encryption_key(
           filename, request->keys(), request->file_params().encryption());
 
-      IngestProperties props(filename, decryption_key, cols,
-                             request->file_params().null_string(),
-                             csv_block_size, UnmodifiedMarker::Disallowed);
+      IngestProperties props(
+          filename, decryption_key, cols, request->file_params().null_string(),
+          csv_block_size, UnmodifiedMarker::Disallowed, temp_db.name);
 
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
@@ -474,13 +479,14 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                                   columns_regular);
           });
     }
+
     for (auto &filename : request->update_files()) {
       logger->info("Processing update file " + filename);
       auto decryption_key = get_encryption_key(
           filename, request->keys(), request->file_params().encryption());
-      IngestProperties props(filename, decryption_key, cols,
-                             request->file_params().null_string(),
-                             csv_block_size, UnmodifiedMarker::Allowed);
+      IngestProperties props(
+          filename, decryption_key, cols, request->file_params().null_string(),
+          csv_block_size, UnmodifiedMarker::Allowed, temp_db.name);
 
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
@@ -489,14 +495,15 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                 request->file_params().unmodified_string());
           });
     }
+
     for (auto &filename : request->delete_files()) {
       logger->info("Processing delete file " + filename);
       auto decryption_key = get_encryption_key(
           filename, request->keys(), request->file_params().encryption());
       std::vector<column_def> empty; // TODO: Why empty?
-      IngestProperties props(filename, decryption_key, empty,
-                             request->file_params().null_string(),
-                             csv_block_size, UnmodifiedMarker::Disallowed);
+      IngestProperties props(
+          filename, decryption_key, empty, request->file_params().null_string(),
+          csv_block_size, UnmodifiedMarker::Disallowed, temp_db.name);
 
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
@@ -524,6 +531,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     ::fivetran_sdk::v2::WriteBatchResponse *response) {
 
   auto logger = std::make_shared<mdlog::MdLog>();
+
   try {
     logger->info("Endpoint <WriteHistoryBatch>: started");
     auto schema_name = get_schema_name(request);
@@ -550,6 +558,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       throw std::invalid_argument("No primary keys found");
     }
 
+    TempDatabase temp_db(*con, logger);
+
     // delete overlapping records
     for (auto &filename : request->earliest_start_files()) {
       logger->info("Processing earliest start file " + filename);
@@ -563,27 +573,28 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       earliest_start_cols.push_back(
           {.name = "_fivetran_start",
            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ});
-      IngestProperties props =
-          create_ingest_props(filename, request, earliest_start_cols,
-                              csv_block_size, UnmodifiedMarker::Disallowed);
+      IngestProperties props = create_ingest_props(
+          filename, request, earliest_start_cols, csv_block_size,
+          UnmodifiedMarker::Disallowed, temp_db.name);
 
-      csv_processor::ProcessFile(*con, props, logger,
-                                 [&](const std::string &view_name) {
-                                   sql_generator->deactivate_historical_records(
-                                       *con, table_name, view_name, columns_pk);
-                                 });
+      csv_processor::ProcessFile(
+          *con, props, logger, [&](const std::string &view_name) {
+            sql_generator->deactivate_historical_records(
+                *con, table_name, view_name, columns_pk, temp_db.name);
+          });
     }
 
     for (auto &filename : request->update_files()) {
       logger->info("update file " + filename);
-      IngestProperties props = create_ingest_props(
-          filename, request, cols, csv_block_size, UnmodifiedMarker::Allowed);
+      IngestProperties props =
+          create_ingest_props(filename, request, cols, csv_block_size,
+                              UnmodifiedMarker::Allowed, temp_db.name);
 
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
             sql_generator->add_partial_historical_values(
                 *con, table_name, view_name, columns_pk, columns_regular,
-                request->file_params().unmodified_string());
+                request->file_params().unmodified_string(), temp_db.name);
           });
     }
 
@@ -592,7 +603,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       logger->info("replace/upsert file " + filename);
       IngestProperties props =
           create_ingest_props(filename, request, cols, csv_block_size,
-                              UnmodifiedMarker::Disallowed);
+                              UnmodifiedMarker::Disallowed, temp_db.name);
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
             sql_generator->upsert(*con, table_name, view_name, columns_pk,
@@ -604,7 +615,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       logger->info("delete file " + filename);
       IngestProperties props =
           create_ingest_props(filename, request, cols, csv_block_size,
-                              UnmodifiedMarker::Disallowed);
+                              UnmodifiedMarker::Disallowed, temp_db.name);
 
       csv_processor::ProcessFile(*con, props, logger,
                                  [&](const std::string &view_name) {
@@ -612,7 +623,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                                        *con, table_name, view_name, columns_pk);
                                  });
     }
-
   } catch (const std::exception &e) {
 
     auto const msg = "WriteBatch endpoint failed for schema <" +

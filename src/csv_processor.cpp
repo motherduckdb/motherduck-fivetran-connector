@@ -289,31 +289,23 @@ void ProcessFile(
     reset_file_cursor(temp_file.value().fd);
   }
 
-  auto compression = determine_compression_type(decrypted_file_path);
+  const auto compression = determine_compression_type(decrypted_file_path);
 
   // The last function call read four bytes. Reset to the beginning again.
   if (temp_file.has_value()) {
     reset_file_cursor(temp_file.value().fd);
   }
 
-  const auto con_id = con.context->GetConnectionId();
-  const auto temp_db_name = "temp_mem_db_" + std::to_string(con_id);
+  const std::string view_name =
+      "\"" + props.temp_db_name + R"("."main"."csv_view")";
 
-  // Run DETACH just to be extra sure
-  con.Query("DETACH DATABASE IF EXISTS " + temp_db_name);
-  const auto attach_res = con.Query("ATTACH ':memory:' AS " + temp_db_name);
-  if (attach_res->HasError()) {
-    attach_res->ThrowError("Failed to attach in-memory database \"" +
-                           temp_db_name + "\": ");
-  }
-
-  std::string view_name = "\"" + temp_db_name + R"("."main"."csv_view")";
-
+  // The temporary in-memory database is reused for multiple calls of
+  // ProcessFile, hence we need `CREATE OR REPLACE` here.
   const auto final_query =
-      "CREATE VIEW " + view_name + " AS " +
+      "CREATE OR REPLACE VIEW " + view_name + " AS " +
       generate_read_csv_query(decrypted_file_path, props, compression, logger);
   logger->info("    creating view: " + final_query);
-  auto create_view_res = con.Query(final_query);
+  const auto create_view_res = con.Query(final_query);
   if (create_view_res->HasError()) {
     create_view_res->ThrowError("Failed to create view for CSV file <" +
                                 props.filename + ">: ");
@@ -328,10 +320,5 @@ void ProcessFile(
 
   process_view(view_name);
   logger->info("    view processed for file " + props.filename);
-
-  logger->info("    detaching temp database " + temp_db_name + " for CSV view");
-
-  // Ignore errors during DETACH
-  con.Query("DETACH DATABASE IF EXISTS " + temp_db_name);
 }
 } // namespace csv_processor

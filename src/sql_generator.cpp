@@ -80,11 +80,19 @@ const std::string primary_key_join(std::vector<const column_def *> &columns_pk,
  * this will not be cleaned up manually just in case further update files need
  * to refer to the latest values.
  */
-void create_latest_active_records_table(
-    duckdb::Connection &con, const std::string &absolute_table_name) {
-  con.Query(
-      "CREATE TABLE IF NOT EXISTS latest_active_records AS (SELECT * FROM " +
-      absolute_table_name + ") LIMIT 0");
+std::string
+create_latest_active_records_table(duckdb::Connection &con,
+                                   const std::string &absolute_table_name,
+                                   const std::string &temp_db_name) {
+  const std::string table_name =
+      "\"" + temp_db_name + R"("."main"."latest_active_records")";
+  const auto create_res =
+      con.Query("CREATE TABLE IF NOT EXISTS " + table_name + " AS FROM " +
+                absolute_table_name + " WITH NO DATA");
+  if (create_res->HasError()) {
+    create_res->ThrowError("Could not create latest_active_records table: ");
+  }
+  return table_name;
 }
 
 MdSqlGenerator::MdSqlGenerator(std::shared_ptr<mdlog::MdLog> &logger_)
@@ -532,18 +540,20 @@ void MdSqlGenerator::update_values(
   }
 }
 
+// TODO: Remove unused arguments
 void MdSqlGenerator::add_partial_historical_values(
     duckdb::Connection &con, const table_def &table,
     const std::string &staging_table_name,
     std::vector<const column_def *> &columns_pk,
     std::vector<const column_def *> &columns_regular,
-    const std::string &unmodified_string) {
+    const std::string &unmodified_string, const std::string &temp_db_name) {
   std::ostringstream sql;
   auto absolute_table_name = table.to_escaped_string();
 
   // create empty table structure just in case there were not any earliest files
   // that would have created it
-  create_latest_active_records_table(con, absolute_table_name);
+  const auto lar_table = create_latest_active_records_table(
+      con, absolute_table_name, temp_db_name);
 
   sql << "INSERT INTO " << absolute_table_name << " ( SELECT ";
 
@@ -556,19 +566,18 @@ void MdSqlGenerator::add_partial_historical_values(
       ", ");
   sql << ",  ";
 
-  write_joined(sql, columns_regular,
-               [staging_table_name, absolute_table_name, unmodified_string](
-                   const std::string quoted_col, std::ostringstream &out) {
-                 out << "CASE WHEN " << staging_table_name << "." << quoted_col
-                     << " = "
-                     << KeywordHelper::WriteQuoted(unmodified_string, '\'')
-                     << " THEN lar." << quoted_col << " ELSE "
-                     << staging_table_name << "." << quoted_col << " END as "
-                     << quoted_col;
-               });
+  write_joined(
+      sql, columns_regular,
+      [staging_table_name, absolute_table_name, unmodified_string,
+       lar_table](const std::string quoted_col, std::ostringstream &out) {
+        out << "CASE WHEN " << staging_table_name << "." << quoted_col << " = "
+            << KeywordHelper::WriteQuoted(unmodified_string, '\'')
+            << " THEN lar." << quoted_col << " ELSE " << staging_table_name
+            << "." << quoted_col << " END as " << quoted_col;
+      });
 
-  sql << " FROM " << staging_table_name
-      << " LEFT JOIN latest_active_records lar ON "
+  sql << " FROM " << staging_table_name << " LEFT JOIN " << lar_table
+      << " AS lar ON "
       << primary_key_join(columns_pk, "lar", staging_table_name) << ")";
 
   auto query = sql.str();
@@ -611,7 +620,8 @@ void MdSqlGenerator::delete_rows(duckdb::Connection &con,
 void MdSqlGenerator::deactivate_historical_records(
     duckdb::Connection &con, const table_def &table,
     const std::string &staging_table_name,
-    std::vector<const column_def *> &columns_pk) {
+    std::vector<const column_def *> &columns_pk,
+    const std::string &temp_db_name) {
 
   const std::string absolute_table_name = table.to_escaped_string();
 
@@ -645,7 +655,8 @@ void MdSqlGenerator::deactivate_historical_records(
     }
   }
 
-  create_latest_active_records_table(con, absolute_table_name);
+  const auto lar_table = create_latest_active_records_table(
+      con, absolute_table_name, temp_db_name);
 
   {
     // store latest versions of records before they get deactivated
@@ -667,7 +678,8 @@ void MdSqlGenerator::deactivate_historical_records(
     sql << " INNER JOIN " << temp_earliest_table_name << " ON "
         << primary_key_join_condition << ")\n";
 
-    sql << "INSERT INTO latest_active_records SELECT * EXCLUDE (row_num) FROM "
+    sql << "INSERT INTO " << lar_table
+        << " SELECT * EXCLUDE (row_num) FROM "
            "ranked_records WHERE row_num = 1";
     auto query = sql.str();
     logger->info("stash latest records: " + query);
