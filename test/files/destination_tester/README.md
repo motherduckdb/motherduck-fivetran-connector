@@ -1,4 +1,4 @@
-Find the readme for the destination tester [here])(https://github.com/fivetran/fivetran_partner_sdk/tree/main/tools/destination-connector-tester).
+Find the readme for the destination tester [here](https://github.com/fivetran/fivetran_partner_sdk/tree/main/tools/destination-connector-tester).
 
 Get the Docker image for the destination tester: 
 ```

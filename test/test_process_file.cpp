@@ -95,7 +95,6 @@ TEST_CASE("Test reading CSV file with auto-detection of column types",
       });
 }
 
-// TODO: With not all columns specified to test auto-detection
 TEST_CASE("Test reading CSV file when not all column types specified",
           "[csv_processor]") {
   const fs::path test_file =
@@ -185,16 +184,6 @@ TEST_CASE("Test reading CSV file with quotes in filename", "[csv_processor]") {
                                CHECK(res->RowCount() == 1);
                              });
 }
-
-// TODO: Test cases:
-// - Test with different column data types (e.g. different int types). Also edge
-// cases like overflow
-// - various error paths
-// - CSV block size
-// - Pass encryption key when file not encrypted
-// - Different encoding
-// - Different newline
-// - Different delimiter??
 
 TEST_CASE("Test reading various CSV files", "[csv_processor]") {
   auto [filename, row_count, columns] = GENERATE(table<std::string, size_t,

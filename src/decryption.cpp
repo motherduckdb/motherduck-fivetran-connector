@@ -17,7 +17,7 @@ std::vector<unsigned char> decrypt_stream(std::istream &input,
   // IV vector."
 
   if (decryption_key == nullptr) {
-    throw std::invalid_argument("Decryption key is null for file " +
+    throw std::invalid_argument("No decryption key provided for file " +
                                 input_name);
   }
 

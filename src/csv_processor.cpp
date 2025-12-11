@@ -84,7 +84,7 @@ decrypt_file_into_memory(const std::string &encrypted_file_path,
   return temp_file;
 }
 
-void reset_file_cursor(int file_descriptor) {
+void reset_file_cursor(const int file_descriptor) {
   // For memory-backed files accessed via /dev/fd/<n>, the cursor is shared
   // across all file descriptors on macOS. Reset it to the beginning so that
   // subsequent reads start from the beginning.
@@ -247,7 +247,7 @@ generate_read_csv_query(const std::string &filepath,
   // - %Y-%m-%dT%H:%M:%S.%nZ (UTC time) and
   // - %Y-%m-%dT%H:%M:%S.%n (naive time)
   // We cannot specify both formats at the same time, hence DuckDB needs to
-  // auto-detect them. Times have millisecond precision if I'm not mistaken We
+  // auto-detect them. Times have millisecond precision if I'm not mistaken. We
   // here use nanoseconds Example: 2024-01-09T04:10:19.156057706Z
 
   add_type_options(query, props.columns, props.allow_unmodified_string, logger);
