@@ -1,19 +1,20 @@
 #include "motherduck_destination_server.hpp"
-#include "common.hpp"
-#include "csv_arrow_ingest.hpp"
+#include "csv_processor.hpp"
+#include "decryption.hpp"
 #include "destination_sdk.grpc.pb.h"
 #include "duckdb.hpp"
 #include "fivetran_duckdb_interop.hpp"
+#include "ingest_properties.hpp"
 #include "md_logging.hpp"
 #include "sql_generator.hpp"
+#include "temp_database.hpp"
 
+#include <filesystem>
 #include <fstream>
+#include <grpcpp/grpcpp.h>
 #include <memory>
 #include <mutex>
 #include <string>
-
-#include <arrow/c/bridge.h>
-#include <grpcpp/grpcpp.h>
 
 std::string
 find_property(const google::protobuf::Map<std::string, std::string> &config,
@@ -100,6 +101,13 @@ DestinationSdkImpl::get_duckdb(const std::string &md_token,
     }
     logger->info("    initialize_db: loaded core_functions");
 
+    const auto load_res2 = con.Query("LOAD parquet");
+    if (load_res2->HasError()) {
+      throw std::runtime_error("Could not LOAD parquet: " +
+                               load_res2->GetError());
+    }
+    logger->info("    initialize_db: loaded parquet");
+
     initial_md_token = md_token;
   };
 
@@ -139,6 +147,24 @@ std::unique_ptr<duckdb::Connection> DestinationSdkImpl::get_connection(
     logger->set_connection_id(client_ids_res->GetValue(1, 0).ToString());
   }
 
+  // Set default_collation to a connection-specific default value which
+  // overwrites any global setting and ensures that client-side planning and
+  // server-side execution use the same collation.
+  const auto set_collation_res = con->Query("SET default_collation=''");
+  if (set_collation_res->HasError()) {
+    throw std::runtime_error(
+        "    get_connection: Could not SET default_collation: " +
+        set_collation_res->GetError());
+  }
+
+  // Set the time zone to UTC. This can be removed once we do not load ICU
+  // anymore.
+  const auto set_timezone_res = con->Query("SET timezone='UTC'");
+  if (set_timezone_res->HasError()) {
+    throw std::runtime_error("    get_connection: Could not SET TimeZone: " +
+                             set_timezone_res->GetError());
+  }
+
   logger->info("    get_connection: all done, returning connection");
   return con;
 }
@@ -162,66 +188,15 @@ get_encryption_key(const std::string &filename,
 template <typename T>
 IngestProperties
 create_ingest_props(const std::string &filename, const T &request,
-                    const std::vector<std::string> &column_names,
-                    int csv_block_size) {
+                    const std::vector<column_def> &cols,
+                    const int csv_block_size,
+                    const UnmodifiedMarker allow_unmodified_string,
+                    const std::string &temp_db_name) {
   const std::string decryption_key = get_encryption_key(
       filename, request->keys(), request->file_params().encryption());
-  return IngestProperties(filename, decryption_key, column_names,
-                          request->file_params().null_string(), csv_block_size);
-}
-
-void validate_file(const std::string &file_path) {
-  std::ifstream fs(file_path.c_str());
-  if (fs.good()) {
-    fs.close();
-    return;
-  }
-  throw std::invalid_argument("File <" + file_path +
-                              "> is missing or inaccessible");
-}
-
-void process_file(
-    duckdb::Connection &con, const IngestProperties &props,
-    std::shared_ptr<mdlog::MdLog> &logger,
-    const std::function<void(const std::string &view_name)> &process_view) {
-
-  validate_file(props.filename);
-  logger->info("    validated file " + props.filename);
-  auto table = props.decryption_key.empty() ? read_unencrypted_csv(props)
-                                            : read_encrypted_csv(props);
-
-  auto batch_reader = std::make_shared<arrow::TableBatchReader>(*table);
-  ArrowArrayStream arrow_array_stream;
-  auto status =
-      arrow::ExportRecordBatchReader(batch_reader, &arrow_array_stream);
-  if (!status.ok()) {
-    throw std::runtime_error(
-        "Could not convert Arrow batch reader to an array stream for file <" +
-        props.filename + ">: " + status.message());
-  }
-  logger->info("    ArrowArrayStream created for file " + props.filename);
-
-  const auto con_id = con.context->GetConnectionId();
-  const auto temp_db_name = "temp_mem_db_" + std::to_string(con_id);
-
-  // Run DETACH just to be extra sure
-  con.Query("DETACH DATABASE IF EXISTS " + temp_db_name);
-  con.Query("ATTACH ':memory:' AS " + temp_db_name);
-  // Use local memory by default to prevent Arrow-based VIEW from traveling
-  // up to the cloud
-  con.Query("USE " + temp_db_name);
-
-  duckdb_connection c_con = reinterpret_cast<duckdb_connection>(&con);
-  duckdb_arrow_stream c_arrow_stream = (duckdb_arrow_stream)&arrow_array_stream;
-  logger->info("    duckdb_arrow_stream created for file " + props.filename);
-  duckdb_arrow_scan(c_con, "arrow_view", c_arrow_stream);
-  logger->info("    duckdb_arrow_scan completed for file " + props.filename);
-
-  process_view("\"" + temp_db_name + "\".\"arrow_view\"");
-  logger->info("    view processed for file " + props.filename);
-
-  con.Query("DETACH DATABASE IF EXISTS " + temp_db_name);
-  arrow_array_stream.release(&arrow_array_stream);
+  return IngestProperties(filename, decryption_key, cols,
+                          request->file_params().null_string(), csv_block_size,
+                          allow_unmodified_string, temp_db_name);
 }
 
 grpc::Status DestinationSdkImpl::ConfigurationForm(
@@ -487,53 +462,57 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       throw std::invalid_argument("No primary keys found");
     }
 
-    // update file fields have to be read in as strings to allow
-    // "unmodified_string"/"null_string". Replace (upsert) files have to be read
-    // in as strings to allow "null_string".
-    std::vector<std::string> column_names(cols.size());
-    std::transform(cols.begin(), cols.end(), column_names.begin(),
-                   [](const column_def &col) { return col.name; });
+    TempDatabase temp_db(*con, logger);
 
     for (auto &filename : request->replace_files()) {
       logger->info("Processing replace file " + filename);
       const auto decryption_key = get_encryption_key(
           filename, request->keys(), request->file_params().encryption());
 
-      IngestProperties props(filename, decryption_key, column_names,
-                             request->file_params().null_string(),
-                             csv_block_size);
+      IngestProperties props(
+          filename, decryption_key, cols, request->file_params().null_string(),
+          csv_block_size, UnmodifiedMarker::Disallowed, temp_db.name);
 
-      process_file(*con, props, logger, [&](const std::string &view_name) {
-        sql_generator->upsert(*con, table_name, view_name, columns_pk,
-                              columns_regular);
-      });
+      csv_processor::ProcessFile(
+          *con, props, logger, [&](const std::string &view_name) {
+            sql_generator->upsert(*con, table_name, view_name, columns_pk,
+                                  columns_regular);
+          });
     }
+
     for (auto &filename : request->update_files()) {
       logger->info("Processing update file " + filename);
       auto decryption_key = get_encryption_key(
           filename, request->keys(), request->file_params().encryption());
-      IngestProperties props(filename, decryption_key, column_names,
-                             request->file_params().null_string(),
-                             csv_block_size);
+      IngestProperties props(
+          filename, decryption_key, cols, request->file_params().null_string(),
+          csv_block_size, UnmodifiedMarker::Allowed, temp_db.name);
 
-      process_file(*con, props, logger, [&](const std::string &view_name) {
-        sql_generator->update_values(
-            *con, table_name, view_name, columns_pk, columns_regular,
-            request->file_params().unmodified_string());
-      });
+      csv_processor::ProcessFile(
+          *con, props, logger, [&](const std::string &view_name) {
+            sql_generator->update_values(
+                *con, table_name, view_name, columns_pk, columns_regular,
+                request->file_params().unmodified_string());
+          });
     }
+
     for (auto &filename : request->delete_files()) {
       logger->info("Processing delete file " + filename);
       auto decryption_key = get_encryption_key(
           filename, request->keys(), request->file_params().encryption());
-      std::vector<std::string> empty;
-      IngestProperties props(filename, decryption_key, empty,
+      std::vector<column_def> cols_to_read;
+      for (const auto &col : columns_pk) {
+        cols_to_read.push_back(*col);
+      }
+      IngestProperties props(filename, decryption_key, cols_to_read,
                              request->file_params().null_string(),
-                             csv_block_size);
+                             csv_block_size, UnmodifiedMarker::Disallowed,
+                             temp_db.name);
 
-      process_file(*con, props, logger, [&](const std::string &view_name) {
-        sql_generator->delete_rows(*con, table_name, view_name, columns_pk);
-      });
+      csv_processor::ProcessFile(
+          *con, props, logger, [&](const std::string &view_name) {
+            sql_generator->delete_rows(*con, table_name, view_name, columns_pk);
+          });
     }
 
   } catch (const std::exception &e) {
@@ -556,6 +535,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     ::fivetran_sdk::v2::WriteBatchResponse *response) {
 
   auto logger = std::make_shared<mdlog::MdLog>();
+
   try {
     logger->info("Endpoint <WriteHistoryBatch>: started");
     auto schema_name = get_schema_name(request);
@@ -582,59 +562,71 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       throw std::invalid_argument("No primary keys found");
     }
 
-    // update file fields have to be read in as strings to allow
-    // "unmodified_string"/"null_string". Replace (upsert) files have to be read
-    // in as strings to allow "null_string".
-    std::vector<std::string> column_names(cols.size());
-    std::transform(cols.begin(), cols.end(), column_names.begin(),
-                   [](const column_def &col) { return col.name; });
+    TempDatabase temp_db(*con, logger);
 
     // delete overlapping records
     for (auto &filename : request->earliest_start_files()) {
       logger->info("Processing earliest start file " + filename);
-      IngestProperties props =
-          create_ingest_props(filename, request, column_names, csv_block_size);
+      // "This file contains a single record for each primary key in the
+      // incoming batch, with the earliest _fivetran_start"
+      std::vector<column_def> earliest_start_cols;
+      earliest_start_cols.reserve(columns_pk.size() + 1);
+      for (const auto &col : columns_pk) {
+        earliest_start_cols.push_back(*col);
+      }
+      earliest_start_cols.push_back(
+          {.name = "_fivetran_start",
+           .type = duckdb::LogicalTypeId::TIMESTAMP_TZ});
+      IngestProperties props = create_ingest_props(
+          filename, request, earliest_start_cols, csv_block_size,
+          UnmodifiedMarker::Disallowed, temp_db.name);
 
-      process_file(*con, props, logger, [&](const std::string &view_name) {
-        sql_generator->deactivate_historical_records(*con, table_name,
-                                                     view_name, columns_pk);
-      });
+      csv_processor::ProcessFile(
+          *con, props, logger, [&](const std::string &view_name) {
+            sql_generator->deactivate_historical_records(
+                *con, table_name, view_name, columns_pk, temp_db.name);
+          });
     }
 
     for (auto &filename : request->update_files()) {
       logger->info("update file " + filename);
       IngestProperties props =
-          create_ingest_props(filename, request, column_names, csv_block_size);
+          create_ingest_props(filename, request, cols, csv_block_size,
+                              UnmodifiedMarker::Allowed, temp_db.name);
 
-      process_file(*con, props, logger, [&](const std::string &view_name) {
-        sql_generator->add_partial_historical_values(
-            *con, table_name, view_name, columns_pk, columns_regular,
-            request->file_params().unmodified_string());
-      });
+      csv_processor::ProcessFile(
+          *con, props, logger, [&](const std::string &view_name) {
+            sql_generator->add_partial_historical_values(
+                *con, table_name, view_name, columns_pk, columns_regular,
+                request->file_params().unmodified_string(), temp_db.name);
+          });
     }
 
     // upsert files
     for (auto &filename : request->replace_files()) {
       logger->info("replace/upsert file " + filename);
       IngestProperties props =
-          create_ingest_props(filename, request, column_names, csv_block_size);
-      process_file(*con, props, logger, [&](const std::string &view_name) {
-        sql_generator->upsert(*con, table_name, view_name, columns_pk,
-                              columns_regular);
-      });
+          create_ingest_props(filename, request, cols, csv_block_size,
+                              UnmodifiedMarker::Disallowed, temp_db.name);
+      csv_processor::ProcessFile(
+          *con, props, logger, [&](const std::string &view_name) {
+            sql_generator->upsert(*con, table_name, view_name, columns_pk,
+                                  columns_regular);
+          });
     }
 
     for (auto &filename : request->delete_files()) {
       logger->info("delete file " + filename);
       IngestProperties props =
-          create_ingest_props(filename, request, column_names, csv_block_size);
+          create_ingest_props(filename, request, cols, csv_block_size,
+                              UnmodifiedMarker::Disallowed, temp_db.name);
 
-      process_file(*con, props, logger, [&](const std::string &view_name) {
-        sql_generator->delete_historical_rows(*con, table_name, view_name,
-                                              columns_pk);
-      });
+      csv_processor::ProcessFile(*con, props, logger,
+                                 [&](const std::string &view_name) {
+                                   sql_generator->delete_historical_rows(
+                                       *con, table_name, view_name, columns_pk);
+                                 });
     }
-
   } catch (const std::exception &e) {
 
     auto const msg = "WriteBatch endpoint failed for schema <" +
