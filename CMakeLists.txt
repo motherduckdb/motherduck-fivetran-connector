@@ -4,26 +4,8 @@ project(MotherDuckFivetranDestination C CXX)
 include(FetchContent)
 
 set(CMAKE_CXX_STANDARD 20)
-
-# Debug Asan/Ubsan
-if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT DISABLE_SANITIZER)
-  if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang$")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize-blacklist=${CMAKE_CURRENT_LIST_DIR}/sanitizer-disallowed-entries.txt")
-    set(ENABLE_UBSAN TRUE)
-  else()
-    set(ENABLE_UBSAN FALSE)
-  endif()
-
-  add_compile_options("-fsanitize=address,undefined")
-  add_link_options("-fsanitize=address,undefined")
-  set(ENABLE_SANITIZER TRUE)
-else()
-  set(ENABLE_SANITIZER FALSE)
-  set(ENABLE_UBSAN FALSE)
-endif()
-
-message("-- ENABLE_SANITIZER=${ENABLE_SANITIZER}")
-message("-- ENABLE_UBSAN=${ENABLE_UBSAN}")
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+add_compile_options(-ftime-trace)
 
 if(DEFINED ENV{MD_FIVETRAN_DEPENDENCIES_DIR})
     set(DEPENDENCIES_DIR "$ENV{MD_FIVETRAN_DEPENDENCIES_DIR}")
@@ -62,6 +44,7 @@ add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)
 ### DuckDB dependency ###
 message(STATUS "Fetching DuckDB...")
 set(FETCHCONTENT_TRY_FIND_PACKAGE_MODE NEVER)
+set(FETCHCONTENT_QUIET OFF)
 FetchContent_Declare(
     duckdb
     GIT_REPOSITORY https://github.com/duckdb/duckdb.git
@@ -71,16 +54,17 @@ FetchContent_Declare(
 )
 
 set(ENABLE_EXTENSION_AUTOINSTALL OFF)
-set(ENABLE_EXTENSION_AUTOLOADING OFF)
+set(ENABLE_EXTENSION_AUTOLOADING ON)
 set(BUILD_SHELL OFF)
 set(BUILD_UNITTESTS OFF)
-# Usually, DuckDB always statically links core_functions and parquet from extension_config.cmake.
-# However, we don't need parquet, so we only statically link core_functions.
-set(DISABLE_BUILTIN_EXTENSIONS ON)
+set(BUILD_EXTENSIONS "parquet")
 # Set build type to RELEASE for DuckDB because we use the release build of the MotherDuck extension
 set(CMAKE_BUILD_TYPE_BACKUP ${CMAKE_BUILD_TYPE})
 set(CMAKE_BUILD_TYPE Release)
+set(ENABLE_SANITIZER OFF)
+set(ENABLE_UBSAN OFF)
 FetchContent_MakeAvailable(duckdb)
+target_compile_options(duckdb_static PRIVATE -fno-sanitize=address,undefined)
 # Restore build type
 set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE_BACKUP})
 
@@ -175,6 +159,11 @@ target_link_libraries(motherduck_destination_sources PUBLIC
 target_compile_definitions(motherduck_destination_sources PRIVATE
     GIT_COMMIT_SHA="${GIT_COMMIT_SHA}"
 )
+
+target_compile_options(motherduck_destination_sources PUBLIC
+        "-fsanitize=address,undefined"
+        "-fsanitize-blacklist=${CMAKE_CURRENT_LIST_DIR}/sanitizer-disallowed-entries.txt")
+target_link_options(motherduck_destination_sources PUBLIC "-fsanitize=address,undefined")
 
 add_executable(motherduck_destination src/motherduck_destination.cpp)
 target_link_libraries(

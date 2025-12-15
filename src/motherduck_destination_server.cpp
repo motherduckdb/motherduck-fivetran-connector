@@ -157,14 +157,6 @@ std::unique_ptr<duckdb::Connection> DestinationSdkImpl::get_connection(
         set_collation_res->GetError());
   }
 
-  // Set the time zone to UTC. This can be removed once we do not load ICU
-  // anymore.
-  const auto set_timezone_res = con->Query("SET timezone='UTC'");
-  if (set_timezone_res->HasError()) {
-    throw std::runtime_error("    get_connection: Could not SET TimeZone: " +
-                             set_timezone_res->GetError());
-  }
-
   logger->info("    get_connection: all done, returning connection");
   return con;
 }
