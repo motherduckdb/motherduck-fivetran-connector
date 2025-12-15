@@ -234,7 +234,7 @@ generate_read_csv_query(const std::string &filepath,
   // We have to at some point handle up to eight parallel WriteBatch requests
   // that all allocate a buffer of buffer_size. The container memory limit is 1
   // (or 2?) GiB. Assuming the worst case that all eight requests arrive at the
-  // same time, we need to limit the buffer size accordingly. Ww don't want to
+  // same time, we need to limit the buffer size accordingly. We don't want to
   // come too close to the limit, so we pick 512 MiB here.
   constexpr std::uint32_t max_parallel_requests = 8;
   constexpr std::uint32_t buffer_size =
