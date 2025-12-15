@@ -964,6 +964,7 @@ TEST_CASE("Table with huge VARCHAR value", "[integration][write-batch]") {
 
     ::fivetran_sdk::v2::WriteBatchResponse response;
     auto status = service.WriteBatch(nullptr, &request, &response);
+
     REQUIRE(status.ok());
     // The error message is always shown for sniffer errors, but is the best
     // indication of this error.
