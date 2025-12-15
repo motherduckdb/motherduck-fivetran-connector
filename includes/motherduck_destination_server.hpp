@@ -76,6 +76,6 @@ private:
                              const std::string &db_name,
                              const std::shared_ptr<mdlog::MdLog> &logger);
   std::unique_ptr<duckdb::Connection> get_connection(
-      const google::protobuf::Map<std::string, std::string> &request_config,
+      const std::string &motherduck_auth_token,
       const std::string &db_name, const std::shared_ptr<mdlog::MdLog> &logger);
 };

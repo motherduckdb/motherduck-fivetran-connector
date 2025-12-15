@@ -123,13 +123,11 @@ DestinationSdkImpl::get_duckdb(const std::string &md_token,
 
 // todo: rename to init_connection
 std::unique_ptr<duckdb::Connection> DestinationSdkImpl::get_connection(
-    const google::protobuf::Map<std::string, std::string> &request_config,
+    const std::string &motherduck_auth_token,
     const std::string &db_name, const std::shared_ptr<mdlog::MdLog> &logger) {
   logger->info("    get_connection: start");
-  const std::string md_token = find_property(request_config, MD_PROP_TOKEN);
-  logger->info("    get_connection: got token");
 
-  duckdb::DuckDB &db = get_duckdb(md_token, db_name, logger);
+  duckdb::DuckDB &db = get_duckdb(motherduck_auth_token, db_name, logger);
   auto con = std::make_unique<duckdb::Connection>(db);
   logger->info("    get_connection: created connection");
 
@@ -266,8 +264,11 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     logger->info("Endpoint <DescribeTable>: started");
     std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
+    std::string md_token =
+        find_property(request->configuration(), MD_PROP_TOKEN);
     std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
+        get_connection(md_token, db_name, logger);
+    logger->set_connection(con.get());
     logger->info("Endpoint <DescribeTable>: got connection");
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
     table_def table_name{db_name, get_schema_name(request),
@@ -329,8 +330,11 @@ grpc::Status DestinationSdkImpl::CreateTable(
 
     std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
+    std::string md_token =
+        find_property(request->configuration(), MD_PROP_TOKEN);
     std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
+        get_connection(md_token, db_name, logger);
+    logger->set_connection(con.get());
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
     const table_def table{db_name, schema_name, request->table().name()};
 
@@ -362,11 +366,14 @@ grpc::Status DestinationSdkImpl::AlterTable(
     logger->info("Endpoint <AlterTable>: started");
     std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
+    std::string md_token =
+        find_property(request->configuration(), MD_PROP_TOKEN);
     table_def table_name{db_name, get_schema_name(request),
                          request->table().name()};
 
     std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
+        get_connection(md_token, db_name, logger);
+    logger->set_connection(con.get());
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
     sql_generator->alter_table(*con, table_name,
@@ -394,6 +401,8 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
     logger->info("Endpoint <Truncate>: started");
     std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
+    std::string md_token =
+        find_property(request->configuration(), MD_PROP_TOKEN);
     table_def table_name{db_name, get_schema_name(request),
                          get_table_name(request)};
     if (request->synced_column().empty()) {
@@ -401,7 +410,8 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
     }
 
     std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
+        get_connection(md_token, db_name, logger);
+    logger->set_connection(con.get());
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
     if (sql_generator->table_exists(*con, table_name)) {
@@ -442,6 +452,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     const std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
+    const std::string md_token =
+        find_property(request->configuration(), MD_PROP_TOKEN);
     const int csv_block_size = find_optional_property(
         request->configuration(), MD_PROP_CSV_BLOCK_SIZE, 1,
         [&](const std::string &val) -> int { return std::stoi(val); });
@@ -450,7 +462,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     table_def table_name{db_name, get_schema_name(request),
                          request->table().name()};
     std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
+        get_connection(md_token, db_name, logger);
+    logger->set_connection(con.get());
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
     const auto cols = get_duckdb_columns(request->table().columns());
@@ -542,6 +555,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     const std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
+    const std::string md_token =
+        find_property(request->configuration(), MD_PROP_TOKEN);
     const int csv_block_size = find_optional_property(
         request->configuration(), MD_PROP_CSV_BLOCK_SIZE, 1,
         [&](const std::string &val) -> int { return std::stoi(val); });
@@ -550,7 +565,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     table_def table_name{db_name, get_schema_name(request),
                          request->table().name()};
     std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
+        get_connection(md_token, db_name, logger);
+    logger->set_connection(con.get());
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
     const auto cols = get_duckdb_columns(request->table().columns());
@@ -660,10 +676,12 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
 
   auto logger = std::make_shared<mdlog::MdLog>();
   std::string db_name;
+  std::string md_token;
   try {
     db_name = find_property(request->configuration(), MD_PROP_DATABASE);
+    md_token = find_property(request->configuration(), MD_PROP_TOKEN);
   } catch (const std::exception &e) {
-    auto msg = "Test endpoint failed; could not retrieve database name: " +
+    auto msg = "Test endpoint failed; could not retrieve database name or token: " +
                std::string(e.what());
     logger->severe(msg);
     response->set_success(false);
@@ -673,7 +691,8 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
 
   try {
     std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
+        get_connection(md_token, db_name, logger);
+    logger->set_connection(con.get());
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
     if (request->name() == CONFIG_TEST_NAME_AUTHENTICATE) {
