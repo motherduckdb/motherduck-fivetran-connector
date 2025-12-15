@@ -12,6 +12,8 @@
 #include <tuple>
 #include <vector>
 
+#include "catch2/matchers/catch_matchers_string.hpp"
+
 namespace fs = std::filesystem;
 using namespace test::constants;
 
@@ -30,7 +32,7 @@ TEST_CASE("Test can read simple CSV file", "[csv_processor]") {
       column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
       column_def{.name = "name", .type = duckdb::LogicalType::VARCHAR},
       column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT}};
-  IngestProperties props(test_file.string(), "", columns, "", 1,
+  IngestProperties props(test_file.string(), "", columns, "",
                          UnmodifiedMarker::Disallowed, TEMP_DB);
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
@@ -76,7 +78,7 @@ TEST_CASE("Test reading CSV file with auto-detection of column types",
       column_def{.name = "id", .type = duckdb::LogicalType::INVALID},
       column_def{.name = "name", .type = duckdb::LogicalType::INVALID},
       column_def{.name = "age", .type = duckdb::LogicalType::INVALID}};
-  IngestProperties props(test_file.string(), "", columns, "", 1,
+  IngestProperties props(test_file.string(), "", columns, "",
                          UnmodifiedMarker::Disallowed, TEMP_DB);
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
@@ -112,7 +114,7 @@ TEST_CASE("Test reading CSV file when not all column types specified",
       // Column "age" is not added to column_types
       column_def{.name = "age", .type = duckdb::LogicalType::INVALID},
   };
-  IngestProperties props(test_file.string(), "", columns, "", 1,
+  IngestProperties props(test_file.string(), "", columns, "",
                          UnmodifiedMarker::Disallowed, TEMP_DB);
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
@@ -145,7 +147,7 @@ TEST_CASE("Test reading CSV file with columns out of order",
       column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT},
       column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
   };
-  IngestProperties props(test_file.string(), "", columns, "", 1,
+  IngestProperties props(test_file.string(), "", columns, "",
                          UnmodifiedMarker::Disallowed, TEMP_DB);
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
@@ -173,7 +175,7 @@ TEST_CASE("Test reading CSV file with quotes in filename", "[csv_processor]") {
 
   std::vector<column_def> columns{
       column_def{.name = "a", .type = duckdb::LogicalType::SMALLINT}};
-  IngestProperties props(test_file.string(), "", columns, "", 1,
+  IngestProperties props(test_file.string(), "", columns, "",
                          UnmodifiedMarker::Disallowed, TEMP_DB);
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(con, props, logger,
@@ -317,7 +319,7 @@ TEST_CASE("Test reading various CSV files", "[csv_processor]") {
   duckdb::DuckDB db(nullptr);
   duckdb::Connection con(db);
 
-  IngestProperties props(test_file.string(), "", columns, "", 1,
+  IngestProperties props(test_file.string(), "", columns, "",
                          UnmodifiedMarker::Disallowed, TEMP_DB);
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
@@ -345,7 +347,7 @@ TEST_CASE("Test reading CSV file with special null string", "[csv_processor]") {
       column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT},
       column_def{.name = "country", .type = duckdb::LogicalType::VARCHAR}};
   const std::string null_string = "special-null";
-  IngestProperties props(test_file.string(), "", columns, null_string, 1,
+  IngestProperties props(test_file.string(), "", columns, null_string,
                          UnmodifiedMarker::Disallowed, TEMP_DB);
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
@@ -382,7 +384,7 @@ TEST_CASE("Test reading CSV file with escaped string", "[csv_processor]") {
   const std::vector<column_def> columns{column_def{
       .name = "escaped_string", .type = duckdb::LogicalType::VARCHAR}};
 
-  IngestProperties props(test_file.string(), "", columns, "", 1,
+  IngestProperties props(test_file.string(), "", columns, "",
                          UnmodifiedMarker::Disallowed, TEMP_DB);
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
@@ -410,7 +412,7 @@ TEST_CASE("Test reading CSV file with unmodified string setting",
       column_def{.name = "name", .type = duckdb::LogicalType::VARCHAR},
       column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT}};
 
-  IngestProperties props(test_file.string(), "", columns, "", 1,
+  IngestProperties props(test_file.string(), "", columns, "",
                          UnmodifiedMarker::Allowed, TEMP_DB);
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
@@ -470,7 +472,7 @@ TEST_CASE("Test reading zstd-compressed CSV files", "[csv_processor]") {
   duckdb::DuckDB db(nullptr);
   duckdb::Connection con(db);
 
-  IngestProperties props(test_file.string(), "", columns, "", 1,
+  IngestProperties props(test_file.string(), "", columns, "",
                          UnmodifiedMarker::Disallowed, TEMP_DB);
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
@@ -766,7 +768,7 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
   }
 
   IngestProperties props(test_file.string(), decryption_key, columns,
-                         null_string, 1, can_contain_unmodified, TEMP_DB);
+                         null_string, can_contain_unmodified, TEMP_DB);
 
   auto logger = std::make_shared<mdlog::MdLog>();
   csv_processor::ProcessFile(
@@ -779,4 +781,57 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
         REQUIRE_FALSE(res->HasError());
         REQUIRE(res->RowCount() == expected_row_count);
       });
+}
+
+TEST_CASE("Test reading a CSV file with a huge VARCHAR column",
+          "[csv_processor]") {
+  SECTION("Fails to read a CSV file with a 20 MB VARCHAR column") {
+    const fs::path test_file = fs::path(TEST_RESOURCES_DIR) / "compressed_csv" /
+                               "lorem_ipsum_20mb.csv.zst";
+    REQUIRE(fs::exists(test_file));
+
+    duckdb::DuckDB db(nullptr);
+    duckdb::Connection con(db);
+
+    const std::vector<column_def> columns{
+        column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
+        column_def{.name = "text", .type = duckdb::LogicalType::VARCHAR}};
+
+    IngestProperties props(test_file.string(), "", columns, "",
+                           UnmodifiedMarker::Disallowed, "memory");
+    auto logger = std::make_shared<mdlog::MdLog>();
+    REQUIRE_THROWS_WITH(csv_processor::ProcessFile(con, props, logger,
+                                                   [](const std::string &) {
+                                                     // Do nothing
+                                                   }),
+                        Catch::Matchers::ContainsSubstring(
+                            "Maximum line size of 16777216 bytes exceeded"));
+  }
+
+  SECTION("Reading a CSV file with a 15 MB VARCHAR column succeeds") {
+    const fs::path test_file = fs::path(TEST_RESOURCES_DIR) / "compressed_csv" /
+                               "lorem_ipsum_15mb.csv.zst";
+    REQUIRE(fs::exists(test_file));
+
+    duckdb::DuckDB db(nullptr);
+    duckdb::Connection con(db);
+
+    const std::vector<column_def> columns{
+        column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
+        column_def{.name = "text", .type = duckdb::LogicalType::VARCHAR}};
+
+    IngestProperties props(test_file.string(), "", columns, "",
+                           UnmodifiedMarker::Disallowed, "memory");
+    auto logger = std::make_shared<mdlog::MdLog>();
+    csv_processor::ProcessFile(
+        con, props, logger, [&con](const std::string &view_name) {
+          const auto res = con.Query("FROM " + view_name);
+          if (res->HasError()) {
+            FAIL("Failed to execute \"FROM csv_view\" query: " +
+                 res->GetError());
+          }
+          REQUIRE_FALSE(res->HasError());
+          REQUIRE(res->RowCount() == 1);
+        });
+  }
 }

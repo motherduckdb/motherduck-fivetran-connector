@@ -59,18 +59,13 @@ TEST_CASE("ConfigurationForm", "[integration][config]") {
   auto status = service.ConfigurationForm(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
 
-  REQUIRE(response.fields_size() == 3);
+  REQUIRE(response.fields_size() == 2);
   REQUIRE(response.fields(0).name() == "motherduck_token");
   REQUIRE(response.fields(1).name() == "motherduck_database");
-  REQUIRE(response.fields(2).name() == "motherduck_csv_block_size");
-  REQUIRE(response.fields(2).label() ==
-          "Maximum individual value size, in megabytes (default 1 MB)");
 
-  REQUIRE(response.tests_size() == 2);
-  REQUIRE(response.tests(0).name() == CONFIG_TEST_NAME_CSV_BLOCK_SIZE);
-  REQUIRE(response.tests(0).label() == "Maximum value size is a valid number");
-  REQUIRE(response.tests(1).name() == CONFIG_TEST_NAME_AUTHENTICATE);
-  REQUIRE(response.tests(1).label() == "Test Authentication");
+  REQUIRE(response.tests_size() == 1);
+  REQUIRE(response.tests(0).name() == CONFIG_TEST_NAME_AUTHENTICATE);
+  REQUIRE(response.tests(0).label() == "Test Authentication");
 }
 
 TEST_CASE("DescribeTable fails when database missing",
@@ -269,65 +264,6 @@ TEST_CASE(
 
   auto status = service.Test(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
-}
-
-TEST_CASE("Test endpoint block size validation succeeds when optional block "
-          "size is missing",
-          "[integration][configtest]") {
-  DestinationSdkImpl service;
-
-  ::fivetran_sdk::v2::TestRequest request;
-  request.set_name(CONFIG_TEST_NAME_CSV_BLOCK_SIZE);
-  (*request.mutable_configuration())["motherduck_database"] =
-      TEST_DATABASE_NAME;
-  (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-
-  ::fivetran_sdk::v2::TestResponse response;
-
-  auto status = service.Test(nullptr, &request, &response);
-  REQUIRE_NO_FAIL(status);
-}
-
-TEST_CASE("Test endpoint block size validation succeeds when optional block "
-          "size is a valid number",
-          "[integration][configtest]") {
-  DestinationSdkImpl service;
-
-  ::fivetran_sdk::v2::TestRequest request;
-  request.set_name(CONFIG_TEST_NAME_CSV_BLOCK_SIZE);
-  (*request.mutable_configuration())["motherduck_database"] =
-      TEST_DATABASE_NAME;
-  (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-  (*request.mutable_configuration())[MD_PROP_CSV_BLOCK_SIZE] = "5";
-
-  ::fivetran_sdk::v2::TestResponse response;
-
-  auto status = service.Test(nullptr, &request, &response);
-  REQUIRE_NO_FAIL(status);
-}
-
-TEST_CASE("Test endpoint block size validation fails when optional block size "
-          "is not a valid number",
-          "[integration][configtest]") {
-  DestinationSdkImpl service;
-
-  ::fivetran_sdk::v2::TestRequest request;
-  request.set_name(CONFIG_TEST_NAME_CSV_BLOCK_SIZE);
-  (*request.mutable_configuration())["motherduck_database"] =
-      TEST_DATABASE_NAME;
-  (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-  (*request.mutable_configuration())[MD_PROP_CSV_BLOCK_SIZE] = "lizard";
-
-  ::fivetran_sdk::v2::TestResponse response;
-
-  auto status = service.Test(nullptr, &request, &response);
-  REQUIRE_NO_FAIL(status);
-  REQUIRE_FALSE(response.success());
-
-  auto expected_message =
-      "Test <test_csv_block_size> for database <" + TEST_DATABASE_NAME +
-      "> failed: Maximum individual value size must be numeric if present";
-  REQUIRE(response.failure() == expected_message);
 }
 
 template <typename T>
@@ -927,121 +863,6 @@ void make_book_table(T &request, const std::string &table_name) {
   auto col1 = request.mutable_table()->add_columns();
   col1->set_name("text");
   col1->set_type(::fivetran_sdk::v2::DataType::STRING);
-}
-
-TEST_CASE("Table with huge VARCHAR value", "[integration][write-batch]") {
-  DestinationSdkImpl service;
-
-  const std::string table_name =
-      "huge_book_" + std::to_string(Catch::rngSeed());
-
-  {
-    // Create Table
-    ::fivetran_sdk::v2::CreateTableRequest request;
-    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-    (*request.mutable_configuration())["motherduck_database"] =
-        TEST_DATABASE_NAME;
-    make_book_table(request, table_name);
-    ::fivetran_sdk::v2::CreateTableResponse response;
-    auto status = service.CreateTable(nullptr, &request, &response);
-    REQUIRE_NO_FAIL(status);
-  }
-
-  auto con = get_test_connection(MD_TOKEN);
-  {
-    // fail when default block_size is used
-    ::fivetran_sdk::v2::WriteBatchRequest request;
-    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-    (*request.mutable_configuration())["motherduck_database"] =
-        TEST_DATABASE_NAME;
-
-    make_book_table(request, table_name);
-
-    const std::string filename = "huge_books.csv";
-    const std::string filepath = TEST_RESOURCES_DIR + filename;
-
-    request.add_replace_files(filepath);
-
-    ::fivetran_sdk::v2::WriteBatchResponse response;
-    auto status = service.WriteBatch(nullptr, &request, &response);
-    REQUIRE_FALSE(status.ok());
-    // The error message is always shown for sniffer errors, but is the best
-    // indication of this error.
-    CHECK_THAT(status.error_message(),
-               Catch::Matchers::ContainsSubstring(
-                   "Maximum line size of 2000000 bytes exceeded"));
-  }
-
-  {
-    // check no rows were inserted
-    auto res = con->Query("SELECT count(*) FROM " + table_name);
-    REQUIRE_NO_FAIL(res);
-    REQUIRE(res->RowCount() == 1);
-    REQUIRE(res->GetValue(0, 0) == 0);
-  }
-
-  {
-    // Empty string for the block size falls back to default value,
-    // but sync fails due to default block size being too small.
-    ::fivetran_sdk::v2::WriteBatchRequest request;
-    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-    (*request.mutable_configuration())["motherduck_database"] =
-        TEST_DATABASE_NAME;
-    (*request.mutable_configuration())[MD_PROP_CSV_BLOCK_SIZE] = "";
-
-    make_book_table(request, table_name);
-
-    const std::string filename = "huge_books.csv";
-    const std::string filepath = TEST_RESOURCES_DIR + filename;
-
-    request.add_replace_files(filepath);
-
-    ::fivetran_sdk::v2::WriteBatchResponse response;
-    auto status = service.WriteBatch(nullptr, &request, &response);
-    REQUIRE_FALSE(status.ok());
-    CHECK_THAT(status.error_message(),
-               Catch::Matchers::ContainsSubstring(
-                   "Maximum line size of 2000000 bytes exceeded"));
-  }
-
-  {
-    // check no rows were inserted
-    auto res = con->Query("SELECT count(*) FROM " + table_name);
-    REQUIRE_NO_FAIL(res);
-    REQUIRE(res->RowCount() == 1);
-    REQUIRE(res->GetValue(0, 0) == 0);
-  }
-
-  {
-    // succeed when block_size is increased
-    ::fivetran_sdk::v2::WriteBatchRequest request;
-    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-    (*request.mutable_configuration())["motherduck_database"] =
-        TEST_DATABASE_NAME;
-    constexpr int max_line_size_mb = 3;
-    // buffer_size = max_line_size * 16
-    (*request.mutable_configuration())[MD_PROP_CSV_BLOCK_SIZE] =
-        std::to_string(max_line_size_mb * 16);
-
-    make_book_table(request, table_name);
-
-    const std::string filename = "huge_books.csv";
-    const std::string filepath = TEST_RESOURCES_DIR + filename;
-
-    request.add_replace_files(filepath);
-
-    ::fivetran_sdk::v2::WriteBatchResponse response;
-    auto status = service.WriteBatch(nullptr, &request, &response);
-    REQUIRE_NO_FAIL(status);
-  }
-
-  {
-    // check one row was inserted
-    auto res = con->Query("SELECT count(*) FROM " + table_name);
-    REQUIRE_NO_FAIL(res);
-    REQUIRE(res->RowCount() == 1);
-    REQUIRE(res->GetValue(0, 0) == 1);
-  }
 }
 
 TEST_CASE("Parallel WriteBatch requests", "[integration][write-batch]") {

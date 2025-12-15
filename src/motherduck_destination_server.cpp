@@ -189,13 +189,12 @@ template <typename T>
 IngestProperties
 create_ingest_props(const std::string &filename, const T &request,
                     const std::vector<column_def> &cols,
-                    const int csv_block_size,
                     const UnmodifiedMarker allow_unmodified_string,
                     const std::string &temp_db_name) {
   const std::string decryption_key = get_encryption_key(
       filename, request->keys(), request->file_params().encryption());
   return IngestProperties(filename, decryption_key, cols,
-                          request->file_params().null_string(), csv_block_size,
+                          request->file_params().null_string(),
                           allow_unmodified_string, temp_db_name);
 }
 
@@ -225,22 +224,6 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
   db_field.set_required(true);
 
   response->add_fields()->CopyFrom(db_field);
-
-  fivetran_sdk::v2::FormField block_size_field;
-  block_size_field.set_name(MD_PROP_CSV_BLOCK_SIZE);
-  block_size_field.set_label(
-      "Maximum individual value size, in megabytes (default 1 MB)");
-  block_size_field.set_description(
-      "This field limits the maximum length of a single field value coming "
-      "from the input source."
-      "Must be a valid numeric value");
-  block_size_field.set_text_field(fivetran_sdk::v2::PlainText);
-  block_size_field.set_required(false);
-  response->add_fields()->CopyFrom(block_size_field);
-
-  auto block_size_test = response->add_tests();
-  block_size_test->set_name(CONFIG_TEST_NAME_CSV_BLOCK_SIZE);
-  block_size_test->set_label("Maximum value size is a valid number");
 
   auto connection_test = response->add_tests();
   connection_test->set_name(CONFIG_TEST_NAME_AUTHENTICATE);
@@ -442,10 +425,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     const std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
-    const int csv_block_size = find_optional_property(
-        request->configuration(), MD_PROP_CSV_BLOCK_SIZE, 1,
-        [&](const std::string &val) -> int { return std::stoi(val); });
-    logger->info("CSV BLOCK SIZE = " + std::to_string(csv_block_size));
 
     table_def table_name{db_name, get_schema_name(request),
                          request->table().name()};
@@ -469,9 +448,9 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       const auto decryption_key = get_encryption_key(
           filename, request->keys(), request->file_params().encryption());
 
-      IngestProperties props(
-          filename, decryption_key, cols, request->file_params().null_string(),
-          csv_block_size, UnmodifiedMarker::Disallowed, temp_db.name);
+      IngestProperties props(filename, decryption_key, cols,
+                             request->file_params().null_string(),
+                             UnmodifiedMarker::Disallowed, temp_db.name);
 
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
@@ -484,9 +463,9 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       logger->info("Processing update file " + filename);
       auto decryption_key = get_encryption_key(
           filename, request->keys(), request->file_params().encryption());
-      IngestProperties props(
-          filename, decryption_key, cols, request->file_params().null_string(),
-          csv_block_size, UnmodifiedMarker::Allowed, temp_db.name);
+      IngestProperties props(filename, decryption_key, cols,
+                             request->file_params().null_string(),
+                             UnmodifiedMarker::Allowed, temp_db.name);
 
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
@@ -506,8 +485,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       }
       IngestProperties props(filename, decryption_key, cols_to_read,
                              request->file_params().null_string(),
-                             csv_block_size, UnmodifiedMarker::Disallowed,
-                             temp_db.name);
+                             UnmodifiedMarker::Disallowed, temp_db.name);
 
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
@@ -542,10 +520,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     const std::string db_name =
         find_property(request->configuration(), MD_PROP_DATABASE);
-    const int csv_block_size = find_optional_property(
-        request->configuration(), MD_PROP_CSV_BLOCK_SIZE, 1,
-        [&](const std::string &val) -> int { return std::stoi(val); });
-    logger->info("CSV BLOCK SIZE = " + std::to_string(csv_block_size));
 
     table_def table_name{db_name, get_schema_name(request),
                          request->table().name()};
@@ -577,9 +551,9 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       earliest_start_cols.push_back(
           {.name = "_fivetran_start",
            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ});
-      IngestProperties props = create_ingest_props(
-          filename, request, earliest_start_cols, csv_block_size,
-          UnmodifiedMarker::Disallowed, temp_db.name);
+      IngestProperties props =
+          create_ingest_props(filename, request, earliest_start_cols,
+                              UnmodifiedMarker::Disallowed, temp_db.name);
 
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
@@ -590,9 +564,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     for (auto &filename : request->update_files()) {
       logger->info("update file " + filename);
-      IngestProperties props =
-          create_ingest_props(filename, request, cols, csv_block_size,
-                              UnmodifiedMarker::Allowed, temp_db.name);
+      IngestProperties props = create_ingest_props(
+          filename, request, cols, UnmodifiedMarker::Allowed, temp_db.name);
 
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
@@ -605,9 +578,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     // upsert files
     for (auto &filename : request->replace_files()) {
       logger->info("replace/upsert file " + filename);
-      IngestProperties props =
-          create_ingest_props(filename, request, cols, csv_block_size,
-                              UnmodifiedMarker::Disallowed, temp_db.name);
+      IngestProperties props = create_ingest_props(
+          filename, request, cols, UnmodifiedMarker::Disallowed, temp_db.name);
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
             sql_generator->upsert(*con, table_name, view_name, columns_pk,
@@ -617,9 +589,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     for (auto &filename : request->delete_files()) {
       logger->info("delete file " + filename);
-      IngestProperties props =
-          create_ingest_props(filename, request, cols, csv_block_size,
-                              UnmodifiedMarker::Disallowed, temp_db.name);
+      IngestProperties props = create_ingest_props(
+          filename, request, cols, UnmodifiedMarker::Disallowed, temp_db.name);
 
       csv_processor::ProcessFile(*con, props, logger,
                                  [&](const std::string &view_name) {
@@ -639,18 +610,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
   logger->info("Endpoint <WriteHistoryBatch>: ended");
   return ::grpc::Status(::grpc::StatusCode::OK, "");
-}
-
-void check_csv_block_size_is_numeric(
-    const google::protobuf::Map<std::string, std::string> &config) {
-  auto token_it = config.find(MD_PROP_CSV_BLOCK_SIZE);
-
-  // missing token is fine but non-numeric token isn't
-  if (token_it != config.end() &&
-      token_it->second.find_first_not_of("0123456789") != std::string::npos) {
-    throw std::runtime_error(
-        "Maximum individual value size must be numeric if present");
-  }
 }
 
 grpc::Status
@@ -678,8 +637,6 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
 
     if (request->name() == CONFIG_TEST_NAME_AUTHENTICATE) {
       sql_generator->check_connection(*con);
-    } else if (request->name() == CONFIG_TEST_NAME_CSV_BLOCK_SIZE) {
-      check_csv_block_size_is_numeric(request->configuration());
     } else {
       auto const msg = "Unknown test requested: <" + request->name() + ">";
       logger->severe(msg);
