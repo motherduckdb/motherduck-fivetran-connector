@@ -230,15 +230,20 @@ generate_read_csv_query(const std::string &filepath,
           << duckdb::KeywordHelper::WriteQuoted(props.null_value, '\'');
     query << ", allow_quoted_nulls=true";
   }
-  // TODO: Change configuration form to talk about max_line_size instead of
-  // block size. The block size maps roughly to the buffer size in DuckDB. The
-  // buffer size is 16*max_line_size by default. The default max_line_size is
-  // 2MB, hence the default buffer size is 32MB.
-  constexpr std::uint32_t default_csv_buffer_size = 32;
-  if (props.csv_block_size_mb > default_csv_buffer_size) {
-    const auto max_line_size = props.csv_block_size_mb * 1000 * 1000 / 16;
-    query << ", max_line_size=" << std::to_string(max_line_size);
-  }
+
+  // We have to at some point handle up to eight parallel WriteBatch requests
+  // that all allocate a buffer of buffer_size. The container memory limit is 1
+  // (or 2?) GiB. Assuming the worst case that all eight requests arrive at the
+  // same time, we need to limit the buffer size accordingly. Ww don't want to
+  // come too close to the limit, so we pick 512 MiB here.
+  constexpr std::uint32_t max_parallel_requests = 8;
+  constexpr std::uint32_t buffer_size =
+      512 * 1024 * 1024 / max_parallel_requests; // 64 MiB
+  // We want at least four lines to always fit into the buffer (see
+  // duckdb::CSVBuffer::MIN_ROWS_PER_BUFFER).
+  constexpr std::uint32_t max_line_size = buffer_size / 4; // 16 MiB
+  query << ", max_line_size=" << std::to_string(max_line_size);
+  query << ", buffer_size=" << std::to_string(buffer_size);
   query << ", compression="
         << (compression == CompressionType::ZSTD ? "'zstd'" : "'none'");
 
