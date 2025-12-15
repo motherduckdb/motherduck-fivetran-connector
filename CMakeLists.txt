@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.10...3.20)
 project(MotherDuckFivetranDestination C CXX)
 
+set(CMAKE_CXX_STANDARD 20)
+
 # Debug Asan/Ubsan
 if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT DISABLE_SANITIZER)
   if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang$")
@@ -143,7 +145,6 @@ target_include_directories(duckdb_static INTERFACE "${CMAKE_CURRENT_LIST_DIR}/li
 
 ### MotherDuck destination connector ###
 add_library(motherduck_destination_sources STATIC
-        src/csv_arrow_ingest.cpp
         src/csv_processor.cpp
         src/decryption.cpp
         src/extension_helper.cpp
@@ -153,8 +154,10 @@ add_library(motherduck_destination_sources STATIC
         src/md_error.cpp
         src/motherduck_destination_server.cpp
         src/openssl_helper.cpp
+        src/schema_types.cpp
         src/sql_generator.cpp
         src/stacktrace.cpp
+        src/temp_database.cpp
 )
 
 target_include_directories(motherduck_destination_sources PUBLIC

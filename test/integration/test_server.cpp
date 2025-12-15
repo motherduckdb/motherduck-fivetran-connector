@@ -929,7 +929,7 @@ void make_book_table(T &request, const std::string &table_name) {
   col1->set_type(::fivetran_sdk::v2::DataType::STRING);
 }
 
-TEST_CASE("Table with large json row", "[integration][write-batch]") {
+TEST_CASE("Table with huge VARCHAR value", "[integration][write-batch]") {
   DestinationSdkImpl service;
 
   const std::string table_name =
@@ -964,11 +964,12 @@ TEST_CASE("Table with large json row", "[integration][write-batch]") {
 
     ::fivetran_sdk::v2::WriteBatchResponse response;
     auto status = service.WriteBatch(nullptr, &request, &response);
-
     REQUIRE(status.ok());
+    // The error message is always shown for sniffer errors, but is the best
+    // indication of this error.
     REQUIRE(status.error_message().empty());
     CHECK_THAT(response.task().message(),
-     Catch::Matchers::ContainsSubstring("straddling object straddles two block boundaries"));
+     Catch::Matchers::ContainsSubstring("Maximum line size of 2000000 bytes exceeded"));
   }
 
   {
@@ -1000,8 +1001,7 @@ TEST_CASE("Table with large json row", "[integration][write-batch]") {
     REQUIRE(status.ok());
     REQUIRE(status.error_message().empty());
     CHECK_THAT(response.task().message(),
-     Catch::Matchers::ContainsSubstring(
-         "straddling object straddles two block boundaries"));
+     Catch::Matchers::ContainsSubstring("Maximum line size of 2000000 bytes exceeded"));
   }
 
   {
@@ -1018,7 +1018,10 @@ TEST_CASE("Table with large json row", "[integration][write-batch]") {
     (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
     (*request.mutable_configuration())["motherduck_database"] =
         TEST_DATABASE_NAME;
-    (*request.mutable_configuration())[MD_PROP_CSV_BLOCK_SIZE] = "2";
+    constexpr int max_line_size_mb = 3;
+    // buffer_size = max_line_size * 16
+    (*request.mutable_configuration())[MD_PROP_CSV_BLOCK_SIZE] =
+        std::to_string(max_line_size_mb * 16);
 
     make_book_table(request, table_name);
 
@@ -1206,10 +1209,9 @@ TEST_CASE("reading inaccessible or nonexistent files fails") {
 
   ::fivetran_sdk::v2::WriteBatchResponse response;
   auto status = service.WriteBatch(nullptr, &request, &response);
-  const auto expected =
-      "WriteBatch endpoint failed for schema <>, table <unused_table>:File <" +
-      bad_file_name + "> is missing or inaccessible";
-  REQUIRE_FAIL(status, expected);
+  REQUIRE_FALSE(status.ok());
+  REQUIRE_THAT(status.error_message(),
+               Catch::Matchers::ContainsSubstring("No such file or directory"));
 }
 
 TEST_CASE("Test all types with create and describe table") {
@@ -1807,7 +1809,7 @@ TEST_CASE("WriteBatchHistory with update files", "[integration][write-batch]") {
         "SELECT id, title, magic_number, _fivetran_deleted, _fivetran_synced, "
         "_fivetran_active, _fivetran_start, _fivetran_end"
         " FROM " +
-        table_name + " ORDER BY id");
+        table_name + " ORDER BY id, _fivetran_start");
     REQUIRE_NO_FAIL(res);
 
     REQUIRE(res->RowCount() == 3);

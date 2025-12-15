@@ -16,6 +16,11 @@ std::vector<unsigned char> decrypt_stream(std::istream &input,
   // WriteBatchRequest#keys field. First 16 bytes of each batch file hold the
   // IV vector."
 
+  if (decryption_key == nullptr) {
+    throw std::invalid_argument("No decryption key provided for file " +
+                                input_name);
+  }
+
   constexpr int iv_length = 16;
   std::vector<unsigned char> iv(iv_length);
   input.read(reinterpret_cast<char *>(iv.data()), iv_length);
