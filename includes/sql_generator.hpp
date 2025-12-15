@@ -1,22 +1,12 @@
 #pragma once
 
 #include "duckdb.hpp"
-
-struct column_def {
-  std::string name;
-  duckdb::LogicalTypeId type;
-  bool primary_key;
-  unsigned int width;
-  unsigned int scale;
-};
-
-struct table_def {
-  std::string db_name;
-  std::string schema_name;
-  std::string table_name;
-
-  std::string to_escaped_string() const;
-};
+#include "schema_types.hpp"
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <vector>
 
 void find_primary_keys(
     const std::vector<column_def> &cols,
@@ -63,7 +53,7 @@ public:
       const std::string &staging_table_name,
       std::vector<const column_def *> &columns_pk,
       std::vector<const column_def *> &columns_regular,
-      const std::string &unmodified_string);
+      const std::string &unmodified_string, const std::string &temp_db_name);
 
   void truncate_table(duckdb::Connection &con, const table_def &table,
                       const std::string &synced_column,
@@ -77,7 +67,8 @@ public:
   void
   deactivate_historical_records(duckdb::Connection &con, const table_def &table,
                                 const std::string &staging_table_name,
-                                std::vector<const column_def *> &columns_pk);
+                                std::vector<const column_def *> &columns_pk,
+                                const std::string &temp_db_name);
 
   void delete_historical_rows(duckdb::Connection &con, const table_def &table,
                               const std::string &staging_table_name,

@@ -7,14 +7,18 @@ endif()
 find_package(Catch2 3 REQUIRED PATHS ${DEPENDENCIES_DIR}/catch2 NO_DEFAULT_PATH)
 
 add_executable(integration_tests
+        constants.cpp
+        test_main.cpp
         test_decryption.cpp
+        test_memory_backed_file.cpp
+        test_process_file.cpp
         integration/test_server.cpp
 )
 target_compile_definitions(integration_tests PRIVATE
         TEST_RESOURCES_LOCATION=${CMAKE_CURRENT_LIST_DIR}/files/
 )
 target_link_libraries(integration_tests PRIVATE
-        Catch2::Catch2WithMain
+        Catch2::Catch2
         motherduck_destination_sources
 )
 
