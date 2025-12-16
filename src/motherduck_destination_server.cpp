@@ -473,7 +473,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
             sql_generator->upsert(*con, table_name, view_name, columns_pk,
-                                  columns_regular, nullptr);
+                                  columns_regular);
           });
     }
 
