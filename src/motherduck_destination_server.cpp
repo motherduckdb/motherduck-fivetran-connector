@@ -546,8 +546,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       throw std::invalid_argument("No primary keys found");
     }
 
-    const column_def *fivetran_start_column = find_fivetran_start_column(cols);
-
     TempDatabase temp_db(*con, logger);
 
     // delete overlapping records
@@ -594,7 +592,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
             sql_generator->upsert(*con, table_name, view_name, columns_pk,
-                                  columns_regular, fivetran_start_column);
+                                  columns_regular, find_fivetran_start_column(cols));
           });
     }
 
