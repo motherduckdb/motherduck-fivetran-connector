@@ -36,6 +36,24 @@ int find_optional_property(
              : parse(token_it->second);
 }
 
+const column_def *
+find_fivetran_start_column(const std::vector<column_def> &cols) {
+  const column_def *fivetran_start_column = nullptr;
+
+  for (const auto &col : cols) {
+    if (col.name == "_fivetran_start") {
+      fivetran_start_column = &col;
+      break;
+    }
+  }
+
+  if (fivetran_start_column == nullptr) {
+    throw std::invalid_argument("No _fivetran_start column found");
+  }
+
+  return fivetran_start_column;
+}
+
 template <typename T> std::string get_schema_name(const T *request) {
   std::string schema_name = request->schema_name();
   if (schema_name.empty()) {
@@ -535,16 +553,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       throw std::invalid_argument("No primary keys found");
     }
 
-    const column_def *fivetran_start_column;
-    for (auto &col : cols) {
-      if (col.name == "_fivetran_start") {
-        fivetran_start_column = &col;
-      }
-    }
-
-    if (fivetran_start_column == nullptr) {
-      throw std::invalid_argument("No _fivetran_start column found");
-    }
+    const column_def *fivetran_start_column = find_fivetran_start_column(cols);
 
     TempDatabase temp_db(*con, logger);
 
