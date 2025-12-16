@@ -16,6 +16,11 @@
 #include <string>
 #include <unistd.h>
 
+#ifdef __linux__
+#include <fcntl.h>
+#include <sys/mman.h>
+#endif
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -80,6 +85,15 @@ decrypt_file_into_memory(const std::string &encrypted_file_path,
                             "Failed to close ofstream for path <" +
                                 decrypted_file_path + ">");
   }
+
+#ifdef __linux__
+  // Seal the memfd to prevent further writes and further sealing
+  if (fcntl(temp_file.fd, F_ADD_SEALS, F_SEAL_WRITE | F_SEAL_SEAL) == -1) {
+    close(temp_file.fd);
+    throw std::system_error(errno, std::generic_category(),
+                            "Failed to seal memfd");
+  }
+#endif
 
   return temp_file;
 }
