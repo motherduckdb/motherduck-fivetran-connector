@@ -1,41 +1,40 @@
 #include "configuration_tester.hpp"
 
 #include "duckdb.hpp"
-#include <map>
+#include <array>
 #include <string>
+#include <unordered_map>
 
 namespace configuration_tester {
     namespace {
-        TestResult run_csv_block_size_test(const std::map<std::string, std::string> &config) {
-            // TODO: MD_PROP_CSV_BLOCK_SIZE
-            const auto block_size_it = config.find("motherduck_csv_block_size");
-
-            // CSV block size is optional, hence missing is fine
-            if (block_size_it == config.cend()) {
-                return TestResult(true);
-            }
-
-            // CSV block size must be numeric
-            // TODO: Add bounds check
-            // TODO: Add greater 0 check
-            if (block_size_it->second.find_first_not_of("0123456789") != std::string::npos) {
-                TestResult(false, "Maximum individual value size must be numeric if present");
-            }
-
-            return TestResult(true);
-        }
-
+        /// Checks that a simple connection to MotherDuck can be established and that the user is authenticated
         TestResult run_authentication_test(duckdb::Connection &con) {
+            // This fetches the welcome pack
             const auto result = con.Query("PRAGMA MD_VERSION");
             if (result->HasError()) {
-                return TestResult(false, result->GetError());
+                // Errors thrown in the initialization function are very verbose. Example:
+                // Invalid Input Error: Initialization function "motherduck_duckdb_cpp_init" from file "motherduck.duckdb_extension" threw an exception: "Failed to attach 'my_db': no database/share named 'my_db' found".
+                // We are only interested in the last part.
+                const std::string original_error = result->GetError();
+                const std::string boilerplate = "Initialization function \"motherduck_duckdb_cpp_init\" from file";
+                if (original_error.find(boilerplate) != std::string::npos) {
+                    const std::string search_string = "threw an exception: ";
+                    auto pos = original_error.find(search_string);
+                    if (pos != std::string::npos) {
+                        const std::string error_message = original_error.substr(pos + search_string.length());
+                        return TestResult(false, "Connection to MotherDuck failed: " + error_message);
+                    }
+                }
+
+                return TestResult(false, original_error);
             }
             return TestResult(true);
         }
 
-        TestResult run_database_type_test(duckdb::Connection &con, const std::map<std::string, std::string> &config) {
-            // TODO: MD_PROP_DATABASE
-            auto db_name_it = config.find("motherduck_database");
+        /// Checks that the selected database can be written to
+        TestResult run_database_type_test(duckdb::Connection &con, const std::unordered_map<std::string, std::string> &config) {
+            // TODO: Use MD_PROP_DATABASE
+            const auto db_name_it = config.find("motherduck_database");
             if (db_name_it == config.cend()) {
                 return TestResult(false, "Database name not provided in configuration");
             }
@@ -64,6 +63,7 @@ namespace configuration_tester {
                 // TODO: Would it be more user-friendly if we just created the database if it does not exist?
                 return TestResult(false, "Database \"" + db_name + "\" not found. Please create the database first in your MotherDuck account.");
             }
+
             if (materialized_result->RowCount() > 1) {
                 // This should not be possible with MotherDuck
                 return TestResult(false, "Multiple databases found with alias \"" + db_name + "\"");
@@ -84,25 +84,83 @@ namespace configuration_tester {
             return TestResult(true);
         }
 
-        bool run_write_rollback_test() {
-            return true;
+        /// Checks that the account/authentication token has write permissions
+        TestResult run_write_rollback_test(duckdb::Connection &con, const std::unordered_map<std::string, std::string> &config) {
+            // Test write permissions by creating a temp table, inserting data, and
+            // rolling back
+            const auto begin_res = con->Query("BEGIN TRANSACTION");
+            if (begin_res->HasError()) {
+                return TestResult(false, "Could not begin transaction: " +
+                                         begin_res->GetError());
+            }
+
+            const auto db_name_it = config.find("motherduck_database");
+            if (db_name_it == config.cend()) {
+                return TestResult(false, "Database name not provided in configuration");
+            }
+            const std::string db_name = db_name_it->second;
+
+            const auto table_name = duckdb::KeywordHelper::WriteQuoted(db_name, '"') + R"("main"."__fivetran_test_table_$cmFuZG9t$")";
+            const auto create_res =
+                con->Query("CREATE TABLE " + table_name + " (id INTEGER, "
+                           "value VARCHAR)");
+            if (create_res->HasError()) {
+                return TestResult(false, "Could not create table \"" + table_name + "\": " +
+                                         create_res->GetError());
+            }
+
+            const auto insert_res = con->Query(
+                "INSERT INTO " + table_name + " VALUES (1, 'test_value')");
+            if (insert_res->HasError()) {
+                return TestResult(false, "Could not insert into table \"" + table_name + "\": " +
+                                         insert_res->GetError());
+            }
+
+            const auto select_res =
+                con->Query("SELECT COUNT(*) FROM _fivetran_test_table");
+            if (select_res->HasError()) {
+                return TestResult(false, "Could not read from table \"" + table_name + "\": " +
+                                         select_res->GetError());
+            }
+
+            const auto row_count = select_res->GetValue(0, 0).GetValue<int64_t>();
+            if (row_count != 1) {
+                return TestResult(false,
+                    "Expected 1 row in test table, got " +
+                    std::to_string(row_count));
+            }
+
+            const auto rollback_res = con->Query("ROLLBACK");
+            if (rollback_res->HasError()) {
+                return TestResult(false, "Could not rollback transaction for table \"" + table_name + "\": " +
+                                         rollback_res->GetError());
+            }
+
+            return TestResult(true);
         }
+    } // namespace
+
+    std::array<TestCase, 3> get_test_cases() {
+        return {TestCase {CONFIG_TEST_NAME_AUTHENTICATE,
+                    "Test Authentication"},
+                TestCase{CONFIG_TEST_NAME_DATABASE_TYPE,
+                         "Verify database is writeable and not a MotherDuck share"},
+                TestCase{CONFIG_TEST_NAME_WRITE_ROLLBACK,
+                         "Test write permissions"}
+        };
     }
 
-    bool run_test(const std::string &test_name,
+    TestResult run_test(const std::string &test_name,
                   duckdb::Connection &con,
-                  const std::map<std::string, std::string> &config) {
+                  const std::unordered_map<std::string, std::string> &config) {
         if (test_name == CONFIG_TEST_NAME_AUTHENTICATE) {
             return run_authentication_test(con);
         }
-        if (test_name == CONFIG_TEST_NAME_CSV_BLOCK_SIZE) {
-            return run_csv_block_size_test(config);
-        }
         if (test_name == CONFIG_TEST_NAME_DATABASE_TYPE) {
-            return run_database_type_test();
+            return run_database_type_test(con, config);
         }
         if (test_name == CONFIG_TEST_NAME_WRITE_ROLLBACK) {
-            return run_write_rollback_test();
+            return run_write_rollback_test(con, config);
         }
         throw std::runtime_error("Unknown test name: " + test_name);
     }

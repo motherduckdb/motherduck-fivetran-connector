@@ -1,4 +1,5 @@
 #include "motherduck_destination_server.hpp"
+#include "configuration_tester.hpp"
 #include "csv_processor.hpp"
 #include "decryption.hpp"
 #include "destination_sdk.grpc.pb.h"
@@ -213,7 +214,6 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
       "Please get your authentication token from app.motherduck.com");
   token_field.set_text_field(fivetran_sdk::v2::Password);
   token_field.set_required(true);
-
   response->add_fields()->CopyFrom(token_field);
 
   fivetran_sdk::v2::FormField db_field;
@@ -222,20 +222,13 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
   db_field.set_description("The database to work in. The database must already exist and be writable.");
   db_field.set_text_field(fivetran_sdk::v2::PlainText);
   db_field.set_required(true);
-
   response->add_fields()->CopyFrom(db_field);
 
-  auto connection_test = response->add_tests();
-  connection_test->set_name(CONFIG_TEST_NAME_AUTHENTICATE);
-  connection_test->set_label("Test Authentication");
-
-  auto database_type_test = response->add_tests();
-  database_type_test->set_name(CONFIG_TEST_NAME_DATABASE_TYPE);
-  database_type_test->set_label("Verify database is not a MotherDuck share");
-
-  auto write_rollback_test = response->add_tests();
-  write_rollback_test->set_name(CONFIG_TEST_NAME_WRITE_ROLLBACK);
-  write_rollback_test->set_label("Test write permissions");
+  for (const auto &test_case : configuration_tester::get_test_cases()) {
+    auto connection_test = response->add_tests();
+    connection_test->set_name(test_case.name);
+    connection_test->set_label(test_case.description);
+  }
 
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
@@ -625,7 +618,25 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
                          const ::fivetran_sdk::v2::TestRequest *request,
                          ::fivetran_sdk::v2::TestResponse *response) {
 
+
+
   auto logger = std::make_shared<mdlog::MdLog>();
+
+  try {
+    std::unique_ptr<duckdb::Connection> con =
+        get_connection(request->configuration(), db_name, logger);
+
+    auto test_result = configuration_tester::run_test(request->name(), *con, logger);
+    if (test_result.success) {
+      logger->info("Test <" + request->name() + "> succeeded");
+      response->set_success(true);
+    } else {
+      logger->severe("Test <" + request->name() + "> failed: " + test_result.message);
+      response->set_failure(test_result.message);
+    }
+  }
+
+
   std::string db_name;
   try {
     db_name = find_property(request->configuration(), MD_PROP_DATABASE);
@@ -645,57 +656,19 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
     // If instead the tests would write the errors, we could show nicer messages to the user.
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name, logger);
-    auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
+
+    auto test_result = configuration_tester::run_test(request->name(), *con, logger);
+    if (test_result.success) {
+      response->set_success(true);
+    } else {
+      logger->severe("Test <" + request->name() + "> for database <" +
+                     db_name + "> failed: " + test_result.message);
+      response->set_failure(test_result.message);
+    }
 
     if (request->name() == CONFIG_TEST_NAME_AUTHENTICATE) {
       sql_generator->check_connection(*con);
     } else if (request->name() == CONFIG_TEST_NAME_WRITE_ROLLBACK) {
-      // Test write permissions by creating a temp table, inserting data, and
-      // rolling back
-      auto begin_res = con->Query("BEGIN TRANSACTION");
-      if (begin_res->HasError()) {
-        throw std::runtime_error("Could not begin transaction: " +
-                                 begin_res->GetError());
-      }
-
-      auto create_res =
-          con->Query("CREATE TEMPORARY TABLE _fivetran_test_table (id INTEGER, "
-                     "value VARCHAR)");
-      if (create_res->HasError()) {
-        con->Query("ROLLBACK");
-        throw std::runtime_error("Could not create temporary table: " +
-                                 create_res->GetError());
-      }
-
-      auto insert_res = con->Query(
-          "INSERT INTO _fivetran_test_table VALUES (1, 'test_value')");
-      if (insert_res->HasError()) {
-        con->Query("ROLLBACK");
-        throw std::runtime_error("Could not insert into temporary table: " +
-                                 insert_res->GetError());
-      }
-
-      auto select_res =
-          con->Query("SELECT COUNT(*) FROM _fivetran_test_table");
-      if (select_res->HasError()) {
-        con->Query("ROLLBACK");
-        throw std::runtime_error("Could not select from temporary table: " +
-                                 select_res->GetError());
-      }
-
-      auto row_count = select_res->GetValue(0, 0).GetValue<int64_t>();
-      if (row_count != 1) {
-        con->Query("ROLLBACK");
-        throw std::runtime_error(
-            "Expected 1 row in temporary table, got " +
-            std::to_string(row_count));
-      }
-
-      auto rollback_res = con->Query("ROLLBACK");
-      if (rollback_res->HasError()) {
-        throw std::runtime_error("Could not rollback transaction: " +
-                                 rollback_res->GetError());
-      }
 
       logger->info("Successfully tested write permissions with rollback");
     } else {
