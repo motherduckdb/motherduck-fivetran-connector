@@ -38,20 +38,13 @@ int find_optional_property(
 
 const column_def *
 find_fivetran_start_column(const std::vector<column_def> &cols) {
-  const column_def *fivetran_start_column = nullptr;
-
   for (const auto &col : cols) {
     if (col.name == "_fivetran_start") {
-      fivetran_start_column = &col;
-      break;
+      return &col;
     }
   }
 
-  if (fivetran_start_column == nullptr) {
-    throw std::invalid_argument("No _fivetran_start column found");
-  }
-
-  return fivetran_start_column;
+  throw std::invalid_argument("No _fivetran_start column found");
 }
 
 template <typename T> std::string get_schema_name(const T *request) {
