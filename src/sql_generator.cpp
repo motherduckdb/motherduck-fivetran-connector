@@ -471,16 +471,27 @@ void MdSqlGenerator::upsert(
     duckdb::Connection &con, const table_def &table,
     const std::string &staging_table_name,
     const std::vector<const column_def *> &columns_pk,
-    const std::vector<const column_def *> &columns_regular) {
+    const std::vector<const column_def *> &columns_regular,
+    const column_def *fivetran_start_column) {
 
   auto full_column_list = make_full_column_list(columns_pk, columns_regular);
   const std::string absolute_table_name = table.to_escaped_string();
   std::ostringstream sql;
   sql << "INSERT INTO " << absolute_table_name << "(" << full_column_list
       << ") SELECT " << full_column_list << " FROM " << staging_table_name;
+
   if (!columns_pk.empty()) {
+    std::vector<const column_def *> conflict_cols;
+    for (auto pk_col : columns_pk) {
+      conflict_cols.push_back(pk_col);
+    }
+
+    if (fivetran_start_column != nullptr) {
+      conflict_cols.push_back(fivetran_start_column);
+    }
+
     sql << " ON CONFLICT (";
-    write_joined(sql, columns_pk, print_column);
+    write_joined(sql, conflict_cols, print_column);
     sql << " ) DO UPDATE SET ";
 
     write_joined(sql, columns_regular,

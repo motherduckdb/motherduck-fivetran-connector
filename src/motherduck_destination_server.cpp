@@ -455,7 +455,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
             sql_generator->upsert(*con, table_name, view_name, columns_pk,
-                                  columns_regular);
+                                  columns_regular, nullptr);
           });
     }
 
@@ -531,9 +531,19 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     std::vector<const column_def *> columns_pk;
     std::vector<const column_def *> columns_regular;
     find_primary_keys(cols, columns_pk, &columns_regular, "_fivetran_start");
-
     if (columns_pk.empty()) {
       throw std::invalid_argument("No primary keys found");
+    }
+
+    const column_def *fivetran_start_column;
+    for (auto &col : cols) {
+      if (col.name == "_fivetran_start") {
+        fivetran_start_column = &col;
+      }
+    }
+
+    if (fivetran_start_column == nullptr) {
+      throw std::invalid_argument("No _fivetran_start column found");
     }
 
     TempDatabase temp_db(*con, logger);
@@ -554,7 +564,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       IngestProperties props =
           create_ingest_props(filename, request, earliest_start_cols,
                               UnmodifiedMarker::Disallowed, temp_db.name);
-
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
             sql_generator->deactivate_historical_records(
@@ -583,7 +592,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
             sql_generator->upsert(*con, table_name, view_name, columns_pk,
-                                  columns_regular);
+                                  columns_regular, fivetran_start_column);
           });
     }
 
@@ -600,7 +609,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     }
   } catch (const std::exception &e) {
 
-    auto const msg = "WriteBatch endpoint failed for schema <" +
+    auto const msg = "WriteHistoryBatch endpoint failed for schema <" +
                      request->schema_name() + ">, table <" +
                      request->table().name() + ">:" + std::string(e.what());
     logger->severe(msg);
