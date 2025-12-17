@@ -8,7 +8,7 @@ docker tag us-docker.pkg.dev/build-286712/public-docker-us/sdktesters-v2/sdk-tes
 
 Find the latest tag [here](https://console.cloud.google.com/artifacts/docker/build-286712/us/public-docker-us/sdktesters-v2%2Fsdk-tester). 
 
-The MotherDuck destination server has te be up and running:
+The MotherDuck destination server has to be up and running:
 
 ```shell
 make build_connector
