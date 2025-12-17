@@ -1796,7 +1796,7 @@ TEST_CASE("WriteBatchHistory upsert and delete", "[integration][write-batch]") {
 
     request.add_earliest_start_files(TEST_RESOURCES_DIR +
                                      "books_history_earliest.csv");
-    request.add_update_files(TEST_RESOURCES_DIR + "books_history_upsert.csv");
+    request.add_replace_files(TEST_RESOURCES_DIR + "books_history_upsert.csv");
 
     ::fivetran_sdk::v2::WriteBatchResponse response;
     auto status = service.WriteHistoryBatch(nullptr, &request, &response);
