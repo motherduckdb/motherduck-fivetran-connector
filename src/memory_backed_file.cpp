@@ -51,7 +51,8 @@ MemoryBackedFile MemoryBackedFile::Create(const size_t file_size) {
   if (ftruncate(fd, file_size) == -1) {
     close(fd);
     throw std::system_error(errno, std::generic_category(),
-                            "Failed to set size of temp memfile " + tmp_path);
+                            "Failed to truncate temp memfile with fd=" +
+                                std::to_string(fd));
   }
 
   return MemoryBackedFile(fd);
