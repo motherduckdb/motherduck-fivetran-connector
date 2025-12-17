@@ -13,8 +13,8 @@
 MemoryBackedFile MemoryBackedFile::Create(const size_t file_size) {
 #ifdef __linux__
   // memfd_create creates an anonymous RAM-backed file
-  // MFD_CLOEXEC closes the file descriptor on execve which prevents from
-  // leaking it to child processes.
+  // MFD_CLOEXEC closes the file descriptor on execve which prevents it from
+  // leaking to child processes.
   const int fd =
       memfd_create("fivetran_decrypted.csv", MFD_CLOEXEC | MFD_ALLOW_SEALING);
   if (fd == -1) {
