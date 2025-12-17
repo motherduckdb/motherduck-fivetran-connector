@@ -352,7 +352,8 @@ void define_transaction_test_table(T &request, const std::string &table_name) {
 }
 
 template <typename T>
-void define_transaction_history_test_table(T &request, const std::string &table_name) {
+void define_transaction_history_test_table(T &request,
+                                           const std::string &table_name) {
   request.mutable_table()->set_name(table_name);
   auto col1 = request.mutable_table()->add_columns();
   col1->set_name("amount");
@@ -1926,13 +1927,15 @@ TEST_CASE("WriteBatchHistory upsert and delete", "[integration][write-batch]") {
   }
 }
 
-
-TEST_CASE("WriteBatchHistory transaction history upsert", "[integration][write-batch]") {
+TEST_CASE("WriteBatchHistory transaction history upsert",
+          "[integration][write-batch]") {
   DestinationSdkImpl service;
 
   // Schema will be main
-  const std::string transaction_table_name = "transaction" + std::to_string(Catch::rngSeed());
-  const std::string transaction_history_table_name = "transaction_history" + std::to_string(Catch::rngSeed());
+  const std::string transaction_table_name =
+      "transaction" + std::to_string(Catch::rngSeed());
+  const std::string transaction_history_table_name =
+      "transaction_history" + std::to_string(Catch::rngSeed());
 
   {
     // Create Tables
@@ -1946,7 +1949,8 @@ TEST_CASE("WriteBatchHistory transaction history upsert", "[integration][write-b
 
     ::fivetran_sdk::v2::CreateTableRequest request2;
     set_up_plain_write_request(request2, MD_TOKEN, TEST_DATABASE_NAME);
-    define_transaction_history_test_table(request2, transaction_history_table_name);
+    define_transaction_history_test_table(request2,
+                                          transaction_history_table_name);
 
     ::fivetran_sdk::v2::CreateTableResponse response2;
     auto status2 = service.CreateTable(nullptr, &request2, &response2);
@@ -1957,11 +1961,14 @@ TEST_CASE("WriteBatchHistory transaction history upsert", "[integration][write-b
     // WriteBatch
     ::fivetran_sdk::v2::WriteBatchRequest request;
     set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
-    request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
-    request.mutable_file_params()->set_null_string("null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP");
+    request.mutable_file_params()->set_unmodified_string(
+        "unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
+    request.mutable_file_params()->set_null_string(
+        "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP");
 
     define_transaction_test_table(request, transaction_table_name);
-    request.add_replace_files(TEST_RESOURCES_DIR + "transaction_input_5_upsert.csv");
+    request.add_replace_files(TEST_RESOURCES_DIR +
+                              "transaction_input_5_upsert.csv");
 
     ::fivetran_sdk::v2::WriteBatchResponse response;
     auto status = service.WriteBatch(nullptr, &request, &response);
@@ -1974,12 +1981,17 @@ TEST_CASE("WriteBatchHistory transaction history upsert", "[integration][write-b
     // because there is no data), plus upsert file
     ::fivetran_sdk::v2::WriteHistoryBatchRequest request;
     set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
-    request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
-    request.mutable_file_params()->set_null_string("null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP");
+    request.mutable_file_params()->set_unmodified_string(
+        "unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
+    request.mutable_file_params()->set_null_string(
+        "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP");
 
-    define_transaction_history_test_table(request, transaction_history_table_name);
-    request.add_earliest_start_files(TEST_RESOURCES_DIR + "transaction_history_input_5_earliest.csv");
-    request.add_replace_files(TEST_RESOURCES_DIR + "transaction_history_input_5_upsert.csv");
+    define_transaction_history_test_table(request,
+                                          transaction_history_table_name);
+    request.add_earliest_start_files(
+        TEST_RESOURCES_DIR + "transaction_history_input_5_earliest.csv");
+    request.add_replace_files(TEST_RESOURCES_DIR +
+                              "transaction_history_input_5_upsert.csv");
 
     ::fivetran_sdk::v2::WriteBatchResponse response;
     auto status = service.WriteHistoryBatch(nullptr, &request, &response);
@@ -1988,9 +2000,9 @@ TEST_CASE("WriteBatchHistory transaction history upsert", "[integration][write-b
 
   auto con = get_test_connection(MD_TOKEN);
   {
-    auto res = con->Query(
-        "SELECT id, amount, \"desc\", _fivetran_synced, FROM " + transaction_table_name + " ORDER BY id"
-    );
+    auto res =
+        con->Query("SELECT id, amount, \"desc\", _fivetran_synced, FROM " +
+                   transaction_table_name + " ORDER BY id");
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 6);
 
@@ -2004,7 +2016,8 @@ TEST_CASE("WriteBatchHistory transaction history upsert", "[integration][write-b
 
     REQUIRE(res->GetValue(2, 0).IsNull()); // desc is null for row 0
 
-    // Row 4 gets replaced in history mode, although this has nothing to do with this table, we pick that one to check.
+    // Row 4 gets replaced in history mode, although this has nothing to do with
+    // this table, we pick that one to check.
     REQUIRE(res->GetValue(1, 4) == 200);
     REQUIRE(res->GetValue(2, 4) == "three");
     REQUIRE(res->GetValue(3, 4) == "2025-12-17 12:30:40.937+00");
@@ -2013,9 +2026,10 @@ TEST_CASE("WriteBatchHistory transaction history upsert", "[integration][write-b
   {
     // check that id=2 ("The Two Towers") got deleted because it's newer than
     // the date in books_history_earliest.csv
-    auto res = con->Query(
-        "SELECT id, amount, _fivetran_active"
-        " FROM " + transaction_history_table_name + " ORDER BY id, _fivetran_start");
+    auto res = con->Query("SELECT id, amount, _fivetran_active"
+                          " FROM " +
+                          transaction_history_table_name +
+                          " ORDER BY id, _fivetran_start");
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 7);
 
@@ -2027,7 +2041,8 @@ TEST_CASE("WriteBatchHistory transaction history upsert", "[integration][write-b
     REQUIRE(res->GetValue(0, 5) == 10);
     REQUIRE(res->GetValue(0, 6) == 20);
 
-    // Item with id 10 gets an update of the amount column, which goes from 200 to 100.
+    // Item with id 10 gets an update of the amount column, which goes from 200
+    // to 100.
     REQUIRE_FALSE(res->GetValue(2, 4) == true);
     REQUIRE(res->GetValue(2, 5) == true);
 
