@@ -1,7 +1,9 @@
 #include "../constants.hpp"
+#include "config_tester.hpp"
 #include "duckdb.hpp"
 #include "extension_helper.hpp"
 #include "motherduck_destination_server.hpp"
+
 #include <catch2/catch_all.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -64,7 +66,7 @@ TEST_CASE("ConfigurationForm", "[integration][config]") {
   REQUIRE(response.fields(1).name() == "motherduck_database");
 
   REQUIRE(response.tests_size() == 1);
-  REQUIRE(response.tests(0).name() == CONFIG_TEST_NAME_AUTHENTICATE);
+  REQUIRE(response.tests(0).name() == config_tester::TEST_AUTHENTICATE);
   REQUIRE(response.tests(0).label() == "Test Authentication");
 }
 
@@ -215,7 +217,7 @@ TEST_CASE("Test fails when token is missing", "[integration][configtest]") {
   DestinationSdkImpl service;
 
   ::fivetran_sdk::v2::TestRequest request;
-  request.set_name(CONFIG_TEST_NAME_AUTHENTICATE);
+  request.set_name(config_tester::TEST_AUTHENTICATE);
   (*request.mutable_configuration())["motherduck_database"] =
       TEST_DATABASE_NAME;
 
@@ -236,7 +238,7 @@ TEST_CASE("Test endpoint fails when token is bad",
   DestinationSdkImpl service;
 
   ::fivetran_sdk::v2::TestRequest request;
-  request.set_name(CONFIG_TEST_NAME_AUTHENTICATE);
+  request.set_name(config_tester::TEST_AUTHENTICATE);
   (*request.mutable_configuration())["motherduck_database"] =
       TEST_DATABASE_NAME;
   (*request.mutable_configuration())["motherduck_token"] = "12345";
@@ -255,7 +257,7 @@ TEST_CASE(
   DestinationSdkImpl service;
 
   ::fivetran_sdk::v2::TestRequest request;
-  request.set_name(CONFIG_TEST_NAME_AUTHENTICATE);
+  request.set_name(config_tester::TEST_AUTHENTICATE);
   (*request.mutable_configuration())["motherduck_database"] =
       TEST_DATABASE_NAME;
   (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;

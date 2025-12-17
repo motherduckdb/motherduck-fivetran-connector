@@ -7,14 +7,6 @@
 #include <memory>
 #include <mutex>
 
-static constexpr const char *const MD_PROP_DATABASE = "motherduck_database";
-
-static constexpr const char *const MD_PROP_TOKEN = "motherduck_token";
-
-static constexpr const int DUCKDB_DEFAULT_PRECISION = 18;
-
-static constexpr const int DUCKDB_DEFAULT_SCALE = 3;
-
 class DestinationSdkImpl final
     : public fivetran_sdk::v2::DestinationConnector::Service {
 public:
