@@ -330,6 +330,62 @@ void define_history_test_table(T &request, const std::string &table_name) {
 }
 
 template <typename T>
+void define_transaction_test_table(T &request, const std::string &table_name) {
+  request.mutable_table()->set_name(table_name);
+
+  auto col1 = request.mutable_table()->add_columns();
+  col1->set_name("amount");
+  col1->set_type(::fivetran_sdk::v2::DataType::INT);
+
+  auto col2 = request.mutable_table()->add_columns();
+  col2->set_name("_fivetran_synced");
+  col2->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
+
+  auto col3 = request.mutable_table()->add_columns();
+  col3->set_name("id");
+  col3->set_type(::fivetran_sdk::v2::DataType::INT);
+  col3->set_primary_key(true);
+
+  auto col4 = request.mutable_table()->add_columns();
+  col4->set_name("desc");
+  col4->set_type(::fivetran_sdk::v2::DataType::STRING);
+}
+
+template <typename T>
+void define_transaction_history_test_table(T &request, const std::string &table_name) {
+  request.mutable_table()->set_name(table_name);
+  auto col1 = request.mutable_table()->add_columns();
+  col1->set_name("amount");
+  col1->set_type(::fivetran_sdk::v2::DataType::INT);
+
+  auto col2 = request.mutable_table()->add_columns();
+  col2->set_name("_fivetran_synced");
+  col2->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
+
+  auto col3 = request.mutable_table()->add_columns();
+  col3->set_name("_fivetran_end");
+  col3->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
+
+  auto col4 = request.mutable_table()->add_columns();
+  col4->set_name("_fivetran_active");
+  col4->set_type(::fivetran_sdk::v2::DataType::BOOLEAN);
+
+  auto col5 = request.mutable_table()->add_columns();
+  col5->set_name("desc");
+  col5->set_type(::fivetran_sdk::v2::DataType::STRING);
+
+  auto col6 = request.mutable_table()->add_columns();
+  col6->set_name("_fivetran_start");
+  col6->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
+  col6->set_primary_key(true);
+
+  auto col7 = request.mutable_table()->add_columns();
+  col7->set_name("id");
+  col7->set_type(::fivetran_sdk::v2::DataType::INT);
+  col7->set_primary_key(true);
+}
+
+template <typename T>
 void define_test_multikey_table(T &request, const std::string &table_name) {
   request.mutable_table()->set_name(table_name);
   auto col1 = request.mutable_table()->add_columns();
@@ -1867,6 +1923,116 @@ TEST_CASE("WriteBatchHistory upsert and delete", "[integration][write-batch]") {
     REQUIRE(res->GetValue(7, 0) ==
             "2025-03-09 04:10:19.156057+00"); // _fivetran_end updated per
                                               // delete file
+  }
+}
+
+
+TEST_CASE("WriteBatchHistory transaction history upsert", "[integration][write-batch]") {
+  DestinationSdkImpl service;
+
+  // Schema will be main
+  const std::string transaction_table_name = "transaction" + std::to_string(Catch::rngSeed());
+  const std::string transaction_history_table_name = "transaction_history" + std::to_string(Catch::rngSeed());
+
+  {
+    // Create Tables
+    ::fivetran_sdk::v2::CreateTableRequest request;
+    set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+    define_transaction_test_table(request, transaction_table_name);
+
+    ::fivetran_sdk::v2::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+
+    ::fivetran_sdk::v2::CreateTableRequest request2;
+    set_up_plain_write_request(request2, MD_TOKEN, TEST_DATABASE_NAME);
+    define_transaction_history_test_table(request2, transaction_history_table_name);
+
+    ::fivetran_sdk::v2::CreateTableResponse response2;
+    auto status2 = service.CreateTable(nullptr, &request2, &response2);
+    REQUIRE_NO_FAIL(status2);
+  }
+
+  {
+    // WriteBatch
+    ::fivetran_sdk::v2::WriteBatchRequest request;
+    set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+    request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
+    request.mutable_file_params()->set_null_string("null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP");
+
+    define_transaction_test_table(request, transaction_table_name);
+    request.add_replace_files(TEST_RESOURCES_DIR + "transaction_input_5_upsert.csv");
+
+    ::fivetran_sdk::v2::WriteBatchResponse response;
+    auto status = service.WriteBatch(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // WriteHistoryBatch
+    // history write with the earliest file (that does not affect anything
+    // because there is no data), plus upsert file
+    ::fivetran_sdk::v2::WriteHistoryBatchRequest request;
+    set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+    request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
+    request.mutable_file_params()->set_null_string("null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP");
+
+    define_transaction_history_test_table(request, transaction_history_table_name);
+    request.add_earliest_start_files(TEST_RESOURCES_DIR + "transaction_history_input_5_earliest.csv");
+    request.add_replace_files(TEST_RESOURCES_DIR + "transaction_history_input_5_upsert.csv");
+
+    ::fivetran_sdk::v2::WriteBatchResponse response;
+    auto status = service.WriteHistoryBatch(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  auto con = get_test_connection(MD_TOKEN);
+  {
+    auto res = con->Query(
+        "SELECT id, amount, \"desc\", _fivetran_synced, FROM " + transaction_table_name + " ORDER BY id"
+    );
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 6);
+
+    // All record ids present
+    REQUIRE(res->GetValue(0, 0) == 1);
+    REQUIRE(res->GetValue(0, 1) == 2);
+    REQUIRE(res->GetValue(0, 2) == 3);
+    REQUIRE(res->GetValue(0, 3) == 4);
+    REQUIRE(res->GetValue(0, 4) == 10);
+    REQUIRE(res->GetValue(0, 5) == 20);
+
+    REQUIRE(res->GetValue(2, 0).IsNull()); // desc is null for row 0
+
+    // Row 4 gets replaced in history mode, although this has nothing to do with this table, we pick that one to check.
+    REQUIRE(res->GetValue(1, 4) == 200);
+    REQUIRE(res->GetValue(2, 4) == "three");
+    REQUIRE(res->GetValue(3, 4) == "2025-12-17 12:30:40.937+00");
+  }
+
+  {
+    // check that id=2 ("The Two Towers") got deleted because it's newer than
+    // the date in books_history_earliest.csv
+    auto res = con->Query(
+        "SELECT id, amount, _fivetran_active"
+        " FROM " + transaction_history_table_name + " ORDER BY id, _fivetran_start");
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 7);
+
+    REQUIRE(res->GetValue(0, 0) == 1);
+    REQUIRE(res->GetValue(0, 1) == 2);
+    REQUIRE(res->GetValue(0, 2) == 3);
+    REQUIRE(res->GetValue(0, 3) == 4);
+    REQUIRE(res->GetValue(0, 4) == 10);
+    REQUIRE(res->GetValue(0, 5) == 10);
+    REQUIRE(res->GetValue(0, 6) == 20);
+
+    // Item with id 10 gets an update of the amount column, which goes from 200 to 100.
+    REQUIRE_FALSE(res->GetValue(2, 4) == true);
+    REQUIRE(res->GetValue(2, 5) == true);
+
+    REQUIRE(res->GetValue(1, 4) == 200);
+    REQUIRE(res->GetValue(1, 5) == 100);
   }
 }
 
