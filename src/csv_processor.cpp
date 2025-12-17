@@ -16,6 +16,11 @@
 #include <string>
 #include <unistd.h>
 
+#ifdef __linux__
+#include <fcntl.h>
+#include <sys/mman.h>
+#endif
+
 namespace fs = std::filesystem;
 
 namespace {

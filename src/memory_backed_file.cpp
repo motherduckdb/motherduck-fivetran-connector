@@ -1,19 +1,30 @@
 #include "memory_backed_file.hpp"
 
 #include <string>
-#include <sys/stat.h>
 #include <system_error>
 #include <unistd.h>
 
+#ifdef __linux__
+#include <sys/mman.h>
+#else
+#include <sys/stat.h>
+#endif
+
 MemoryBackedFile MemoryBackedFile::Create(const size_t file_size) {
 #ifdef __linux__
-  // /dev/shm is guaranteed tmpfs (in RAM) on Linux
-  const std::string tmp_dir = "/dev/shm/fivetran";
+  // memfd_create creates an anonymous RAM-backed file
+  // MFD_CLOEXEC closes the file descriptor on execve which prevents it from
+  // leaking to child processes.
+  const int fd =
+      memfd_create("fivetran_decrypted.csv", MFD_CLOEXEC | MFD_ALLOW_SEALING);
+  if (fd == -1) {
+    throw std::system_error(errno, std::generic_category(),
+                            "Failed to create memfd");
+  }
 #else
   // macOS: /tmp may or may not be RAM-backed.
   // This is fine because macOS is not used for production.
   const std::string tmp_dir = "/tmp/fivetran";
-#endif
 
   if (mkdir(tmp_dir.c_str(), 0700) == -1 && errno != EEXIST) {
     throw std::system_error(errno, std::generic_category(),
@@ -35,11 +46,13 @@ MemoryBackedFile MemoryBackedFile::Create(const size_t file_size) {
     throw std::system_error(errno, std::generic_category(),
                             "Failed to unlink temp memfile " + tmp_path);
   }
+#endif
 
   if (ftruncate(fd, file_size) == -1) {
     close(fd);
     throw std::system_error(errno, std::generic_category(),
-                            "Failed to set size of temp memfile " + tmp_path);
+                            "Failed to truncate temp memfile with fd=" +
+                                std::to_string(fd));
   }
 
   return MemoryBackedFile(fd);
