@@ -36,17 +36,6 @@ int find_optional_property(
              : parse(token_it->second);
 }
 
-const column_def *
-find_fivetran_start_column(const std::vector<column_def> &cols) {
-  for (const auto &col : cols) {
-    if (col.name == "_fivetran_start") {
-      return &col;
-    }
-  }
-
-  throw std::invalid_argument("No _fivetran_start column found");
-}
-
 template <typename T> std::string get_schema_name(const T *request) {
   std::string schema_name = request->schema_name();
   if (schema_name.empty()) {
@@ -592,7 +581,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
             sql_generator->upsert(*con, table_name, view_name, columns_pk,
-                                  columns_regular, find_fivetran_start_column(cols));
+                                  columns_regular, false);
           });
     }
 

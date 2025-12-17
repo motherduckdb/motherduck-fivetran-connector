@@ -472,7 +472,7 @@ void MdSqlGenerator::upsert(
     const std::string &staging_table_name,
     const std::vector<const column_def *> &columns_pk,
     const std::vector<const column_def *> &columns_regular,
-    const column_def *fivetran_start_column) {
+    bool update_in_place) {
 
   auto full_column_list = make_full_column_list(columns_pk, columns_regular);
   const std::string absolute_table_name = table.to_escaped_string();
@@ -480,18 +480,32 @@ void MdSqlGenerator::upsert(
   sql << "INSERT INTO " << absolute_table_name << "(" << full_column_list
       << ") SELECT " << full_column_list << " FROM " << staging_table_name;
 
-  if (!columns_pk.empty()) {
-    std::vector<const column_def *> conflict_cols;
-    for (auto pk_col : columns_pk) {
-      conflict_cols.push_back(pk_col);
-    }
+  if (!columns_pk.empty() && update_in_place) {
+    /*
+     (Original comment:
+     https://github.com/motherduckdb/motherduck-fivetran-connector/pull/111#discussion_r2626540009)
 
-    if (fivetran_start_column != nullptr) {
-      conflict_cols.push_back(fivetran_start_column);
-    }
+     We use the update_in_place_flag because conflicts should actually not be
+     possible in history mode:
+
+     In the earliest_start_files step, we do the following in the destination to
+     delete overlapping records:
+
+       DELETE FROM <schema.table> WHERE pk1 = <val> {AND  pk2 = <val>.....} AND
+     _fivetran_start >= val<_fivetran_start>;
+
+     Also see
+     https://github.com/fivetran/fivetran_partner_sdk/blob/main/how-to-handle-history-mode-batch-files.md.
+     But a conflict for the query below can only occur when _fivetran_start in
+     the destination equals a _fivetran_start from the incoming batch for some
+     entity. But such an entity the destination would be deleted by the query
+     above: after all, if the destination entity has the same _fivetran_start,
+     than it is at least (>=) the minimum value of the _fivetran_start for this
+     entity as defined in the earliest_start_files.
+     */
 
     sql << " ON CONFLICT (";
-    write_joined(sql, conflict_cols, print_column);
+    write_joined(sql, columns_pk, print_column);
     sql << " ) DO UPDATE SET ";
 
     write_joined(sql, columns_regular,
@@ -561,8 +575,18 @@ void MdSqlGenerator::add_partial_historical_values(
   std::ostringstream sql;
   auto absolute_table_name = table.to_escaped_string();
 
+  /*
+  The latest_active_records (lar) table is used to process the update file
+  from fivetran in history mode. We receive a file in which only updated
+  columns are provided, so we need to "manually" fetch the values for the
+  remaining columns to be able to insert a new valid row with all the right
+  columns values. As this uses type 2 slowly changing dimensions, i.e. insert
+  a new row on updates, we cannot use UPDATE x SET y = value, as this updates
+  in place.
+  */
+
   // create empty table structure just in case there were not any earliest files
-  // that would have created it
+  // that would have created it.
   const auto lar_table = create_latest_active_records_table(
       con, absolute_table_name, temp_db_name);
 
@@ -671,9 +695,9 @@ void MdSqlGenerator::deactivate_historical_records(
 
   {
     // store latest versions of records before they get deactivated
-    // per spec, this should be limited to _fivetran_active = TRUE but it's
+    // per spec, this should be limited to _fivetran_active = TRUE, but it's
     // safer to get all latest versions even if deactivated to prevent null
-    // values in  a partially successful batch.
+    // values in a partially successful batch.
     std::ostringstream sql;
     const std::string short_table_name =
         KeywordHelper::WriteQuoted(table.table_name, '"');
