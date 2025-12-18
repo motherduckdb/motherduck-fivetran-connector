@@ -471,8 +471,7 @@ void MdSqlGenerator::upsert(
     duckdb::Connection &con, const table_def &table,
     const std::string &staging_table_name,
     const std::vector<const column_def *> &columns_pk,
-    const std::vector<const column_def *> &columns_regular,
-    bool update_in_place) {
+    const std::vector<const column_def *> &columns_regular) {
 
   auto full_column_list = make_full_column_list(columns_pk, columns_regular);
   const std::string absolute_table_name = table.to_escaped_string();
@@ -480,30 +479,7 @@ void MdSqlGenerator::upsert(
   sql << "INSERT INTO " << absolute_table_name << "(" << full_column_list
       << ") SELECT " << full_column_list << " FROM " << staging_table_name;
 
-  if (!columns_pk.empty() && update_in_place) {
-    /*
-     (Original comment:
-     https://github.com/motherduckdb/motherduck-fivetran-connector/pull/111#discussion_r2626540009)
-
-     We use the update_in_place_flag because conflicts should actually not be
-     possible in history mode:
-
-     In the earliest_start_files step, we do the following in the destination to
-     delete overlapping records:
-
-       DELETE FROM <schema.table> WHERE pk1 = <val> {AND  pk2 = <val>.....} AND
-     _fivetran_start >= val<_fivetran_start>;
-
-     Also see
-     https://github.com/fivetran/fivetran_partner_sdk/blob/main/how-to-handle-history-mode-batch-files.md.
-     But a conflict for the query below can only occur when _fivetran_start in
-     the destination equals a _fivetran_start from the incoming batch for some
-     entity. But such an entity the destination would be deleted by the query
-     above: after all, if the destination entity has the same _fivetran_start,
-     than it is at least (>=) the minimum value of the _fivetran_start for this
-     entity as defined in the earliest_start_files.
-     */
-
+  if (!columns_pk.empty()) {
     sql << " ON CONFLICT (";
     write_joined(sql, columns_pk, print_column);
     sql << " ) DO UPDATE SET ";
@@ -520,6 +496,27 @@ void MdSqlGenerator::upsert(
   if (result->HasError()) {
     throw std::runtime_error("Could not upsert table <" + absolute_table_name +
                              ">" + result->GetError());
+  }
+}
+
+void MdSqlGenerator::insert(
+    duckdb::Connection &con, const table_def &table,
+    const std::string &staging_table_name,
+    const std::vector<const column_def *> &columns_pk,
+    const std::vector<const column_def *> &columns_regular) {
+
+  auto full_column_list = make_full_column_list(columns_pk, columns_regular);
+  const std::string absolute_table_name = table.to_escaped_string();
+  std::ostringstream sql;
+  sql << "INSERT INTO " << absolute_table_name << "(" << full_column_list
+      << ") SELECT " << full_column_list << " FROM " << staging_table_name;
+
+  auto query = sql.str();
+  logger->info("insert: " + query);
+  auto result = con.Query(query);
+  if (result->HasError()) {
+    throw std::runtime_error("Could not insert into table <" +
+                             absolute_table_name + ">" + result->GetError());
   }
 }
 

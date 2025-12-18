@@ -580,8 +580,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(
           filename, request, cols, UnmodifiedMarker::Disallowed, temp_db.name);
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
-            sql_generator->upsert(*con, table_name, view_name, columns_pk,
-                                  columns_regular, false);
+            sql_generator->insert(*con, table_name, view_name, columns_pk,
+                                  columns_regular);
           });
     }
 

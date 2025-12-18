@@ -40,8 +40,12 @@ public:
   void upsert(duckdb::Connection &con, const table_def &table,
               const std::string &staging_table_name,
               const std::vector<const column_def *> &columns_pk,
-              const std::vector<const column_def *> &columns_regular,
-              bool update_in_place = true);
+              const std::vector<const column_def *> &columns_regular);
+
+  void insert(duckdb::Connection &con, const table_def &table,
+              const std::string &staging_table_name,
+              const std::vector<const column_def *> &columns_pk,
+              const std::vector<const column_def *> &columns_regular);
 
   void update_values(duckdb::Connection &con, const table_def &table,
                      const std::string &staging_table_name,
