@@ -1,5 +1,8 @@
 #pragma once
 
+#include <stdexcept>
+#include <string>
+
 namespace config {
 inline constexpr const char *PROP_DATABASE = "motherduck_database";
 inline constexpr const char *PROP_TOKEN = "motherduck_token";
