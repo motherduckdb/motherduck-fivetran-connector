@@ -210,7 +210,9 @@ TEST_CASE("Test fails when database missing", "[integration][configtest]") {
   ::fivetran_sdk::v2::TestResponse response;
 
   auto status = service.Test(nullptr, &request, &response);
-  REQUIRE_FAIL(status, "Missing property motherduck_database");
+  REQUIRE_NO_FAIL(status);
+  REQUIRE_THAT(response.failure(), Catch::Matchers::ContainsSubstring(
+                                       "Missing property motherduck_database"));
 }
 
 TEST_CASE("Test fails when token is missing", "[integration][configtest]") {
@@ -225,11 +227,8 @@ TEST_CASE("Test fails when token is missing", "[integration][configtest]") {
 
   auto status = service.Test(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
-  auto expected_message = "Test <test_authentication> for database <" +
-                          TEST_DATABASE_NAME +
-                          "> failed: Missing "
-                          "property motherduck_token";
-  REQUIRE(status.error_message() == expected_message);
+  const std::string expected_message =
+      "Test <test_authentication> failed: Missing property motherduck_token";
   REQUIRE(response.failure() == expected_message);
 }
 
@@ -247,8 +246,8 @@ TEST_CASE("Test endpoint fails when token is bad",
 
   auto status = service.Test(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
-  CHECK_THAT(status.error_message(),
-             Catch::Matchers::ContainsSubstring("not authenticated"));
+  REQUIRE_THAT(response.failure(),
+               Catch::Matchers::ContainsSubstring("not authenticated"));
 }
 
 TEST_CASE(

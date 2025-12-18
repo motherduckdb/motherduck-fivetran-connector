@@ -607,7 +607,7 @@ std::string extract_readable_error(const std::exception &ex) {
   // DuckDB errors are JSON strings. Converting it to ErrorData to extract the
   // message.
   duckdb::ErrorData error(ex.what());
-  std::string error_message = error.Message();
+  std::string error_message = error.RawMessage();
 
   // Errors thrown in the initialization function are very verbose. Example:
   // Invalid Input Error: Initialization function "motherduck_duckdb_cpp_init"
@@ -641,34 +641,36 @@ grpc::Status
 DestinationSdkImpl::Test(::grpc::ServerContext *context,
                          const ::fivetran_sdk::v2::TestRequest *request,
                          ::fivetran_sdk::v2::TestResponse *response) {
-  auto logger = std::make_shared<mdlog::MdLog>();
-  const std::string db_name =
-      config::find_property(request->configuration(), config::PROP_DATABASE);
-  std::unique_ptr<duckdb::Connection> con;
+  const std::string test_name = request->name();
+  const std::string error_prefix = "Test <" + test_name + "> failed: ";
+  const auto user_config = request->configuration();
 
+  std::unique_ptr<duckdb::Connection> con;
   // This function already connects loads the extension and connects to
   // MotherDuck. If this fails, we catch the exception and rewrite it a bit to
   // make it more actionable.
   try {
-    con = get_connection(request->configuration(), db_name, logger);
+    const std::string db_name =
+        config::find_property(user_config, config::PROP_DATABASE);
+    const auto logger = std::make_shared<mdlog::MdLog>();
+    con = get_connection(user_config, db_name, logger);
   } catch (const std::exception &ex) {
-    auto error_message = extract_readable_error(ex);
-    response->set_failure(error_message);
+    const auto error_message = extract_readable_error(ex);
+    response->set_failure(error_prefix + error_message);
     return ::grpc::Status::OK;
   }
 
   // Run actual tests
   try {
-    auto test_result = config_tester::run_test(request->name(), *con,
-                                               request->configuration());
+    auto test_result = config_tester::run_test(test_name, *con, user_config);
     if (test_result.success) {
       response->set_success(true);
     } else {
-      response->set_failure(test_result.failure_message);
+      response->set_failure(error_prefix + test_result.failure_message);
     }
   } catch (const std::exception &ex) {
-    auto error_message = extract_readable_error(ex);
-    response->set_failure(error_message);
+    const auto error_message = extract_readable_error(ex);
+    response->set_failure(error_prefix + error_message);
   }
   return ::grpc::Status::OK;
 }
