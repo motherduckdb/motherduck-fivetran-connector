@@ -646,9 +646,9 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
   const auto user_config = request->configuration();
 
   std::unique_ptr<duckdb::Connection> con;
-  // This function already connects loads the extension and connects to
-  // MotherDuck. If this fails, we catch the exception and rewrite it a bit to
-  // make it more actionable.
+  // This function already loads the extension and connects to MotherDuck.
+  // If this fails, we catch the exception and rewrite it a bit to make
+  // it more actionable.
   try {
     const std::string db_name =
         config::find_property(user_config, config::PROP_DATABASE);

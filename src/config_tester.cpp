@@ -123,8 +123,7 @@ TestResult run_write_rollback_test(
                                  "\": " + insert_res->GetError());
   }
 
-  const auto select_res =
-      con.Query("SELECT COUNT(*) FROM " + table_name);
+  const auto select_res = con.Query("SELECT COUNT(*) FROM " + table_name);
   if (select_res->HasError()) {
     return TestResult(false, "Could not read from table \"" + table_name +
                                  "\": " + select_res->GetError());
