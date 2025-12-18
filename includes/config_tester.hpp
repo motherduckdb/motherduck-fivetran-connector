@@ -2,6 +2,7 @@
 
 #include "duckdb.hpp"
 #include <array>
+#include <cassert>
 #include <string>
 
 // Forward declaration to not have to include a protobuf header here
