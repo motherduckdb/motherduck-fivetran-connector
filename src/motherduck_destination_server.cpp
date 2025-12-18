@@ -531,7 +531,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     std::vector<const column_def *> columns_pk;
     std::vector<const column_def *> columns_regular;
     find_primary_keys(cols, columns_pk, &columns_regular, "_fivetran_start");
-
     if (columns_pk.empty()) {
       throw std::invalid_argument("No primary keys found");
     }
@@ -554,7 +553,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       IngestProperties props =
           create_ingest_props(filename, request, earliest_start_cols,
                               UnmodifiedMarker::Disallowed, temp_db.name);
-
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
             sql_generator->deactivate_historical_records(
@@ -582,7 +580,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
           filename, request, cols, UnmodifiedMarker::Disallowed, temp_db.name);
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &view_name) {
-            sql_generator->upsert(*con, table_name, view_name, columns_pk,
+            sql_generator->insert(*con, table_name, view_name, columns_pk,
                                   columns_regular);
           });
     }
@@ -600,7 +598,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     }
   } catch (const std::exception &e) {
 
-    auto const msg = "WriteBatch endpoint failed for schema <" +
+    auto const msg = "WriteHistoryBatch endpoint failed for schema <" +
                      request->schema_name() + ">, table <" +
                      request->table().name() + ">:" + std::string(e.what());
     logger->severe(msg);
