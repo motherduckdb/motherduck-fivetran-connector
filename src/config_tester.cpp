@@ -124,7 +124,7 @@ TestResult run_write_rollback_test(
   }
 
   const auto select_res =
-      con.Query("SELECT COUNT(*) FROM _fivetran_test_table");
+      con.Query("SELECT COUNT(*) FROM " + table_name);
   if (select_res->HasError()) {
     return TestResult(false, "Could not read from table \"" + table_name +
                                  "\": " + select_res->GetError());
