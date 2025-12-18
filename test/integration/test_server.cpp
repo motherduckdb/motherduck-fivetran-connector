@@ -53,6 +53,15 @@ public:
 
 CATCH_REGISTER_LISTENER(testRunListener)
 
+std::unique_ptr<duckdb::Connection>
+get_test_connection(const std::string &token) {
+  duckdb::DBConfig config;
+  config.SetOptionByName("motherduck_token", token);
+  config.SetOptionByName("custom_user_agent", "fivetran-integration-test");
+  duckdb::DuckDB db("md:" + TEST_DATABASE_NAME, &config);
+  return std::make_unique<duckdb::Connection>(db);
+}
+
 TEST_CASE("ConfigurationForm", "[integration][config]") {
   DestinationSdkImpl service;
   ::fivetran_sdk::v2::ConfigurationFormRequest request;
@@ -265,6 +274,48 @@ TEST_CASE(
 
   auto status = service.Test(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
+  REQUIRE(response.success());
+}
+
+TEST_CASE("Test fails when motherduck_database is a share",
+          "[integration][configtest]") {
+  auto con = get_test_connection(MD_TOKEN);
+  const std::string share_name = "fivetran_test_share";
+
+  // Make sure we are in workspace attach mode
+  auto attach_mode_res =
+      con->Query("SELECT current_setting('motherduck_attach_mode')");
+  REQUIRE_NO_FAIL(attach_mode_res);
+  assert(attach_mode_res->RowCount() == 1 &&
+         attach_mode_res->ColumnCount() == 1);
+  const auto attach_mode = attach_mode_res->GetValue(0, 0).ToString();
+  REQUIRE(attach_mode == "workspace");
+
+  auto create_res = con->Query("CREATE OR REPLACE SHARE " + share_name +
+                               " FROM " + TEST_DATABASE_NAME);
+  REQUIRE_NO_FAIL(create_res);
+  assert(create_res->RowCount() == 1 && create_res->ColumnCount() == 1);
+  const auto share_url = create_res->GetValue(0, 0).ToString();
+
+  const auto attach_res =
+      con->Query("ATTACH IF NOT EXISTS '" + share_url + "'");
+
+  DestinationSdkImpl service;
+  ::fivetran_sdk::v2::TestRequest request;
+  request.set_name(config_tester::TEST_DATABASE_TYPE);
+  (*request.mutable_configuration())["motherduck_database"] =
+      "fivetran_test_share";
+  (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+
+  ::fivetran_sdk::v2::TestResponse response;
+
+  auto status = service.Test(nullptr, &request, &response);
+
+  con->Query("DETACH IF EXISTS " + share_name);
+
+  REQUIRE_NO_FAIL(status);
+  REQUIRE_THAT(response.failure(), Catch::Matchers::ContainsSubstring(
+                                       "is a read-only MotherDuck share"));
 }
 
 template <typename T>
@@ -363,16 +414,6 @@ void set_up_plain_write_request(T &request, const std::string &token,
   (*request.mutable_configuration())["motherduck_token"] = token;
   (*request.mutable_configuration())["motherduck_database"] = db_name;
 }
-
-std::unique_ptr<duckdb::Connection>
-get_test_connection(const std::string &token) {
-  duckdb::DBConfig config;
-  config.SetOptionByName("motherduck_token", token);
-  config.SetOptionByName("custom_user_agent", "fivetran-integration-test");
-  duckdb::DuckDB db("md:" + TEST_DATABASE_NAME, &config);
-  return std::make_unique<duckdb::Connection>(db);
-}
-
 TEST_CASE("WriteBatch", "[integration][write-batch]") {
   DestinationSdkImpl service;
 
