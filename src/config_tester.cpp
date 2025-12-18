@@ -72,9 +72,9 @@ TestResult run_database_type_test(
                           "\" is a read-only MotherDuck share. Please use a "
                           "writable database for Fivetran ingestion jobs.");
   }
-  if (db_type != "motherduck") {
-    // TODO: In the future, we probably want to support other types as well,
-    // such as Ducklake.
+  if (db_type.find("motherduck") == std::string::npos) {
+    // We expect to run against type "motherduck" or "motherduck <something>"
+    // where "<something>" can e.g. be "ducklake"
     return TestResult(
         false,
         "\"" + db_name + "\" is not a MotherDuck database, but has type \"" +
