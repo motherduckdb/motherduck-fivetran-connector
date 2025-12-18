@@ -1927,7 +1927,7 @@ TEST_CASE("WriteBatchHistory upsert and delete", "[integration][write-batch]") {
   }
 }
 
-TEST_CASE("WriteBatchHistory transaction history upsert",
+TEST_CASE("WriteBatch and WriteBatchHistory with upsert",
           "[integration][write-batch]") {
   DestinationSdkImpl service;
 
@@ -2016,8 +2016,10 @@ TEST_CASE("WriteBatchHistory transaction history upsert",
 
     REQUIRE(res->GetValue(2, 0).IsNull()); // desc is null for row 0
 
-    // Row 4 gets replaced in history mode, although this has nothing to do with
-    // this table, we pick that one to check.
+    // As we see in the next test below, row 4 (id=10) is the only row with two
+    // records in transaction_history. We pick the same entity to test here,
+    // which at least makes sure that WriteBatch and WriteHistoryBatch do not
+    // intervene in this test case, but otherwise this choice is arbitrary.
     REQUIRE(res->GetValue(1, 4) == 200);
     REQUIRE(res->GetValue(2, 4) == "three");
     REQUIRE(res->GetValue(3, 4) == "2025-12-17 12:30:40.937+00");
