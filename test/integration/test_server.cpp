@@ -16,7 +16,8 @@
 
 using namespace test::constants;
 
-bool NO_FAIL(duckdb::unique_ptr<duckdb::MaterializedQueryResult> &result) {
+bool NO_FAIL(
+    const duckdb::unique_ptr<duckdb::MaterializedQueryResult> &result) {
   if (result->HasError()) {
     fprintf(stderr, "Query failed with message: %s\n",
             result->GetError().c_str());
@@ -216,7 +217,7 @@ TEST_CASE("Test fails when database missing", "[integration][configtest]") {
 
   ::fivetran_sdk::v2::TestResponse response;
 
-  auto status = service.Test(nullptr, &request, &response);
+  const auto status = service.Test(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
   REQUIRE_THAT(response.failure(), Catch::Matchers::ContainsSubstring(
                                        "Missing property motherduck_database"));
@@ -270,7 +271,7 @@ TEST_CASE(
 
   ::fivetran_sdk::v2::TestResponse response;
 
-  auto status = service.Test(nullptr, &request, &response);
+  const auto status = service.Test(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
   REQUIRE(response.success());
 }
@@ -281,7 +282,7 @@ TEST_CASE("Test fails when motherduck_database is a share",
   const std::string share_name = "fivetran_test_share";
 
   // Make sure we are in workspace attach mode
-  auto attach_mode_res =
+  const auto attach_mode_res =
       con->Query("SELECT current_setting('motherduck_attach_mode')");
   REQUIRE_NO_FAIL(attach_mode_res);
   REQUIRE(attach_mode_res->RowCount() == 1);
@@ -289,8 +290,8 @@ TEST_CASE("Test fails when motherduck_database is a share",
   const auto attach_mode = attach_mode_res->GetValue(0, 0).ToString();
   REQUIRE(attach_mode == "workspace");
 
-  auto create_res = con->Query("CREATE OR REPLACE SHARE " + share_name +
-                               " FROM " + TEST_DATABASE_NAME);
+  const auto create_res = con->Query("CREATE OR REPLACE SHARE " + share_name +
+                                     " FROM " + TEST_DATABASE_NAME);
   REQUIRE_NO_FAIL(create_res);
   REQUIRE(create_res->RowCount() == 1);
   REQUIRE(create_res->ColumnCount() == 1);
@@ -309,7 +310,7 @@ TEST_CASE("Test fails when motherduck_database is a share",
 
   ::fivetran_sdk::v2::TestResponse response;
 
-  auto status = service.Test(nullptr, &request, &response);
+  const auto status = service.Test(nullptr, &request, &response);
 
   con->Query("DETACH IF EXISTS " + share_name);
 
@@ -429,7 +430,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
     define_test_table(request, table_name);
 
     ::fivetran_sdk::v2::CreateTableResponse response;
-    auto status = service.CreateTable(nullptr, &request, &response);
+    const auto status = service.CreateTable(nullptr, &request, &response);
     REQUIRE_NO_FAIL(status);
   }
 
