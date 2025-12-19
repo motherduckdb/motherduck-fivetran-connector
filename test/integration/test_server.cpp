@@ -4,7 +4,6 @@
 #include "extension_helper.hpp"
 #include "motherduck_destination_server.hpp"
 
-#include <cassert>
 #include <catch2/catch_all.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -285,15 +284,16 @@ TEST_CASE("Test fails when motherduck_database is a share",
   auto attach_mode_res =
       con->Query("SELECT current_setting('motherduck_attach_mode')");
   REQUIRE_NO_FAIL(attach_mode_res);
-  assert(attach_mode_res->RowCount() == 1 &&
-         attach_mode_res->ColumnCount() == 1);
+  REQUIRE(attach_mode_res->RowCount() == 1);
+  REQUIRE(attach_mode_res->ColumnCount() == 1);
   const auto attach_mode = attach_mode_res->GetValue(0, 0).ToString();
   REQUIRE(attach_mode == "workspace");
 
   auto create_res = con->Query("CREATE OR REPLACE SHARE " + share_name +
                                " FROM " + TEST_DATABASE_NAME);
   REQUIRE_NO_FAIL(create_res);
-  assert(create_res->RowCount() == 1 && create_res->ColumnCount() == 1);
+  REQUIRE(create_res->RowCount() == 1);
+  REQUIRE(create_res->ColumnCount() == 1);
   const auto share_url = create_res->GetValue(0, 0).ToString();
 
   const auto attach_res =
