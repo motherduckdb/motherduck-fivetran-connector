@@ -662,7 +662,7 @@ DestinationSdkImpl::Test(::grpc::ServerContext *context,
 
   // Run actual tests
   try {
-    auto test_result = config_tester::run_test(test_name, *con, user_config);
+    auto test_result = config_tester::run_test(test_name, *con);
     if (test_result.success) {
       response->set_success(true);
     } else {

@@ -23,10 +23,14 @@ TestResult run_authentication_test(duckdb::Connection &con) {
 }
 
 /// Checks that the selected database can be written to
-TestResult run_database_type_test(
-    duckdb::Connection &con,
-    const google::protobuf::Map<std::string, std::string> &config) {
-  const auto db_name = config::find_property(config, config::PROP_DATABASE);
+TestResult run_database_type_test(duckdb::Connection &con) {
+  const auto current_db_res = con.Query("SELECT current_database()");
+  if (current_db_res->HasError()) {
+    return TestResult(false, "Failed to retrieve current database name: " +
+                                 current_db_res->GetError());
+  }
+  assert(current_db_res->RowCount() == 1 && current_db_res->ColumnCount() == 1);
+  const auto db_name = current_db_res->GetValue(0, 0).ToString();
 
   // We connect in single-attach mode. There is only one non-internal database
   // attached. Note that the database might not be part of the workspace, i.e.,
@@ -85,61 +89,34 @@ TestResult run_database_type_test(
 }
 
 /// Checks that the account/authentication token has write permissions
-TestResult run_write_rollback_test(
-    duckdb::Connection &con,
-    const google::protobuf::Map<std::string, std::string> &config) {
-  // Test write permissions by creating a table, inserting data, and rolling
-  // back
-  const auto begin_res = con.Query("BEGIN TRANSACTION");
-  if (begin_res->HasError()) {
-    return TestResult(false,
-                      "Could not begin transaction: " + begin_res->GetError());
+TestResult run_write_permissions_test(duckdb::Connection &con) {
+  const auto duckling_id_res = con.Query("FROM __md_duckling_id()");
+  if (duckling_id_res->HasError()) {
+    return TestResult(false, "Failed to retrieve duckling ID: " +
+                                 duckling_id_res->GetError());
+  }
+  assert(duckling_id_res->RowCount() == 1 &&
+         duckling_id_res->ColumnCount() == 1);
+  const auto duckling_id = duckling_id_res->GetValue(0, 0).ToString();
+
+  // For read-scaling tokens, the duckling ID ends with ".rs.<duckling number>"
+  // For read-write tokens, the duckling ID ends with ".rw".
+  // If neither is the case, optimistically return success to not rely to much
+  // on internals.
+
+  if (duckling_id.ends_with(".rw")) {
+    return TestResult(true);
   }
 
-  const auto db_name = config::find_property(config, config::PROP_DATABASE);
-  const std::string schema_name =
-      duckdb::KeywordHelper::WriteQuoted(db_name, '"') +
-      ".\"_md_fivetran_test\"";
-  const auto create_schema_res =
-      con.Query("CREATE SCHEMA IF NOT EXISTS " + schema_name);
-  if (create_schema_res->HasError()) {
-    return TestResult(false, "Could not create schema \"" + schema_name +
-                                 "\": " + create_schema_res->GetError());
+  const auto last_dot_pos = duckling_id.rfind('.');
+  if (last_dot_pos == std::string::npos || last_dot_pos < 3) {
+    return TestResult(true);
   }
-
-  const auto table_name = schema_name + ".\"test_table_$cmFuZG9t$\"";
-  const auto create_table_res =
-      con.Query("CREATE TABLE IF NOT EXISTS " + table_name +
-                " (id INTEGER, value VARCHAR)");
-  if (create_table_res->HasError()) {
-    return TestResult(false, "Could not create table \"" + table_name +
-                                 "\": " + create_table_res->GetError());
-  }
-
-  const auto insert_res =
-      con.Query("INSERT INTO " + table_name + " VALUES (1, 'test_value')");
-  if (insert_res->HasError()) {
-    return TestResult(false, "Could not insert into table \"" + table_name +
-                                 "\": " + insert_res->GetError());
-  }
-
-  const auto select_res = con.Query("SELECT COUNT(*) FROM " + table_name);
-  if (select_res->HasError()) {
-    return TestResult(false, "Could not read from table \"" + table_name +
-                                 "\": " + select_res->GetError());
-  }
-
-  const auto row_count = select_res->GetValue(0, 0).GetValue<int64_t>();
-  if (row_count != 1) {
-    return TestResult(false, "Expected 1 row in test table, got " +
-                                 std::to_string(row_count));
-  }
-
-  const auto rollback_res = con.Query("ROLLBACK");
-  if (rollback_res->HasError()) {
-    return TestResult(false, "Could not rollback transaction for table \"" +
-                                 table_name +
-                                 "\": " + rollback_res->GetError());
+  if (duckling_id.substr(last_dot_pos - 3, 3) == ".rs") {
+    return TestResult(
+        false,
+        "The provided authentication token is a read-scaling token. A token "
+        "with write permissions is required to ingest data from Fivetran.");
   }
 
   return TestResult(true);
@@ -149,20 +126,19 @@ TestResult run_write_rollback_test(
 std::array<TestCase, 3> get_test_cases() {
   return {TestCase{TEST_AUTHENTICATE, "Test that user is authenticated"},
           TestCase{TEST_DATABASE_TYPE, "Test that database is not read-only"},
-          TestCase{TEST_WRITE_ROLLBACK, "Test write permissions to database"}};
+          TestCase{TEST_WRITE_PERMISSIONS,
+                   "Test that auth token has write permissions"}};
 }
 
-TestResult
-run_test(const std::string &test_name, duckdb::Connection &con,
-         const google::protobuf::Map<std::string, std::string> &config) {
+TestResult run_test(const std::string &test_name, duckdb::Connection &con) {
   if (test_name == TEST_AUTHENTICATE) {
     return run_authentication_test(con);
   }
   if (test_name == TEST_DATABASE_TYPE) {
-    return run_database_type_test(con, config);
+    return run_database_type_test(con);
   }
-  if (test_name == TEST_WRITE_ROLLBACK) {
-    return run_write_rollback_test(con, config);
+  if (test_name == TEST_WRITE_PERMISSIONS) {
+    return run_write_permissions_test(con);
   }
   throw std::runtime_error("Unknown test name: " + test_name);
 }

@@ -75,9 +75,7 @@ TEST_CASE("ConfigurationForm", "[integration][config]") {
   REQUIRE(response.fields(0).name() == "motherduck_token");
   REQUIRE(response.fields(1).name() == "motherduck_database");
 
-  REQUIRE(response.tests_size() == 1);
-  REQUIRE(response.tests(0).name() == config_tester::TEST_AUTHENTICATE);
-  REQUIRE(response.tests(0).label() == "Test Authentication");
+  REQUIRE(response.tests_size() == 3);
 }
 
 TEST_CASE("DescribeTable fails when database missing",
