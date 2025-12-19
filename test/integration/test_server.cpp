@@ -298,6 +298,7 @@ TEST_CASE("Test fails when motherduck_database is a share",
 
   const auto attach_res =
       con->Query("ATTACH IF NOT EXISTS '" + share_url + "'");
+  REQUIRE_NO_FAIL(attach_res);
 
   DestinationSdkImpl service;
   ::fivetran_sdk::v2::TestRequest request;

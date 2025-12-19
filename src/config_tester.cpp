@@ -101,7 +101,7 @@ TestResult run_write_permissions_test(duckdb::Connection &con) {
 
   // For read-write tokens, the duckling ID ends with ".rw".
   // For read-scaling tokens, the duckling ID ends with ".rs.<duckling number>"
-  // If neither is the case, optimistically return success too not rely to much
+  // If neither is the case, optimistically return success to not rely too much
   // on internals.
 
   if (duckling_id.ends_with(".rw")) {

@@ -26,8 +26,8 @@ struct TestCase {
 struct TestResult {
   explicit TestResult(const bool success_, std::string failure_message_ = "")
       : success(success_), failure_message(std::move(failure_message_)) {
-    assert(success && failure_message.empty() ||
-           !success && !failure_message.empty());
+    assert((success && failure_message.empty()) ||
+           (!success && !failure_message.empty()));
   }
 
   bool success;
