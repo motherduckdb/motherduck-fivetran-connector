@@ -15,7 +15,7 @@ TestResult run_authentication_test(duckdb::Connection &con) {
   // The "actual" test happens in DestinationSdkImpl::Test when establishing the
   // connection. The authentication test runs first because they are executed in
   // the order they are set in the ConfigurationForm response.
-  const auto result = con.Query("PRAGMA MD_VERSION");
+  const auto result = con.Query("PRAGMA md_version");
   if (result->HasError()) {
     return TestResult(false, result->GetError());
   }
