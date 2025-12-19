@@ -818,11 +818,3 @@ void MdSqlGenerator::truncate_table(duckdb::Connection &con,
     throw std::runtime_error(err + ": " + result->GetError());
   }
 }
-
-void MdSqlGenerator::check_connection(duckdb::Connection &con) {
-  auto result = con.Query("PRAGMA MD_VERSION");
-  if (result->HasError()) {
-    throw std::runtime_error("Error checking connection: " +
-                             result->GetError());
-  }
-}

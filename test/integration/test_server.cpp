@@ -1,7 +1,9 @@
 #include "../constants.hpp"
+#include "config_tester.hpp"
 #include "duckdb.hpp"
 #include "extension_helper.hpp"
 #include "motherduck_destination_server.hpp"
+
 #include <catch2/catch_all.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -14,7 +16,8 @@
 
 using namespace test::constants;
 
-bool NO_FAIL(duckdb::unique_ptr<duckdb::MaterializedQueryResult> &result) {
+bool NO_FAIL(
+    const duckdb::unique_ptr<duckdb::MaterializedQueryResult> &result) {
   if (result->HasError()) {
     fprintf(stderr, "Query failed with message: %s\n",
             result->GetError().c_str());
@@ -51,6 +54,15 @@ public:
 
 CATCH_REGISTER_LISTENER(testRunListener)
 
+std::unique_ptr<duckdb::Connection>
+get_test_connection(const std::string &token) {
+  duckdb::DBConfig config;
+  config.SetOptionByName("motherduck_token", token);
+  config.SetOptionByName("custom_user_agent", "fivetran-integration-test");
+  duckdb::DuckDB db("md:" + TEST_DATABASE_NAME, &config);
+  return std::make_unique<duckdb::Connection>(db);
+}
+
 TEST_CASE("ConfigurationForm", "[integration][config]") {
   DestinationSdkImpl service;
   ::fivetran_sdk::v2::ConfigurationFormRequest request;
@@ -63,9 +75,7 @@ TEST_CASE("ConfigurationForm", "[integration][config]") {
   REQUIRE(response.fields(0).name() == "motherduck_token");
   REQUIRE(response.fields(1).name() == "motherduck_database");
 
-  REQUIRE(response.tests_size() == 1);
-  REQUIRE(response.tests(0).name() == CONFIG_TEST_NAME_AUTHENTICATE);
-  REQUIRE(response.tests(0).label() == "Test Authentication");
+  REQUIRE(response.tests_size() == 3);
 }
 
 TEST_CASE("DescribeTable fails when database missing",
@@ -207,15 +217,17 @@ TEST_CASE("Test fails when database missing", "[integration][configtest]") {
 
   ::fivetran_sdk::v2::TestResponse response;
 
-  auto status = service.Test(nullptr, &request, &response);
-  REQUIRE_FAIL(status, "Missing property motherduck_database");
+  const auto status = service.Test(nullptr, &request, &response);
+  REQUIRE_NO_FAIL(status);
+  REQUIRE_THAT(response.failure(), Catch::Matchers::ContainsSubstring(
+                                       "Missing property motherduck_database"));
 }
 
 TEST_CASE("Test fails when token is missing", "[integration][configtest]") {
   DestinationSdkImpl service;
 
   ::fivetran_sdk::v2::TestRequest request;
-  request.set_name(CONFIG_TEST_NAME_AUTHENTICATE);
+  request.set_name(config_tester::TEST_AUTHENTICATE);
   (*request.mutable_configuration())["motherduck_database"] =
       TEST_DATABASE_NAME;
 
@@ -223,11 +235,8 @@ TEST_CASE("Test fails when token is missing", "[integration][configtest]") {
 
   auto status = service.Test(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
-  auto expected_message = "Test <test_authentication> for database <" +
-                          TEST_DATABASE_NAME +
-                          "> failed: Missing "
-                          "property motherduck_token";
-  REQUIRE(status.error_message() == expected_message);
+  const std::string expected_message =
+      "Test <test_authentication> failed: Missing property motherduck_token";
   REQUIRE(response.failure() == expected_message);
 }
 
@@ -236,7 +245,7 @@ TEST_CASE("Test endpoint fails when token is bad",
   DestinationSdkImpl service;
 
   ::fivetran_sdk::v2::TestRequest request;
-  request.set_name(CONFIG_TEST_NAME_AUTHENTICATE);
+  request.set_name(config_tester::TEST_AUTHENTICATE);
   (*request.mutable_configuration())["motherduck_database"] =
       TEST_DATABASE_NAME;
   (*request.mutable_configuration())["motherduck_token"] = "12345";
@@ -245,8 +254,8 @@ TEST_CASE("Test endpoint fails when token is bad",
 
   auto status = service.Test(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
-  CHECK_THAT(status.error_message(),
-             Catch::Matchers::ContainsSubstring("not authenticated"));
+  REQUIRE_THAT(response.failure(),
+               Catch::Matchers::ContainsSubstring("not authenticated"));
 }
 
 TEST_CASE(
@@ -255,15 +264,59 @@ TEST_CASE(
   DestinationSdkImpl service;
 
   ::fivetran_sdk::v2::TestRequest request;
-  request.set_name(CONFIG_TEST_NAME_AUTHENTICATE);
+  request.set_name(config_tester::TEST_AUTHENTICATE);
   (*request.mutable_configuration())["motherduck_database"] =
       TEST_DATABASE_NAME;
   (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
 
   ::fivetran_sdk::v2::TestResponse response;
 
-  auto status = service.Test(nullptr, &request, &response);
+  const auto status = service.Test(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
+  REQUIRE(response.success());
+}
+
+TEST_CASE("Test fails when motherduck_database is a share",
+          "[integration][configtest]") {
+  auto con = get_test_connection(MD_TOKEN);
+  const std::string share_name = "fivetran_test_share";
+
+  // Make sure we are in workspace attach mode
+  const auto attach_mode_res =
+      con->Query("SELECT current_setting('motherduck_attach_mode')");
+  REQUIRE_NO_FAIL(attach_mode_res);
+  REQUIRE(attach_mode_res->RowCount() == 1);
+  REQUIRE(attach_mode_res->ColumnCount() == 1);
+  const auto attach_mode = attach_mode_res->GetValue(0, 0).ToString();
+  REQUIRE(attach_mode == "workspace");
+
+  const auto create_res = con->Query("CREATE OR REPLACE SHARE " + share_name +
+                                     " FROM " + TEST_DATABASE_NAME);
+  REQUIRE_NO_FAIL(create_res);
+  REQUIRE(create_res->RowCount() == 1);
+  REQUIRE(create_res->ColumnCount() == 1);
+  const auto share_url = create_res->GetValue(0, 0).ToString();
+
+  const auto attach_res =
+      con->Query("ATTACH IF NOT EXISTS '" + share_url + "'");
+  REQUIRE_NO_FAIL(attach_res);
+
+  DestinationSdkImpl service;
+  ::fivetran_sdk::v2::TestRequest request;
+  request.set_name(config_tester::TEST_DATABASE_TYPE);
+  (*request.mutable_configuration())["motherduck_database"] =
+      "fivetran_test_share";
+  (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+
+  ::fivetran_sdk::v2::TestResponse response;
+
+  const auto status = service.Test(nullptr, &request, &response);
+
+  con->Query("DETACH IF EXISTS " + share_name);
+
+  REQUIRE_NO_FAIL(status);
+  REQUIRE_THAT(response.failure(), Catch::Matchers::ContainsSubstring(
+                                       "is a read-only MotherDuck share"));
 }
 
 template <typename T>
@@ -419,16 +472,6 @@ void set_up_plain_write_request(T &request, const std::string &token,
   (*request.mutable_configuration())["motherduck_token"] = token;
   (*request.mutable_configuration())["motherduck_database"] = db_name;
 }
-
-std::unique_ptr<duckdb::Connection>
-get_test_connection(const std::string &token) {
-  duckdb::DBConfig config;
-  config.SetOptionByName("motherduck_token", token);
-  config.SetOptionByName("custom_user_agent", "fivetran-integration-test");
-  duckdb::DuckDB db("md:" + TEST_DATABASE_NAME, &config);
-  return std::make_unique<duckdb::Connection>(db);
-}
-
 TEST_CASE("WriteBatch", "[integration][write-batch]") {
   DestinationSdkImpl service;
 
@@ -444,7 +487,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
     define_test_table(request, table_name);
 
     ::fivetran_sdk::v2::CreateTableResponse response;
-    auto status = service.CreateTable(nullptr, &request, &response);
+    const auto status = service.CreateTable(nullptr, &request, &response);
     REQUIRE_NO_FAIL(status);
   }
 

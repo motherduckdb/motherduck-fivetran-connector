@@ -1,4 +1,7 @@
 #include "motherduck_destination_server.hpp"
+
+#include "config.hpp"
+#include "config_tester.hpp"
 #include "csv_processor.hpp"
 #include "decryption.hpp"
 #include "destination_sdk.grpc.pb.h"
@@ -9,32 +12,14 @@
 #include "sql_generator.hpp"
 #include "temp_database.hpp"
 
+#include <cstdint>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <mutex>
 #include <string>
-
-std::string
-find_property(const google::protobuf::Map<std::string, std::string> &config,
-              const std::string &property_name) {
-  auto token_it = config.find(property_name);
-  if (token_it == config.end()) {
-    throw std::invalid_argument("Missing property " + property_name);
-  }
-  return token_it->second;
-}
-
-int find_optional_property(
-    const google::protobuf::Map<std::string, std::string> &config,
-    const std::string &property_name, int default_value,
-    const std::function<int(const std::string &)> &parse) {
-  auto token_it = config.find(property_name);
-  return token_it == config.end() || token_it->second.empty()
-             ? default_value
-             : parse(token_it->second);
-}
 
 template <typename T> std::string get_schema_name(const T *request) {
   std::string schema_name = request->schema_name();
@@ -64,12 +49,16 @@ std::vector<column_def> get_duckdb_columns(
                                   DataType_Name(col.type()) + "> for column <" +
                                   col.name() + "> to a DuckDB type");
     }
-    auto precision = col.has_params() && col.params().has_decimal()
-                         ? col.params().decimal().precision()
-                         : DUCKDB_DEFAULT_PRECISION;
-    auto scale = col.has_params() && col.params().has_decimal()
-                     ? col.params().decimal().scale()
-                     : DUCKDB_DEFAULT_SCALE;
+
+    constexpr std::uint32_t DUCKDB_DEFAULT_PRECISION = 18;
+    constexpr std::uint32_t DUCKDB_DEFAULT_SCALE = 3;
+
+    const auto precision = col.has_params() && col.params().has_decimal()
+                               ? col.params().decimal().precision()
+                               : DUCKDB_DEFAULT_PRECISION;
+    const auto scale = col.has_params() && col.params().has_decimal()
+                           ? col.params().decimal().scale()
+                           : DUCKDB_DEFAULT_SCALE;
     duckdb_columns.push_back(
         column_def{col.name(), ddbtype, col.primary_key(), precision, scale});
   }
@@ -82,7 +71,7 @@ DestinationSdkImpl::get_duckdb(const std::string &md_token,
                                const std::shared_ptr<mdlog::MdLog> &logger) {
   auto initialize_db = [this, &md_token, &db_name, &logger]() {
     duckdb::DBConfig config;
-    config.SetOptionByName(MD_PROP_TOKEN, md_token);
+    config.SetOptionByName(config::PROP_TOKEN, md_token);
     config.SetOptionByName("custom_user_agent",
                            std::string("fivetran/") + GIT_COMMIT_SHA);
     config.SetOptionByName("old_implicit_casting", true);
@@ -121,18 +110,19 @@ DestinationSdkImpl::get_duckdb(const std::string &md_token,
   return db;
 }
 
-// todo: rename to init_connection
 std::unique_ptr<duckdb::Connection> DestinationSdkImpl::get_connection(
     const google::protobuf::Map<std::string, std::string> &request_config,
     const std::string &db_name, const std::shared_ptr<mdlog::MdLog> &logger) {
   logger->info("    get_connection: start");
-  const std::string md_token = find_property(request_config, MD_PROP_TOKEN);
+  const std::string md_token =
+      config::find_property(request_config, config::PROP_TOKEN);
   logger->info("    get_connection: got token");
 
   duckdb::DuckDB &db = get_duckdb(md_token, db_name, logger);
   auto con = std::make_unique<duckdb::Connection>(db);
   logger->info("    get_connection: created connection");
 
+  // This query triggers a welcome pack fetch
   const auto client_ids_res =
       con->Query("SELECT md_current_client_duckdb_id(), "
                  "md_current_client_connection_id()");
@@ -207,27 +197,28 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
   response->set_table_selection_supported(true);
 
   fivetran_sdk::v2::FormField token_field;
-  token_field.set_name(MD_PROP_TOKEN);
+  token_field.set_name(config::PROP_TOKEN);
   token_field.set_label("Authentication Token");
   token_field.set_description(
       "Please get your authentication token from app.motherduck.com");
   token_field.set_text_field(fivetran_sdk::v2::Password);
   token_field.set_required(true);
-
   response->add_fields()->CopyFrom(token_field);
 
   fivetran_sdk::v2::FormField db_field;
-  db_field.set_name(MD_PROP_DATABASE);
+  db_field.set_name(config::PROP_DATABASE);
   db_field.set_label("Database Name");
-  db_field.set_description("The database to work in");
+  db_field.set_description("The database to work in. The database must already "
+                           "exist and be writable.");
   db_field.set_text_field(fivetran_sdk::v2::PlainText);
   db_field.set_required(true);
-
   response->add_fields()->CopyFrom(db_field);
 
-  auto connection_test = response->add_tests();
-  connection_test->set_name(CONFIG_TEST_NAME_AUTHENTICATE);
-  connection_test->set_label("Test Authentication");
+  for (const auto &test_case : config_tester::get_test_cases()) {
+    auto connection_test = response->add_tests();
+    connection_test->set_name(test_case.name);
+    connection_test->set_label(test_case.description);
+  }
 
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
@@ -247,8 +238,8 @@ grpc::Status DestinationSdkImpl::DescribeTable(
   auto logger = std::make_shared<mdlog::MdLog>();
   try {
     logger->info("Endpoint <DescribeTable>: started");
-    std::string db_name =
-        find_property(request->configuration(), MD_PROP_DATABASE);
+    const std::string db_name =
+        config::find_property(request->configuration(), config::PROP_DATABASE);
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name, logger);
     logger->info("Endpoint <DescribeTable>: got connection");
@@ -310,8 +301,8 @@ grpc::Status DestinationSdkImpl::CreateTable(
     logger->info("Endpoint <CreateTable>: started");
     auto schema_name = get_schema_name(request);
 
-    std::string db_name =
-        find_property(request->configuration(), MD_PROP_DATABASE);
+    const std::string db_name =
+        config::find_property(request->configuration(), config::PROP_DATABASE);
     std::unique_ptr<duckdb::Connection> con =
         get_connection(request->configuration(), db_name, logger);
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
@@ -343,8 +334,8 @@ grpc::Status DestinationSdkImpl::AlterTable(
   auto logger = std::make_shared<mdlog::MdLog>();
   try {
     logger->info("Endpoint <AlterTable>: started");
-    std::string db_name =
-        find_property(request->configuration(), MD_PROP_DATABASE);
+    const std::string db_name =
+        config::find_property(request->configuration(), config::PROP_DATABASE);
     table_def table_name{db_name, get_schema_name(request),
                          request->table().name()};
 
@@ -375,8 +366,8 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
   auto logger = std::make_shared<mdlog::MdLog>();
   try {
     logger->info("Endpoint <Truncate>: started");
-    std::string db_name =
-        find_property(request->configuration(), MD_PROP_DATABASE);
+    const std::string db_name =
+        config::find_property(request->configuration(), config::PROP_DATABASE);
     table_def table_name{db_name, get_schema_name(request),
                          get_table_name(request)};
     if (request->synced_column().empty()) {
@@ -424,7 +415,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     auto schema_name = get_schema_name(request);
 
     const std::string db_name =
-        find_property(request->configuration(), MD_PROP_DATABASE);
+        config::find_property(request->configuration(), config::PROP_DATABASE);
 
     table_def table_name{db_name, get_schema_name(request),
                          request->table().name()};
@@ -519,7 +510,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     auto schema_name = get_schema_name(request);
 
     const std::string db_name =
-        find_property(request->configuration(), MD_PROP_DATABASE);
+        config::find_property(request->configuration(), config::PROP_DATABASE);
 
     table_def table_name{db_name, get_schema_name(request),
                          request->table().name()};
@@ -610,47 +601,74 @@ grpc::Status DestinationSdkImpl::WriteBatch(
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
+std::string extract_readable_error(const std::exception &ex) {
+  // DuckDB errors are JSON strings. Converting it to ErrorData to extract the
+  // message.
+  duckdb::ErrorData error(ex.what());
+  std::string error_message = error.RawMessage();
+
+  // Errors thrown in the initialization function are very verbose. Example:
+  // Invalid Input Error: Initialization function "motherduck_duckdb_cpp_init"
+  // from file "motherduck.duckdb_extension" threw an exception: "Failed to
+  // attach 'my_db': no database/share named 'my_db' found". We are only
+  // interested in the last part.
+  const std::string boilerplate =
+      "Initialization function \"motherduck_duckdb_cpp_init\" from file";
+  if (error_message.find(boilerplate) != std::string::npos) {
+    const std::string search_string = "threw an exception: ";
+    const auto pos = error_message.find(search_string);
+    if (pos != std::string::npos) {
+      error_message = "Connection to MotherDuck failed: " +
+                      error_message.substr(pos + search_string.length());
+    }
+  }
+
+  const std::string not_found_error_substr = "no database/share named";
+  if (error_message.find(not_found_error_substr) != std::string::npos) {
+    // Remove the quotation mark at the end
+    error_message = error_message.substr(0, error_message.length() - 1);
+    // Full error: "no database/share named 'my_db' found. Create it first in
+    // your MotherDuck account."
+    error_message += ". Create it first in your MotherDuck account.\"";
+  }
+
+  return error_message;
+}
+
 grpc::Status
 DestinationSdkImpl::Test(::grpc::ServerContext *context,
                          const ::fivetran_sdk::v2::TestRequest *request,
                          ::fivetran_sdk::v2::TestResponse *response) {
+  const std::string test_name = request->name();
+  const std::string error_prefix = "Test <" + test_name + "> failed: ";
+  const auto user_config = request->configuration();
 
-  auto logger = std::make_shared<mdlog::MdLog>();
-  std::string db_name;
+  std::unique_ptr<duckdb::Connection> con;
+  // This function already loads the extension and connects to MotherDuck.
+  // If this fails, we catch the exception and rewrite it a bit to make
+  // it more actionable.
   try {
-    db_name = find_property(request->configuration(), MD_PROP_DATABASE);
-  } catch (const std::exception &e) {
-    auto msg = "Test endpoint failed; could not retrieve database name: " +
-               std::string(e.what());
-    logger->severe(msg);
-    response->set_success(false);
-    response->set_failure(msg);
-    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, e.what());
+    const std::string db_name =
+        config::find_property(user_config, config::PROP_DATABASE);
+    const auto logger = std::make_shared<mdlog::MdLog>();
+    con = get_connection(user_config, db_name, logger);
+  } catch (const std::exception &ex) {
+    const auto error_message = extract_readable_error(ex);
+    response->set_failure(error_prefix + error_message);
+    return ::grpc::Status::OK;
   }
 
+  // Run actual tests
   try {
-    std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
-    auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
-
-    if (request->name() == CONFIG_TEST_NAME_AUTHENTICATE) {
-      sql_generator->check_connection(*con);
+    auto test_result = config_tester::run_test(test_name, *con);
+    if (test_result.success) {
+      response->set_success(true);
     } else {
-      auto const msg = "Unknown test requested: <" + request->name() + ">";
-      logger->severe(msg);
-      response->set_success(false);
-      response->set_failure(msg);
-      return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, msg);
+      response->set_failure(error_prefix + test_result.failure_message);
     }
-  } catch (const std::exception &e) {
-    auto msg = "Test <" + request->name() + "> for database <" + db_name +
-               "> failed: " + std::string(e.what());
-    response->set_success(false);
-    response->set_failure(msg);
-    // grpc call succeeded; the response reflects config test failure
-    return ::grpc::Status(::grpc::StatusCode::OK, msg);
+  } catch (const std::exception &ex) {
+    const auto error_message = extract_readable_error(ex);
+    response->set_failure(error_prefix + error_message);
   }
-
-  response->set_success(true);
-  return ::grpc::Status(::grpc::StatusCode::OK, "");
+  return ::grpc::Status::OK;
 }
