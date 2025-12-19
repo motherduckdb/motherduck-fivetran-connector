@@ -99,8 +99,8 @@ TestResult run_write_permissions_test(duckdb::Connection &con) {
          duckling_id_res->ColumnCount() == 1);
   const auto duckling_id = duckling_id_res->GetValue(0, 0).ToString();
 
-  // For read-scaling tokens, the duckling ID ends with ".rs.<duckling number>"
   // For read-write tokens, the duckling ID ends with ".rw".
+  // For read-scaling tokens, the duckling ID ends with ".rs.<duckling number>"
   // If neither is the case, optimistically return success too not rely to much
   // on internals.
 
