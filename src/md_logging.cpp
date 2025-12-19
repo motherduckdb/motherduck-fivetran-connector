@@ -6,6 +6,13 @@
 namespace mdlog {
 
 namespace {
+void enable_md_logging(duckdb::Connection &con) {
+  con.Query("CALL enable_logging()");
+  con.Query("SET logging_storage='motherduck_log_storage'");
+  con.Query("SET logging_level='info'");
+  con.Query("SET motherduck_log_level='info'");
+}
+
 std::string escape_char(const std::string &str, const char &c) {
   std::string result = str;
   int start_pos = 0;
