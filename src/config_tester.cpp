@@ -108,11 +108,7 @@ TestResult run_write_permissions_test(duckdb::Connection &con) {
     return TestResult(true);
   }
 
-  const auto last_dot_pos = duckling_id.rfind('.');
-  if (last_dot_pos == std::string::npos || last_dot_pos < 3) {
-    return TestResult(true);
-  }
-  if (duckling_id.substr(last_dot_pos - 3, 3) == ".rs") {
+  if (duckling_id.find(".rs.") != std::string::npos) {
     return TestResult(
         false,
         "The provided authentication token is a read-scaling token. A token "
