@@ -17,7 +17,7 @@ else()
 endif()
 message(STATUS "DEPENDENCIES DIR: ${DEPENDENCIES_DIR}")
 
-foreach(dependency grpc arrow openssl)
+foreach(dependency grpc openssl)
     if(NOT EXISTS ${DEPENDENCIES_DIR}/${dependency})
         message(FATAL_ERROR "Directory ${DEPENDENCIES_DIR}/${dependency} does not exist. Make sure to install the dependencies using `make build_dependencies` first.")
     endif()
@@ -28,8 +28,6 @@ find_package(Threads REQUIRED)
 # absl and utf8_range are required by protobuf
 find_package(absl CONFIG REQUIRED PATHS ${DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
 find_package(utf8_range CONFIG REQUIRED PATHS ${DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
-find_package(Arrow REQUIRED PATHS ${DEPENDENCIES_DIR}/arrow NO_DEFAULT_PATH)
-message(STATUS "Using arrow ${ARROW_VERSION}")
 find_package(Protobuf CONFIG REQUIRED PATHS ${DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
 message(STATUS "Using protobuf ${Protobuf_VERSION}")
 set(Protobuf_INCLUDE_DIR "${DEPENDENCIES_DIR}/grpc/include")
@@ -166,7 +164,6 @@ target_include_directories(motherduck_destination_sources PUBLIC
 )
 
 target_link_libraries(motherduck_destination_sources PUBLIC
-        Arrow::arrow_static
         duckdb_static
         fivetran_sdk
         OpenSSL::Crypto

@@ -1,4 +1,4 @@
-.PHONY: info build_connector build_connector_debug build_dependencies build_grpc build_arrow build_openssl_native get_fivetran_protos check_dependencies build_test_dependencies format check_format
+.PHONY: info build_connector build_connector_debug build_dependencies build_grpc build_openssl_native get_fivetran_protos check_dependencies build_test_dependencies format check_format
 
 MAKEFILE:=$(firstword $(MAKEFILE_LIST))
 ROOT_DIR:=$(shell dirname $(realpath ${MAKEFILE}))
@@ -13,7 +13,6 @@ INSTALL_DIR=${ROOT_DIR}/install
 
 GRPC_VERSION=v1.61.1
 OPENSSL_VERSION=3.1.3
-ARROW_VERSION=15.0.2
 CATCH2_VERSION=v3.5.1
 
 info:
@@ -23,7 +22,7 @@ info:
 	echo "dependencies build dir = " ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}
 
 check_dependencies:
-	if [ ! -d '${MD_FIVETRAN_DEPENDENCIES_DIR}/arrow' ]; then \
+	if [ ! -d '${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc' ]; then \
   		echo "ERROR: Please run 'make build_dependencies' first."; \
   		exit 1; \
   	fi
@@ -83,24 +82,12 @@ build_grpc:
 	cd ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/grpc && make -j${CORES}
 	cmake --install ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/grpc
 
-build_arrow:
-	mkdir -p ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}
-	rm -rf ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/arrow ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow ${MD_FIVETRAN_DEPENDENCIES_DIR}/arrow
-	git clone --branch apache-arrow-${ARROW_VERSION} --depth 1 https://github.com/apache/arrow.git ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/arrow
-	cmake -S ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/arrow/cpp -B ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow \
-	  -DARROW_BUILD_STATIC=ON -DARROW_CSV=ON -DARROW_WITH_ZSTD=ON \
-	  -DCMAKE_INSTALL_PREFIX=${MD_FIVETRAN_DEPENDENCIES_DIR}/arrow \
-	  -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-
-	CMAKE_POLICY_VERSION_MINIMUM=3.5 cmake --build ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow
-	cmake --install ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/arrow
-
 get_fivetran_protos:
 	mkdir -p protos
 	curl --no-progress-meter --output protos/destination_sdk.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/v2/destination_sdk.proto
 	curl --no-progress-meter --output protos/common.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/v2/common.proto
 
-build_dependencies: build_openssl_native build_grpc build_arrow build_test_dependencies
+build_dependencies: build_openssl_native build_grpc build_test_dependencies
 
 # Repo-wide C++ formatting
 # For local formatter use:
