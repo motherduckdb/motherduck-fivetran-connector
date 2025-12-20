@@ -43,6 +43,10 @@ message(STATUS "Using gRPC ${gRPC_VERSION}")
 
 add_link_options(-rdynamic)
 add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)
+# If building in debug, set USE_SANITIZERS to ON
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(USE_SANITIZERS ON)
+endif()
 
 ### DuckDB dependency ###
 message(STATUS "Fetching DuckDB...")
@@ -57,17 +61,26 @@ FetchContent_Declare(
 )
 
 set(ENABLE_EXTENSION_AUTOINSTALL OFF)
+# We need autoloading enabled to be able to connect to MotherDuck via md:
+# TODO: Check that this is true
 set(ENABLE_EXTENSION_AUTOLOADING ON)
 set(BUILD_SHELL OFF)
 set(BUILD_UNITTESTS OFF)
+# core_functions is always built
 set(BUILD_EXTENSIONS "parquet")
+
+if (DEFINED USE_SANITIZERS AND USE_SANITIZERS)
+    set(ENABLE_SANITIZER ON)
+    set(ENABLE_UBSAN ON)
+else()
+    set(ENABLE_SANITIZER OFF)
+    set(ENABLE_UBSAN OFF)
+endif()
+
 # Set build type to RELEASE for DuckDB because we use the release build of the MotherDuck extension
 set(CMAKE_BUILD_TYPE_BACKUP ${CMAKE_BUILD_TYPE})
 set(CMAKE_BUILD_TYPE Release)
-set(ENABLE_SANITIZER OFF)
-set(ENABLE_UBSAN OFF)
 FetchContent_MakeAvailable(duckdb)
-target_compile_options(duckdb_static PRIVATE -fno-sanitize=address,undefined)
 # Restore build type
 set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE_BACKUP})
 
@@ -164,10 +177,12 @@ target_compile_definitions(motherduck_destination_sources PRIVATE
     GIT_COMMIT_SHA="${GIT_COMMIT_SHA}"
 )
 
-target_compile_options(motherduck_destination_sources PUBLIC
-        "-fsanitize=address,undefined"
-        "-fsanitize-blacklist=${CMAKE_CURRENT_LIST_DIR}/sanitizer-disallowed-entries.txt")
-target_link_options(motherduck_destination_sources PUBLIC "-fsanitize=address,undefined")
+if (DEFINED USE_SANITIZERS AND USE_SANITIZERS)
+    target_compile_options(motherduck_destination_sources PUBLIC "-fsanitize=address,undefined")
+    target_link_options(motherduck_destination_sources PUBLIC "-fsanitize=address,undefined")
+endif()
+
+target_compile_options(motherduck_destination_sources PUBLIC -Wall -Wextra -Wpedantic -Werror)
 
 add_executable(motherduck_destination src/motherduck_destination.cpp)
 target_link_libraries(
