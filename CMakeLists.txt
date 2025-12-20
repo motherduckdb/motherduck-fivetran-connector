@@ -178,6 +178,8 @@ target_compile_definitions(motherduck_destination_sources PRIVATE
     GIT_COMMIT_SHA="${GIT_COMMIT_SHA}"
 )
 
+target_compile_options(motherduck_destination_sources PUBLIC -Wall -Wextra -Wpedantic -Werror)
+
 add_executable(motherduck_destination src/motherduck_destination.cpp)
 target_link_libraries(
         motherduck_destination motherduck_destination_sources
