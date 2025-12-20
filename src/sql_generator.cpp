@@ -478,6 +478,7 @@ void MdSqlGenerator::upsert(
   std::ostringstream sql;
   sql << "INSERT INTO " << absolute_table_name << "(" << full_column_list
       << ") SELECT " << full_column_list << " FROM " << staging_table_name;
+
   if (!columns_pk.empty()) {
     sql << " ON CONFLICT (";
     write_joined(sql, columns_pk, print_column);
@@ -495,6 +496,27 @@ void MdSqlGenerator::upsert(
   if (result->HasError()) {
     throw std::runtime_error("Could not upsert table <" + absolute_table_name +
                              ">" + result->GetError());
+  }
+}
+
+void MdSqlGenerator::insert(
+    duckdb::Connection &con, const table_def &table,
+    const std::string &staging_table_name,
+    const std::vector<const column_def *> &columns_pk,
+    const std::vector<const column_def *> &columns_regular) {
+
+  auto full_column_list = make_full_column_list(columns_pk, columns_regular);
+  const std::string absolute_table_name = table.to_escaped_string();
+  std::ostringstream sql;
+  sql << "INSERT INTO " << absolute_table_name << "(" << full_column_list
+      << ") SELECT " << full_column_list << " FROM " << staging_table_name;
+
+  auto query = sql.str();
+  logger->info("insert: " + query);
+  auto result = con.Query(query);
+  if (result->HasError()) {
+    throw std::runtime_error("Could not insert into table <" +
+                             absolute_table_name + ">" + result->GetError());
   }
 }
 
@@ -550,8 +572,18 @@ void MdSqlGenerator::add_partial_historical_values(
   std::ostringstream sql;
   auto absolute_table_name = table.to_escaped_string();
 
+  /*
+  The latest_active_records (lar) table is used to process the update file
+  from fivetran in history mode. We receive a file in which only updated
+  columns are provided, so we need to "manually" fetch the values for the
+  remaining columns to be able to insert a new valid row with all the right
+  columns values. As this uses type 2 slowly changing dimensions, i.e. insert
+  a new row on updates, we cannot use UPDATE x SET y = value, as this updates
+  in place.
+  */
+
   // create empty table structure just in case there were not any earliest files
-  // that would have created it
+  // that would have created it.
   const auto lar_table = create_latest_active_records_table(
       con, absolute_table_name, temp_db_name);
 
@@ -660,9 +692,9 @@ void MdSqlGenerator::deactivate_historical_records(
 
   {
     // store latest versions of records before they get deactivated
-    // per spec, this should be limited to _fivetran_active = TRUE but it's
+    // per spec, this should be limited to _fivetran_active = TRUE, but it's
     // safer to get all latest versions even if deactivated to prevent null
-    // values in  a partially successful batch.
+    // values in a partially successful batch.
     std::ostringstream sql;
     const std::string short_table_name =
         KeywordHelper::WriteQuoted(table.table_name, '"');
@@ -784,13 +816,5 @@ void MdSqlGenerator::truncate_table(duckdb::Connection &con,
   auto result = statement->Execute(params, false);
   if (result->HasError()) {
     throw std::runtime_error(err + ": " + result->GetError());
-  }
-}
-
-void MdSqlGenerator::check_connection(duckdb::Connection &con) {
-  auto result = con.Query("PRAGMA MD_VERSION");
-  if (result->HasError()) {
-    throw std::runtime_error("Error checking connection: " +
-                             result->GetError());
   }
 }

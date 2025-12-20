@@ -1,0 +1,375 @@
+{
+   "create_table": {
+      "products": {
+         "columns": {
+            "product_id": "INT",
+            "name": "STRING",
+            "price": "DOUBLE",
+            "category": "STRING",
+            "in_stock": "BOOLEAN",
+            "quantity": "LONG",
+            "created_date": "NAIVE_DATE",
+            "updated_at": "NAIVE_DATETIME"
+         },
+         "primary_key": ["product_id"],
+         "history_mode": false
+      },
+      "orders_history": {
+         "columns": {
+            "order_id": "INT",
+            "customer_id": "INT",
+            "order_date": "UTC_DATETIME",
+            "total_amount": "DECIMAL",
+            "status": "STRING",
+            "payment_method": "STRING",
+            "shipping_address": "JSON",
+            "notes": "STRING"
+         },
+         "primary_key": ["order_id"],
+         "history_mode": true
+      },
+      "customers_history": {
+         "columns": {
+            "customer_id": "INT",
+            "email": "STRING",
+            "first_name": "STRING",
+            "last_name": "STRING",
+            "phone": "STRING",
+            "created_at": "UTC_DATETIME",
+            "loyalty_points": "INT",
+            "is_active": "BOOLEAN"
+         },
+         "primary_key": ["customer_id"],
+         "history_mode": true
+      },
+      "inventory_history": {
+         "columns": {
+            "item_id": "INT",
+            "warehouse_id": "INT",
+            "quantity_available": "LONG",
+            "quantity_reserved": "LONG",
+            "last_restock_date": "NAIVE_DATE",
+            "unit_cost": "DECIMAL",
+            "expiry_date": "NAIVE_DATE"
+         },
+         "primary_key": ["item_id", "warehouse_id"],
+         "history_mode": true
+      }
+   },
+   "ops": [
+      {
+         "upsert": {
+            "products": [
+               {
+                  "product_id": 101,
+                  "name": "Laptop Pro 15",
+                  "price": 1299.99,
+                  "category": "Electronics",
+                  "in_stock": true,
+                  "quantity": 50,
+                  "created_date": "2024-01-15",
+                  "updated_at": "2024-01-15T10:00:00"
+               },
+               {
+                  "product_id": 102,
+                  "name": "Wireless Mouse",
+                  "price": 29.99,
+                  "category": "Accessories",
+                  "in_stock": true,
+                  "quantity": 200,
+                  "created_date": "2024-01-16",
+                  "updated_at": "2024-01-16T14:30:00"
+               },
+               {
+                  "product_id": 103,
+                  "name": "USB-C Cable",
+                  "price": 19.99,
+                  "category": "Accessories",
+                  "in_stock": false,
+                  "quantity": 0,
+                  "created_date": "2024-01-17",
+                  "updated_at": "2024-01-17T09:15:00"
+               }
+            ],
+            "orders_history": [
+               {
+                  "order_id": 1001,
+                  "customer_id": 5001,
+                  "order_date": "2024-01-20T10:30:00Z",
+                  "total_amount": "1349.98",
+                  "status": "pending",
+                  "payment_method": "credit_card",
+                  "shipping_address": "{\"street\": \"123 Main St\", \"city\": \"Portland\", \"state\": \"OR\", \"zip\": \"97201\"}",
+                  "notes": null,
+                  "op_time": "2024-01-20T10:30:00Z"
+               },
+               {
+                  "order_id": 1001,
+                  "customer_id": 5001,
+                  "order_date": "2024-01-20T10:30:00Z",
+                  "total_amount": "1349.98",
+                  "status": "processing",
+                  "payment_method": "credit_card",
+                  "shipping_address": "{\"street\": \"123 Main St\", \"city\": \"Portland\", \"state\": \"OR\", \"zip\": \"97201\"}",
+                  "notes": "Payment confirmed",
+                  "op_time": "2024-01-20T11:15:00Z"
+               },
+               {
+                  "order_id": 1001,
+                  "customer_id": 5001,
+                  "order_date": "2024-01-20T10:30:00Z",
+                  "total_amount": "1349.98",
+                  "status": "shipped",
+                  "payment_method": "credit_card",
+                  "shipping_address": "{\"street\": \"123 Main St\", \"city\": \"Portland\", \"state\": \"OR\", \"zip\": \"97201\"}",
+                  "notes": "Shipped via FedEx",
+                  "op_time": "2024-01-21T09:00:00Z"
+               },
+               {
+                  "order_id": 1002,
+                  "customer_id": 5002,
+                  "order_date": "2024-01-21T14:20:00Z",
+                  "total_amount": "59.98",
+                  "status": "pending",
+                  "payment_method": "paypal",
+                  "shipping_address": "{\"street\": \"456 Oak Ave\", \"city\": \"Seattle\", \"state\": \"WA\", \"zip\": \"98101\"}",
+                  "notes": null,
+                  "op_time": "2024-01-21T14:20:00Z"
+               },
+               {
+                  "order_id": 1002,
+                  "customer_id": 5002,
+                  "order_date": "2024-01-21T14:20:00Z",
+                  "total_amount": "59.98",
+                  "status": "cancelled",
+                  "payment_method": "paypal",
+                  "shipping_address": "{\"street\": \"456 Oak Ave\", \"city\": \"Seattle\", \"state\": \"WA\", \"zip\": \"98101\"}",
+                  "notes": "Customer requested cancellation",
+                  "op_time": "2024-01-21T16:45:00Z"
+               }
+            ],
+            "customers_history": [
+               {
+                  "customer_id": 5001,
+                  "email": "john.doe@example.com",
+                  "first_name": "John",
+                  "last_name": "Doe",
+                  "phone": "+1-555-0100",
+                  "created_at": "2023-12-01T08:00:00Z",
+                  "loyalty_points": 100,
+                  "is_active": true,
+                  "op_time": "2023-12-01T08:00:00Z"
+               },
+               {
+                  "customer_id": 5001,
+                  "email": "john.doe@example.com",
+                  "first_name": "John",
+                  "last_name": "Doe",
+                  "phone": "+1-555-0100",
+                  "created_at": "2023-12-01T08:00:00Z",
+                  "loyalty_points": 150,
+                  "is_active": true,
+                  "op_time": "2024-01-20T12:00:00Z"
+               },
+               {
+                  "customer_id": 5002,
+                  "email": "jane.smith@example.com",
+                  "first_name": "Jane",
+                  "last_name": "Smith",
+                  "phone": "+1-555-0200",
+                  "created_at": "2024-01-10T09:30:00Z",
+                  "loyalty_points": 0,
+                  "is_active": true,
+                  "op_time": "2024-01-10T09:30:00Z"
+               },
+               {
+                  "customer_id": 5002,
+                  "email": "jane.smith@example.com",
+                  "first_name": "Jane",
+                  "last_name": "Smith",
+                  "phone": "+1-555-0201",
+                  "created_at": "2024-01-10T09:30:00Z",
+                  "loyalty_points": 0,
+                  "is_active": true,
+                  "op_time": "2024-01-15T11:00:00Z"
+               },
+               {
+                  "customer_id": 5002,
+                  "email": "jane.smith@example.com",
+                  "first_name": "Jane",
+                  "last_name": "Smith",
+                  "phone": "+1-555-0201",
+                  "created_at": "2024-01-10T09:30:00Z",
+                  "loyalty_points": 10,
+                  "is_active": false,
+                  "op_time": "2024-01-22T10:30:00Z"
+               }
+            ],
+            "inventory_history": [
+               {
+                  "item_id": 101,
+                  "warehouse_id": 1,
+                  "quantity_available": 50,
+                  "quantity_reserved": 0,
+                  "last_restock_date": "2024-01-15",
+                  "unit_cost": "899.00",
+                  "expiry_date": null,
+                  "op_time": "2024-01-15T08:00:00Z"
+               },
+               {
+                  "item_id": 101,
+                  "warehouse_id": 1,
+                  "quantity_available": 48,
+                  "quantity_reserved": 2,
+                  "last_restock_date": "2024-01-15",
+                  "unit_cost": "899.00",
+                  "expiry_date": null,
+                  "op_time": "2024-01-20T10:30:00Z"
+               },
+               {
+                  "item_id": 101,
+                  "warehouse_id": 1,
+                  "quantity_available": 48,
+                  "quantity_reserved": 0,
+                  "last_restock_date": "2024-01-15",
+                  "unit_cost": "899.00",
+                  "expiry_date": null,
+                  "op_time": "2024-01-21T09:00:00Z"
+               },
+               {
+                  "item_id": 102,
+                  "warehouse_id": 1,
+                  "quantity_available": 200,
+                  "quantity_reserved": 0,
+                  "last_restock_date": "2024-01-16",
+                  "unit_cost": "15.00",
+                  "expiry_date": null,
+                  "op_time": "2024-01-16T10:00:00Z"
+               },
+               {
+                  "item_id": 102,
+                  "warehouse_id": 2,
+                  "quantity_available": 150,
+                  "quantity_reserved": 0,
+                  "last_restock_date": "2024-01-18",
+                  "unit_cost": "15.00",
+                  "expiry_date": null,
+                  "op_time": "2024-01-18T14:00:00Z"
+               },
+               {
+                  "item_id": 103,
+                  "warehouse_id": 1,
+                  "quantity_available": 100,
+                  "quantity_reserved": 0,
+                  "last_restock_date": "2024-01-17",
+                  "unit_cost": "10.00",
+                  "expiry_date": null,
+                  "op_time": "2024-01-17T09:00:00Z"
+               },
+               {
+                  "item_id": 103,
+                  "warehouse_id": 1,
+                  "quantity_available": 0,
+                  "quantity_reserved": 0,
+                  "last_restock_date": "2024-01-17",
+                  "unit_cost": "10.00",
+                  "expiry_date": null,
+                  "op_time": "2024-01-19T16:00:00Z"
+               }
+            ]
+         }
+      }
+   ],
+   "schema_migration": [
+      {
+         "add_column_in_history_mode": [
+            {
+               "table": "orders_history",
+               "column": "discount_code",
+               "data_type": "STRING",
+               "default_value": null,
+               "operation_timestamp": "2024-01-20T10:30:00Z"
+            },
+            {
+               "table": "customers_history",
+               "column": "marketing_opt_in",
+               "data_type": "BOOLEAN",
+               "default_value": false,
+               "operation_timestamp": "2023-12-01T08:00:00Z"
+            },
+            {
+               "table": "inventory_history",
+               "column": "location_zone",
+               "data_type": "STRING",
+               "default_value": "A1",
+               "operation_timestamp": "2024-01-15T08:00:00Z"
+            }
+         ],
+         "drop_column_in_history_mode": [
+            {
+               "table": "orders_history",
+               "column": "notes",
+               "operation_timestamp": "2024-01-20T10:30:00Z"
+            },
+            {
+               "table": "customers_history",
+               "column": "phone",
+               "operation_timestamp": "2023-12-01T08:00:00Z"
+            }
+         ],
+         "copy_table_to_history_mode": [
+            {
+               "from_table": "products",
+               "to_table": "products_history",
+               "deleted_column": "_fivetran_deleted"
+            }
+         ],
+         "migrate_history_to_live": [
+            {
+               "table": "orders_history",
+               "keep_inactive_rows": true
+            },
+            {
+               "table": "customers_history",
+               "keep_inactive_rows": false
+            }
+         ],
+         "migrate_soft_delete_to_live": [
+            {
+               "table": "products",
+               "deleted_column": "_fivetran_deleted"
+            }
+         ],
+         "migrate_live_to_soft_delete": [
+            {
+               "table": "products",
+               "deleted_column": "_fivetran_deleted"
+            }
+         ],
+         "migrate_soft_delete_to_history": [
+            {
+               "table": "products",
+               "deleted_column": "_fivetran_deleted"
+            }
+         ],
+         "migrate_live_to_history": [
+            {
+               "table": "inventory_history"
+            }
+         ],
+         "migrate_history_to_soft_delete": [
+            {
+               "table": "products_history",
+               "deleted_column": "_fivetran_deleted"
+            }
+         ]
+      }
+   ],
+   "describe_table": [
+      "products",
+      "orders_history",
+      "customers_history",
+      "inventory_history",
+      "products_history"
+   ]
+}

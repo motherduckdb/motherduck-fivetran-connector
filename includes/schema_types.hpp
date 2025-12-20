@@ -1,14 +1,15 @@
 #pragma once
 
 #include "duckdb.hpp"
+#include <cstdint>
 #include <string>
 
 struct column_def {
   std::string name;
   duckdb::LogicalTypeId type;
   bool primary_key;
-  unsigned int width;
-  unsigned int scale;
+  std::uint32_t width;
+  std::uint32_t scale;
 };
 
 struct table_def {
@@ -16,5 +17,5 @@ struct table_def {
   std::string schema_name;
   std::string table_name;
 
-  std::string to_escaped_string() const;
+  [[nodiscard]] std::string to_escaped_string() const;
 };

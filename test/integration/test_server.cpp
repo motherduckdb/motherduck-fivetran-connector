@@ -1,7 +1,9 @@
 #include "../constants.hpp"
+#include "config_tester.hpp"
 #include "duckdb.hpp"
 #include "extension_helper.hpp"
 #include "motherduck_destination_server.hpp"
+
 #include <catch2/catch_all.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -14,7 +16,8 @@
 
 using namespace test::constants;
 
-bool NO_FAIL(duckdb::unique_ptr<duckdb::MaterializedQueryResult> &result) {
+bool NO_FAIL(
+    const duckdb::unique_ptr<duckdb::MaterializedQueryResult> &result) {
   if (result->HasError()) {
     fprintf(stderr, "Query failed with message: %s\n",
             result->GetError().c_str());
@@ -51,6 +54,15 @@ public:
 
 CATCH_REGISTER_LISTENER(testRunListener)
 
+std::unique_ptr<duckdb::Connection>
+get_test_connection(const std::string &token) {
+  duckdb::DBConfig config;
+  config.SetOptionByName("motherduck_token", token);
+  config.SetOptionByName("custom_user_agent", "fivetran-integration-test");
+  duckdb::DuckDB db("md:" + TEST_DATABASE_NAME, &config);
+  return std::make_unique<duckdb::Connection>(db);
+}
+
 TEST_CASE("ConfigurationForm", "[integration][config]") {
   DestinationSdkImpl service;
   ::fivetran_sdk::v2::ConfigurationFormRequest request;
@@ -59,18 +71,11 @@ TEST_CASE("ConfigurationForm", "[integration][config]") {
   auto status = service.ConfigurationForm(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
 
-  REQUIRE(response.fields_size() == 3);
+  REQUIRE(response.fields_size() == 2);
   REQUIRE(response.fields(0).name() == "motherduck_token");
   REQUIRE(response.fields(1).name() == "motherduck_database");
-  REQUIRE(response.fields(2).name() == "motherduck_csv_block_size");
-  REQUIRE(response.fields(2).label() ==
-          "Maximum individual value size, in megabytes (default 1 MB)");
 
-  REQUIRE(response.tests_size() == 2);
-  REQUIRE(response.tests(0).name() == CONFIG_TEST_NAME_CSV_BLOCK_SIZE);
-  REQUIRE(response.tests(0).label() == "Maximum value size is a valid number");
-  REQUIRE(response.tests(1).name() == CONFIG_TEST_NAME_AUTHENTICATE);
-  REQUIRE(response.tests(1).label() == "Test Authentication");
+  REQUIRE(response.tests_size() == 3);
 }
 
 TEST_CASE("DescribeTable fails when database missing",
@@ -212,15 +217,17 @@ TEST_CASE("Test fails when database missing", "[integration][configtest]") {
 
   ::fivetran_sdk::v2::TestResponse response;
 
-  auto status = service.Test(nullptr, &request, &response);
-  REQUIRE_FAIL(status, "Missing property motherduck_database");
+  const auto status = service.Test(nullptr, &request, &response);
+  REQUIRE_NO_FAIL(status);
+  REQUIRE_THAT(response.failure(), Catch::Matchers::ContainsSubstring(
+                                       "Missing property motherduck_database"));
 }
 
 TEST_CASE("Test fails when token is missing", "[integration][configtest]") {
   DestinationSdkImpl service;
 
   ::fivetran_sdk::v2::TestRequest request;
-  request.set_name(CONFIG_TEST_NAME_AUTHENTICATE);
+  request.set_name(config_tester::TEST_AUTHENTICATE);
   (*request.mutable_configuration())["motherduck_database"] =
       TEST_DATABASE_NAME;
 
@@ -228,11 +235,8 @@ TEST_CASE("Test fails when token is missing", "[integration][configtest]") {
 
   auto status = service.Test(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
-  auto expected_message = "Test <test_authentication> for database <" +
-                          TEST_DATABASE_NAME +
-                          "> failed: Missing "
-                          "property motherduck_token";
-  REQUIRE(status.error_message() == expected_message);
+  const std::string expected_message =
+      "Test <test_authentication> failed: Missing property motherduck_token";
   REQUIRE(response.failure() == expected_message);
 }
 
@@ -241,7 +245,7 @@ TEST_CASE("Test endpoint fails when token is bad",
   DestinationSdkImpl service;
 
   ::fivetran_sdk::v2::TestRequest request;
-  request.set_name(CONFIG_TEST_NAME_AUTHENTICATE);
+  request.set_name(config_tester::TEST_AUTHENTICATE);
   (*request.mutable_configuration())["motherduck_database"] =
       TEST_DATABASE_NAME;
   (*request.mutable_configuration())["motherduck_token"] = "12345";
@@ -250,8 +254,8 @@ TEST_CASE("Test endpoint fails when token is bad",
 
   auto status = service.Test(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
-  CHECK_THAT(status.error_message(),
-             Catch::Matchers::ContainsSubstring("not authenticated"));
+  REQUIRE_THAT(response.failure(),
+               Catch::Matchers::ContainsSubstring("not authenticated"));
 }
 
 TEST_CASE(
@@ -260,74 +264,59 @@ TEST_CASE(
   DestinationSdkImpl service;
 
   ::fivetran_sdk::v2::TestRequest request;
-  request.set_name(CONFIG_TEST_NAME_AUTHENTICATE);
+  request.set_name(config_tester::TEST_AUTHENTICATE);
   (*request.mutable_configuration())["motherduck_database"] =
       TEST_DATABASE_NAME;
   (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
 
   ::fivetran_sdk::v2::TestResponse response;
 
-  auto status = service.Test(nullptr, &request, &response);
+  const auto status = service.Test(nullptr, &request, &response);
   REQUIRE_NO_FAIL(status);
+  REQUIRE(response.success());
 }
 
-TEST_CASE("Test endpoint block size validation succeeds when optional block "
-          "size is missing",
+TEST_CASE("Test fails when motherduck_database is a share",
           "[integration][configtest]") {
-  DestinationSdkImpl service;
+  auto con = get_test_connection(MD_TOKEN);
+  const std::string share_name = "fivetran_test_share";
 
+  // Make sure we are in workspace attach mode
+  const auto attach_mode_res =
+      con->Query("SELECT current_setting('motherduck_attach_mode')");
+  REQUIRE_NO_FAIL(attach_mode_res);
+  REQUIRE(attach_mode_res->RowCount() == 1);
+  REQUIRE(attach_mode_res->ColumnCount() == 1);
+  const auto attach_mode = attach_mode_res->GetValue(0, 0).ToString();
+  REQUIRE(attach_mode == "workspace");
+
+  const auto create_res = con->Query("CREATE OR REPLACE SHARE " + share_name +
+                                     " FROM " + TEST_DATABASE_NAME);
+  REQUIRE_NO_FAIL(create_res);
+  REQUIRE(create_res->RowCount() == 1);
+  REQUIRE(create_res->ColumnCount() == 1);
+  const auto share_url = create_res->GetValue(0, 0).ToString();
+
+  const auto attach_res =
+      con->Query("ATTACH IF NOT EXISTS '" + share_url + "'");
+  REQUIRE_NO_FAIL(attach_res);
+
+  DestinationSdkImpl service;
   ::fivetran_sdk::v2::TestRequest request;
-  request.set_name(CONFIG_TEST_NAME_CSV_BLOCK_SIZE);
+  request.set_name(config_tester::TEST_DATABASE_TYPE);
   (*request.mutable_configuration())["motherduck_database"] =
-      TEST_DATABASE_NAME;
+      "fivetran_test_share";
   (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
 
   ::fivetran_sdk::v2::TestResponse response;
 
-  auto status = service.Test(nullptr, &request, &response);
+  const auto status = service.Test(nullptr, &request, &response);
+
+  con->Query("DETACH IF EXISTS " + share_name);
+
   REQUIRE_NO_FAIL(status);
-}
-
-TEST_CASE("Test endpoint block size validation succeeds when optional block "
-          "size is a valid number",
-          "[integration][configtest]") {
-  DestinationSdkImpl service;
-
-  ::fivetran_sdk::v2::TestRequest request;
-  request.set_name(CONFIG_TEST_NAME_CSV_BLOCK_SIZE);
-  (*request.mutable_configuration())["motherduck_database"] =
-      TEST_DATABASE_NAME;
-  (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-  (*request.mutable_configuration())[MD_PROP_CSV_BLOCK_SIZE] = "5";
-
-  ::fivetran_sdk::v2::TestResponse response;
-
-  auto status = service.Test(nullptr, &request, &response);
-  REQUIRE_NO_FAIL(status);
-}
-
-TEST_CASE("Test endpoint block size validation fails when optional block size "
-          "is not a valid number",
-          "[integration][configtest]") {
-  DestinationSdkImpl service;
-
-  ::fivetran_sdk::v2::TestRequest request;
-  request.set_name(CONFIG_TEST_NAME_CSV_BLOCK_SIZE);
-  (*request.mutable_configuration())["motherduck_database"] =
-      TEST_DATABASE_NAME;
-  (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-  (*request.mutable_configuration())[MD_PROP_CSV_BLOCK_SIZE] = "lizard";
-
-  ::fivetran_sdk::v2::TestResponse response;
-
-  auto status = service.Test(nullptr, &request, &response);
-  REQUIRE_NO_FAIL(status);
-  REQUIRE_FALSE(response.success());
-
-  auto expected_message =
-      "Test <test_csv_block_size> for database <" + TEST_DATABASE_NAME +
-      "> failed: Maximum individual value size must be numeric if present";
-  REQUIRE(response.failure() == expected_message);
+  REQUIRE_THAT(response.failure(), Catch::Matchers::ContainsSubstring(
+                                       "is a read-only MotherDuck share"));
 }
 
 template <typename T>
@@ -394,6 +383,63 @@ void define_history_test_table(T &request, const std::string &table_name) {
 }
 
 template <typename T>
+void define_transaction_test_table(T &request, const std::string &table_name) {
+  request.mutable_table()->set_name(table_name);
+
+  auto col1 = request.mutable_table()->add_columns();
+  col1->set_name("amount");
+  col1->set_type(::fivetran_sdk::v2::DataType::INT);
+
+  auto col2 = request.mutable_table()->add_columns();
+  col2->set_name("_fivetran_synced");
+  col2->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
+
+  auto col3 = request.mutable_table()->add_columns();
+  col3->set_name("id");
+  col3->set_type(::fivetran_sdk::v2::DataType::INT);
+  col3->set_primary_key(true);
+
+  auto col4 = request.mutable_table()->add_columns();
+  col4->set_name("desc");
+  col4->set_type(::fivetran_sdk::v2::DataType::STRING);
+}
+
+template <typename T>
+void define_transaction_history_test_table(T &request,
+                                           const std::string &table_name) {
+  request.mutable_table()->set_name(table_name);
+  auto col1 = request.mutable_table()->add_columns();
+  col1->set_name("amount");
+  col1->set_type(::fivetran_sdk::v2::DataType::INT);
+
+  auto col2 = request.mutable_table()->add_columns();
+  col2->set_name("_fivetran_synced");
+  col2->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
+
+  auto col3 = request.mutable_table()->add_columns();
+  col3->set_name("_fivetran_end");
+  col3->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
+
+  auto col4 = request.mutable_table()->add_columns();
+  col4->set_name("_fivetran_active");
+  col4->set_type(::fivetran_sdk::v2::DataType::BOOLEAN);
+
+  auto col5 = request.mutable_table()->add_columns();
+  col5->set_name("desc");
+  col5->set_type(::fivetran_sdk::v2::DataType::STRING);
+
+  auto col6 = request.mutable_table()->add_columns();
+  col6->set_name("_fivetran_start");
+  col6->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
+  col6->set_primary_key(true);
+
+  auto col7 = request.mutable_table()->add_columns();
+  col7->set_name("id");
+  col7->set_type(::fivetran_sdk::v2::DataType::INT);
+  col7->set_primary_key(true);
+}
+
+template <typename T>
 void define_test_multikey_table(T &request, const std::string &table_name) {
   request.mutable_table()->set_name(table_name);
   auto col1 = request.mutable_table()->add_columns();
@@ -426,16 +472,6 @@ void set_up_plain_write_request(T &request, const std::string &token,
   (*request.mutable_configuration())["motherduck_token"] = token;
   (*request.mutable_configuration())["motherduck_database"] = db_name;
 }
-
-std::unique_ptr<duckdb::Connection>
-get_test_connection(const std::string &token) {
-  duckdb::DBConfig config;
-  config.SetOptionByName("motherduck_token", token);
-  config.SetOptionByName("custom_user_agent", "fivetran-integration-test");
-  duckdb::DuckDB db("md:" + TEST_DATABASE_NAME, &config);
-  return std::make_unique<duckdb::Connection>(db);
-}
-
 TEST_CASE("WriteBatch", "[integration][write-batch]") {
   DestinationSdkImpl service;
 
@@ -451,7 +487,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
     define_test_table(request, table_name);
 
     ::fivetran_sdk::v2::CreateTableResponse response;
-    auto status = service.CreateTable(nullptr, &request, &response);
+    const auto status = service.CreateTable(nullptr, &request, &response);
     REQUIRE_NO_FAIL(status);
   }
 
@@ -927,121 +963,6 @@ void make_book_table(T &request, const std::string &table_name) {
   auto col1 = request.mutable_table()->add_columns();
   col1->set_name("text");
   col1->set_type(::fivetran_sdk::v2::DataType::STRING);
-}
-
-TEST_CASE("Table with huge VARCHAR value", "[integration][write-batch]") {
-  DestinationSdkImpl service;
-
-  const std::string table_name =
-      "huge_book_" + std::to_string(Catch::rngSeed());
-
-  {
-    // Create Table
-    ::fivetran_sdk::v2::CreateTableRequest request;
-    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-    (*request.mutable_configuration())["motherduck_database"] =
-        TEST_DATABASE_NAME;
-    make_book_table(request, table_name);
-    ::fivetran_sdk::v2::CreateTableResponse response;
-    auto status = service.CreateTable(nullptr, &request, &response);
-    REQUIRE_NO_FAIL(status);
-  }
-
-  auto con = get_test_connection(MD_TOKEN);
-  {
-    // fail when default block_size is used
-    ::fivetran_sdk::v2::WriteBatchRequest request;
-    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-    (*request.mutable_configuration())["motherduck_database"] =
-        TEST_DATABASE_NAME;
-
-    make_book_table(request, table_name);
-
-    const std::string filename = "huge_books.csv";
-    const std::string filepath = TEST_RESOURCES_DIR + filename;
-
-    request.add_replace_files(filepath);
-
-    ::fivetran_sdk::v2::WriteBatchResponse response;
-    auto status = service.WriteBatch(nullptr, &request, &response);
-    REQUIRE_FALSE(status.ok());
-    // The error message is always shown for sniffer errors, but is the best
-    // indication of this error.
-    CHECK_THAT(status.error_message(),
-               Catch::Matchers::ContainsSubstring(
-                   "Maximum line size of 2000000 bytes exceeded"));
-  }
-
-  {
-    // check no rows were inserted
-    auto res = con->Query("SELECT count(*) FROM " + table_name);
-    REQUIRE_NO_FAIL(res);
-    REQUIRE(res->RowCount() == 1);
-    REQUIRE(res->GetValue(0, 0) == 0);
-  }
-
-  {
-    // Empty string for the block size falls back to default value,
-    // but sync fails due to default block size being too small.
-    ::fivetran_sdk::v2::WriteBatchRequest request;
-    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-    (*request.mutable_configuration())["motherduck_database"] =
-        TEST_DATABASE_NAME;
-    (*request.mutable_configuration())[MD_PROP_CSV_BLOCK_SIZE] = "";
-
-    make_book_table(request, table_name);
-
-    const std::string filename = "huge_books.csv";
-    const std::string filepath = TEST_RESOURCES_DIR + filename;
-
-    request.add_replace_files(filepath);
-
-    ::fivetran_sdk::v2::WriteBatchResponse response;
-    auto status = service.WriteBatch(nullptr, &request, &response);
-    REQUIRE_FALSE(status.ok());
-    CHECK_THAT(status.error_message(),
-               Catch::Matchers::ContainsSubstring(
-                   "Maximum line size of 2000000 bytes exceeded"));
-  }
-
-  {
-    // check no rows were inserted
-    auto res = con->Query("SELECT count(*) FROM " + table_name);
-    REQUIRE_NO_FAIL(res);
-    REQUIRE(res->RowCount() == 1);
-    REQUIRE(res->GetValue(0, 0) == 0);
-  }
-
-  {
-    // succeed when block_size is increased
-    ::fivetran_sdk::v2::WriteBatchRequest request;
-    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-    (*request.mutable_configuration())["motherduck_database"] =
-        TEST_DATABASE_NAME;
-    constexpr int max_line_size_mb = 3;
-    // buffer_size = max_line_size * 16
-    (*request.mutable_configuration())[MD_PROP_CSV_BLOCK_SIZE] =
-        std::to_string(max_line_size_mb * 16);
-
-    make_book_table(request, table_name);
-
-    const std::string filename = "huge_books.csv";
-    const std::string filepath = TEST_RESOURCES_DIR + filename;
-
-    request.add_replace_files(filepath);
-
-    ::fivetran_sdk::v2::WriteBatchResponse response;
-    auto status = service.WriteBatch(nullptr, &request, &response);
-    REQUIRE_NO_FAIL(status);
-  }
-
-  {
-    // check one row was inserted
-    auto res = con->Query("SELECT count(*) FROM " + table_name);
-    REQUIRE_NO_FAIL(res);
-    REQUIRE(res->RowCount() == 1);
-    REQUIRE(res->GetValue(0, 0) == 1);
-  }
 }
 
 TEST_CASE("Parallel WriteBatch requests", "[integration][write-batch]") {
@@ -1975,7 +1896,7 @@ TEST_CASE("WriteBatchHistory upsert and delete", "[integration][write-batch]") {
 
     request.add_earliest_start_files(TEST_RESOURCES_DIR +
                                      "books_history_earliest.csv");
-    request.add_update_files(TEST_RESOURCES_DIR + "books_history_upsert.csv");
+    request.add_replace_files(TEST_RESOURCES_DIR + "books_history_upsert.csv");
 
     ::fivetran_sdk::v2::WriteBatchResponse response;
     auto status = service.WriteHistoryBatch(nullptr, &request, &response);
@@ -2046,6 +1967,135 @@ TEST_CASE("WriteBatchHistory upsert and delete", "[integration][write-batch]") {
     REQUIRE(res->GetValue(7, 0) ==
             "2025-03-09 04:10:19.156057+00"); // _fivetran_end updated per
                                               // delete file
+  }
+}
+
+TEST_CASE("WriteBatch and WriteBatchHistory with upsert",
+          "[integration][write-batch]") {
+  DestinationSdkImpl service;
+
+  // Integration test that tries to mimic the destination tester on input_5.json (with history mode) and creates two
+  // tables, of which one is a live table and one is a historic table.
+
+  // Schema will be main
+  const std::string transaction_table_name =
+      "transaction" + std::to_string(Catch::rngSeed());
+  const std::string transaction_history_table_name =
+      "transaction_history" + std::to_string(Catch::rngSeed());
+
+  {
+    // Create Tables
+    ::fivetran_sdk::v2::CreateTableRequest request;
+    set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+    define_transaction_test_table(request, transaction_table_name);
+
+    ::fivetran_sdk::v2::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+
+    ::fivetran_sdk::v2::CreateTableRequest request2;
+    set_up_plain_write_request(request2, MD_TOKEN, TEST_DATABASE_NAME);
+    define_transaction_history_test_table(request2,
+                                          transaction_history_table_name);
+
+    ::fivetran_sdk::v2::CreateTableResponse response2;
+    auto status2 = service.CreateTable(nullptr, &request2, &response2);
+    REQUIRE_NO_FAIL(status2);
+  }
+
+  {
+    // WriteBatch
+    ::fivetran_sdk::v2::WriteBatchRequest request;
+    set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+    request.mutable_file_params()->set_unmodified_string(
+        "unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
+    request.mutable_file_params()->set_null_string(
+        "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP");
+
+    define_transaction_test_table(request, transaction_table_name);
+    request.add_replace_files(TEST_RESOURCES_DIR +
+                              "transaction_input_5_upsert.csv");
+
+    ::fivetran_sdk::v2::WriteBatchResponse response;
+    auto status = service.WriteBatch(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // WriteHistoryBatch
+    // history write with the earliest file (that does not affect anything
+    // because there is no data), plus upsert file
+    ::fivetran_sdk::v2::WriteHistoryBatchRequest request;
+    set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+    request.mutable_file_params()->set_unmodified_string(
+        "unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
+    request.mutable_file_params()->set_null_string(
+        "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP");
+
+    define_transaction_history_test_table(request,
+                                          transaction_history_table_name);
+    request.add_earliest_start_files(
+        TEST_RESOURCES_DIR + "transaction_history_input_5_earliest.csv");
+    request.add_replace_files(TEST_RESOURCES_DIR +
+                              "transaction_history_input_5_upsert.csv");
+
+    ::fivetran_sdk::v2::WriteBatchResponse response;
+    auto status = service.WriteHistoryBatch(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  auto con = get_test_connection(MD_TOKEN);
+  {
+    auto res =
+        con->Query("SELECT id, amount, \"desc\", _fivetran_synced, FROM " +
+                   transaction_table_name + " ORDER BY id");
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 6);
+
+    // All record ids present
+    REQUIRE(res->GetValue(0, 0) == 1);
+    REQUIRE(res->GetValue(0, 1) == 2);
+    REQUIRE(res->GetValue(0, 2) == 3);
+    REQUIRE(res->GetValue(0, 3) == 4);
+    REQUIRE(res->GetValue(0, 4) == 10);
+    REQUIRE(res->GetValue(0, 5) == 20);
+
+    REQUIRE(res->GetValue(2, 0).IsNull()); // desc is null for row 0
+
+    // As we see in the next test below, row 4 (id=10) is the only row with two
+    // records in transaction_history. We pick the same entity to test here,
+    // which at least makes sure that WriteBatch and WriteHistoryBatch do not
+    // intervene in this test case, but otherwise this choice is arbitrary.
+    REQUIRE(res->GetValue(1, 4) == 200);
+    REQUIRE(res->GetValue(2, 4) == "three");
+    REQUIRE(res->GetValue(3, 4) == "2025-12-17 12:30:40.937+00");
+  }
+
+  {
+    // check that id=2 ("The Two Towers") got deleted because it's newer than
+    // the date in books_history_earliest.csv
+    auto res = con->Query("SELECT id, amount, _fivetran_active"
+                          " FROM " +
+                          transaction_history_table_name +
+                          " ORDER BY id, _fivetran_start");
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 7);
+
+    REQUIRE(res->GetValue(0, 0) == 1);
+    REQUIRE(res->GetValue(0, 1) == 2);
+    REQUIRE(res->GetValue(0, 2) == 3);
+    REQUIRE(res->GetValue(0, 3) == 4);
+    REQUIRE(res->GetValue(0, 4) == 10);
+    REQUIRE(res->GetValue(0, 5) == 10);
+    REQUIRE(res->GetValue(0, 6) == 20);
+
+    // Item with id 10 gets an update of the amount column, which goes from 200
+    // to 100.
+    REQUIRE_FALSE(res->GetValue(2, 4) == true);
+    REQUIRE(res->GetValue(2, 5) == true);
+
+    REQUIRE(res->GetValue(1, 4) == 200);
+    REQUIRE(res->GetValue(1, 5) == 100);
   }
 }
 

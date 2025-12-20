@@ -4,6 +4,9 @@ project(MotherDuckFivetranDestination C CXX)
 include(FetchContent)
 
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_compile_options(-ftime-trace)
 
@@ -128,6 +131,7 @@ link_dependencies(fivetran_sdk)
 
 ### MotherDuck destination connector ###
 add_library(motherduck_destination_sources STATIC
+        src/config_tester.cpp
         src/csv_processor.cpp
         src/decryption.cpp
         src/extension_helper.cpp
