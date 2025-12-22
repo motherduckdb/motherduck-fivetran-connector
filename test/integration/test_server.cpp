@@ -1024,7 +1024,6 @@ TEST_CASE("Table with huge VARCHAR value", "[integration][write-batch]") {
     (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
     (*request.mutable_configuration())["motherduck_database"] =
         TEST_DATABASE_NAME;
-    (*request.mutable_configuration())[MD_PROP_CSV_BLOCK_SIZE] = "";
 
     make_book_table(request, table_name);
 
@@ -1056,9 +1055,6 @@ TEST_CASE("Table with huge VARCHAR value", "[integration][write-batch]") {
     (*request.mutable_configuration())["motherduck_database"] =
         TEST_DATABASE_NAME;
     constexpr int max_line_size_mb = 3;
-    // buffer_size = max_line_size * 16
-    (*request.mutable_configuration())[MD_PROP_CSV_BLOCK_SIZE] =
-        std::to_string(max_line_size_mb * 16);
 
     make_book_table(request, table_name);
 
