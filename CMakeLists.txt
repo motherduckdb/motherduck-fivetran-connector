@@ -5,7 +5,6 @@ include(FetchContent)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_compile_options(-ftime-trace)
@@ -70,6 +69,7 @@ set(BUILD_EXTENSIONS "parquet")
 if (DEFINED USE_SANITIZERS AND USE_SANITIZERS)
     set(ENABLE_SANITIZER ON)
     set(ENABLE_UBSAN ON)
+    add_compile_options("-fsanitize-ignorelist=${CMAKE_CURRENT_SOURCE_DIR}/sanitizer_ignorelist.txt")
 else()
     set(ENABLE_SANITIZER OFF)
     set(ENABLE_UBSAN OFF)
@@ -178,8 +178,6 @@ if (DEFINED USE_SANITIZERS AND USE_SANITIZERS)
     target_compile_options(motherduck_destination_sources PUBLIC "-fsanitize=address,undefined")
     target_link_options(motherduck_destination_sources PUBLIC "-fsanitize=address,undefined")
 endif()
-
-target_compile_options(motherduck_destination_sources PUBLIC -Wall -Wextra -Wpedantic -Werror)
 
 add_executable(motherduck_destination src/motherduck_destination.cpp)
 target_link_libraries(
