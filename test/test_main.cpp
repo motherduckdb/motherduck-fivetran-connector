@@ -51,7 +51,7 @@ int main(const int argc, char *argv[]) {
   return result;
 }
 
-#if defined(__SANITIZE_ADDRESS__)
+#ifndef NDEBUG
 extern "C" const char *__asan_default_options() {
   return "detect_container_overflow=0:check_initialization_order=1";
 }
