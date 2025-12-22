@@ -40,9 +40,11 @@ message(STATUS "Using gRPC ${gRPC_VERSION}")
 
 add_link_options(-rdynamic)
 add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)
-# If building in debug, set USE_SANITIZERS to ON
+
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(USE_SANITIZERS ON)
+else()
+    set(USE_SANITIZERS OFF)
 endif()
 
 ### DuckDB dependency ###
@@ -58,22 +60,14 @@ FetchContent_Declare(
 )
 
 set(ENABLE_EXTENSION_AUTOINSTALL OFF)
-# We need autoloading enabled to be able to connect to MotherDuck via md:
-# TODO: Check that this is true
-set(ENABLE_EXTENSION_AUTOLOADING ON)
+set(ENABLE_EXTENSION_AUTOLOADING OFF)
 set(BUILD_SHELL OFF)
 set(BUILD_UNITTESTS OFF)
 # core_functions is always built
 set(BUILD_EXTENSIONS "parquet")
 
-if (DEFINED USE_SANITIZERS AND USE_SANITIZERS)
-    set(ENABLE_SANITIZER ON)
-    set(ENABLE_UBSAN ON)
-    add_compile_options("-fsanitize-ignorelist=${CMAKE_CURRENT_SOURCE_DIR}/sanitizer_ignorelist.txt")
-else()
-    set(ENABLE_SANITIZER OFF)
-    set(ENABLE_UBSAN OFF)
-endif()
+set(ENABLE_SANITIZER ${USE_SANITIZERS})
+set(ENABLE_UBSAN ${USE_SANITIZERS})
 
 # Set build type to RELEASE for DuckDB because we use the release build of the MotherDuck extension
 set(CMAKE_BUILD_TYPE_BACKUP ${CMAKE_BUILD_TYPE})
@@ -116,13 +110,6 @@ endif()
 
 ### Proto generation ###
 set(FIVETRAN_SDK ${PROJECT_SOURCE_DIR}/gen)
-
-if(CMAKE_CROSSCOMPILING)
-    find_program(_GRPC_CPP_PLUGIN_EXECUTABLE grpc_cpp_plugin)
-else()
-    set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
-endif()
-
 # Loads the generate_protos and link_dependencies functions
 set(TARGET_ROOT ${FIVETRAN_SDK})
 include(./proto_helper.cmake)
@@ -174,7 +161,7 @@ target_compile_definitions(motherduck_destination_sources PRIVATE
     GIT_COMMIT_SHA="${GIT_COMMIT_SHA}"
 )
 
-if (DEFINED USE_SANITIZERS AND USE_SANITIZERS)
+if(USE_SANITIZERS)
     target_compile_options(motherduck_destination_sources PUBLIC "-fsanitize=address,undefined")
     target_link_options(motherduck_destination_sources PUBLIC "-fsanitize=address,undefined")
 endif()
