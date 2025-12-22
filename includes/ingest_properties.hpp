@@ -15,11 +15,10 @@ struct IngestProperties {
                    const std::string &_decryption_key,
                    const std::vector<column_def> &_columns,
                    const std::string &_null_value,
-                   const int &_csv_block_size_mb,
                    const UnmodifiedMarker _allow_unmodified_string,
                    const std::string &_temp_db_name)
       : filename(_filename), decryption_key(_decryption_key), columns(_columns),
-        null_value(_null_value), csv_block_size_mb(_csv_block_size_mb),
+        null_value(_null_value),
         allow_unmodified_string(_allow_unmodified_string ==
                                 UnmodifiedMarker::Allowed),
         temp_db_name(_temp_db_name) {}
@@ -31,7 +30,6 @@ struct IngestProperties {
   const std::vector<column_def> columns;
   /// String that represents NULL values in the CSV file.
   const std::string null_value;
-  const std::uint32_t csv_block_size_mb;
   /// Indicates that the CSV file may contain "unmodified_string" values that
   /// should be treated as strings even if the target column is of a different
   /// type. In that case, the CSV file is read with all_varchar=true and type
