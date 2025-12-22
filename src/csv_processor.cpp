@@ -15,7 +15,6 @@
 #include <stdexcept>
 #include <string>
 #include <unistd.h>
-#include "md_error.hpp"
 
 #ifdef __linux__
 #include <fcntl.h>
@@ -320,8 +319,8 @@ void ProcessFile(
   logger->info("    creating view: " + final_query);
   const auto create_view_res = con.Query(final_query);
   if (create_view_res->HasError()) {
-    throw md_error::ExceptionWithTaskResolution("Failed to create view for CSV file <" +
-                                props.filename + ">: " + create_view_res->GetError());
+    create_view_res->ThrowError("Failed to create view for CSV file <" +
+                                props.filename + ">: ");
   }
   logger->info("    view created for file " + props.filename);
 
