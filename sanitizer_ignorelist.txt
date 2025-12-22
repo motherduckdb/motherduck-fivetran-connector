@@ -1,5 +1,0 @@
-# Sanitizer ignorelist for AddressSanitizer
-# Suppresses false positives in third-party code
-
-# DuckDB StringUtil::Split has a container-overflow false positive
-src:*string_util.cpp

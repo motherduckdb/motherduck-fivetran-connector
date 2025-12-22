@@ -1,4 +1,0 @@
-# cf. https://clang.llvm.org/docs/SanitizerSpecialCaseList.html
-
-# Exclude DuckDB source files (fetched via FetchContent to _deps/duckdb-src/)
-src:*/_deps/duckdb-*
