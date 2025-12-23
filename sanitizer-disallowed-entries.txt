@@ -1,4 +1,0 @@
-# cf. https://clang.llvm.org/docs/SanitizerSpecialCaseList.html
-# nothing excluded for now
-#src:*
-#fun:*

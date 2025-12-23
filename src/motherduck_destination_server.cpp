@@ -81,17 +81,17 @@ DestinationSdkImpl::get_duckdb(const std::string &md_token,
 
     duckdb::Connection con(db);
 
-    const auto load_res = con.Query("LOAD core_functions");
-    if (load_res->HasError()) {
+    const auto load_core_funcs_res = con.Query("LOAD core_functions");
+    if (load_core_funcs_res->HasError()) {
       throw std::runtime_error("Could not LOAD core_functions: " +
-                               load_res->GetError());
+                               load_core_funcs_res->GetError());
     }
     logger->info("    initialize_db: loaded core_functions");
 
-    const auto load_res2 = con.Query("LOAD parquet");
-    if (load_res2->HasError()) {
+    const auto load_parquet_res = con.Query("LOAD parquet");
+    if (load_parquet_res->HasError()) {
       throw std::runtime_error("Could not LOAD parquet: " +
-                               load_res2->GetError());
+                               load_parquet_res->GetError());
     }
     logger->info("    initialize_db: loaded parquet");
 
@@ -143,14 +143,6 @@ std::unique_ptr<duckdb::Connection> DestinationSdkImpl::get_connection(
     throw std::runtime_error(
         "    get_connection: Could not SET default_collation: " +
         set_collation_res->GetError());
-  }
-
-  // Set the time zone to UTC. This can be removed once we do not load ICU
-  // anymore.
-  const auto set_timezone_res = con->Query("SET timezone='UTC'");
-  if (set_timezone_res->HasError()) {
-    throw std::runtime_error("    get_connection: Could not SET TimeZone: " +
-                             set_timezone_res->GetError());
   }
 
   logger->info("    get_connection: all done, returning connection");
