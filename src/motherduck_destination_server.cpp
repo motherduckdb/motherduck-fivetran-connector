@@ -85,9 +85,15 @@ DestinationSdkImpl::get_duckdb(const std::string &md_token,
       }
       catch (std::exception &e)
       {
-          throw md_error::ExceptionWithTaskResolution(
-          "    initialize_db: failed to create database instance: (" + db_name + ")" + std::string(e.what())
-          );
+          const std::string error_msg(e.what());
+
+          if (error_msg.find("Jwt is expired") != std::string::npos) {
+              throw md_error::ExceptionWithTaskResolution(
+                "    initialize_db: failed to create database instance: (" + db_name + ")" + error_msg
+              );
+          }
+
+          throw;
       }
 
     logger->info("    initialize_db: created database instance");
