@@ -1,0 +1,14 @@
+{
+   "ops" : [
+      {
+         "upsert": {
+            "transaction_history": [
+               {"id":10, "amount": 300, "desc": "three", "op_time":"2005-06-26T20:57:00Z"}
+            ]
+         }
+      }
+   ],
+   "describe_table" : [
+      "transaction_history"
+   ]
+}
