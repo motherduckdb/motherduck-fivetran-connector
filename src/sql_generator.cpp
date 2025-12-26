@@ -587,7 +587,9 @@ void MdSqlGenerator::add_partial_historical_values(
   const auto lar_table = create_latest_active_records_table(
       con, absolute_table_name, temp_db_name);
 
-  sql << "INSERT INTO " << absolute_table_name << " ( SELECT ";
+  auto full_column_list = make_full_column_list(columns_pk, columns_regular);
+  sql << "INSERT INTO " << absolute_table_name << " (" << full_column_list
+      << ") ( SELECT ";
 
   // use primary keys as is, without checking for unmodified value
   write_joined(
