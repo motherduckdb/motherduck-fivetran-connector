@@ -1307,6 +1307,32 @@ void add_decimal_col(T &request, const std::string &name, bool is_primary_key,
   col->mutable_params()->mutable_decimal()->set_scale(scale);
 }
 
+// Helper to verify a row's values in order. Usage:
+//   check_row(res, 0, {1, "Initial Book", 100, false});
+void check_row(duckdb::unique_ptr<duckdb::MaterializedQueryResult> &res,
+               idx_t row, std::initializer_list<duckdb::Value> expected) {
+  idx_t col = 0;
+  for (const auto &val : expected) {
+    REQUIRE(res->GetValue(col++, row) == val);
+  }
+}
+
+// Same columns as define_history_test_table but in a DIFFERENT order.
+// Used to test that INSERT statements use explicit column lists.
+template <typename T>
+void define_history_test_table_reordered(T &request,
+                                         const std::string &table_name) {
+  request.mutable_table()->set_name(table_name);
+  add_col(request, "_fivetran_end", ::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
+  add_col(request, "magic_number", ::fivetran_sdk::v2::DataType::INT, false);
+  add_col(request, "_fivetran_active", ::fivetran_sdk::v2::DataType::BOOLEAN, false);
+  add_col(request, "title", ::fivetran_sdk::v2::DataType::STRING, false);
+  add_col(request, "_fivetran_synced", ::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
+  add_col(request, "_fivetran_start", ::fivetran_sdk::v2::DataType::UTC_DATETIME, true);
+  add_col(request, "_fivetran_deleted", ::fivetran_sdk::v2::DataType::BOOLEAN, false);
+  add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
+}
+
 TEST_CASE("AlterTable with constraints", "[integration]") {
   DestinationSdkImpl service;
 
@@ -1967,6 +1993,96 @@ TEST_CASE("WriteBatchHistory upsert and delete", "[integration][write-batch]") {
     REQUIRE(res->GetValue(7, 0) ==
             "2025-03-09 04:10:19.156057+00"); // _fivetran_end updated per
                                               // delete file
+  }
+}
+
+TEST_CASE("WriteBatch and WriteBatchHistory with reordered CSV columns",
+          "[integration][write-batch]") {
+  // Test that history mode handles CSV files where columns are in a different
+  // order than the table definition. This verifies that INSERT statements
+  // use explicit column lists rather than relying on positional matching.
+  DestinationSdkImpl service;
+
+  const std::string table_name =
+      "books_reordered" + std::to_string(Catch::rngSeed());
+
+  {
+    // Create Table with columns in a specific order:
+    // id, title, magic_number, _fivetran_deleted, _fivetran_synced,
+    // _fivetran_active, _fivetran_start, _fivetran_end
+    ::fivetran_sdk::v2::CreateTableRequest request;
+    set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+    define_history_test_table(request, table_name);
+
+    ::fivetran_sdk::v2::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // Insert initial data using a CSV file where columns are in a DIFFERENT
+    // order: _fivetran_end, magic_number, _fivetran_active, title,
+    // _fivetran_synced, _fivetran_start, _fivetran_deleted, id
+    ::fivetran_sdk::v2::WriteBatchRequest request;
+    set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+    define_history_test_table_reordered(request, table_name);
+
+    request.mutable_file_params()->set_null_string("magic-nullvalue");
+    request.add_replace_files(TEST_RESOURCES_DIR +
+                              "history_reordered_initial.csv");
+
+    ::fivetran_sdk::v2::WriteBatchResponse response;
+    auto status = service.WriteBatch(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  auto con = get_test_connection(MD_TOKEN);
+  {
+    // Verify initial data was inserted correctly despite column order mismatch
+    auto res = con->Query(
+        "SELECT id, title, magic_number, _fivetran_deleted, _fivetran_active"
+        " FROM " +
+        table_name + " ORDER BY id");
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 2);
+
+    check_row(res, 0, {1, "Initial Book", 100, false, true});
+    check_row(res, 1, {2, "Second Book", 200, false, true});
+  }
+
+  {
+    // WriteHistoryBatch with update files - request columns in DIFFERENT order
+    // than the table was created with. This tests that INSERT statements
+    // use explicit column lists and don't rely on positional matching.
+    ::fivetran_sdk::v2::WriteHistoryBatchRequest request;
+    set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+    request.mutable_file_params()->set_unmodified_string("unmod-testmarker");
+    request.mutable_file_params()->set_null_string("magic-nullvalue");
+
+    // Use REORDERED column definition - different order than CreateTable used
+    define_history_test_table_reordered(request, table_name);
+
+    request.add_earliest_start_files(TEST_RESOURCES_DIR +
+                                     "history_reordered_earliest.csv");
+    request.add_update_files(TEST_RESOURCES_DIR +
+                             "history_reordered_update.csv");
+
+    ::fivetran_sdk::v2::WriteBatchResponse response;
+    auto status = service.WriteHistoryBatch(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // Verify the update was applied correctly - id=1 should have new values,
+    // id=2 should have preserved values from the unmodified marker
+    auto res = con->Query(
+        "SELECT id, title, magic_number FROM " + table_name +
+        " WHERE _fivetran_start >= '2025-03-01' ORDER BY id");
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 2);
+
+    check_row(res, 0, {1, "Updated Book", 999});  // updated
+    check_row(res, 1, {2, "Second Book", 200});   // preserved via unmodified marker
   }
 }
 
