@@ -15,11 +15,13 @@
 #include <stdexcept>
 #include <string>
 #include <unistd.h>
+#include "md_error.hpp"
 
 #ifdef __linux__
 #include <fcntl.h>
 #include <sys/mman.h>
 #endif
+
 
 namespace fs = std::filesystem;
 
@@ -318,8 +320,8 @@ void ProcessFile(
   logger->info("    creating view: " + final_query);
   const auto create_view_res = con.Query(final_query);
   if (create_view_res->HasError()) {
-    create_view_res->ThrowError("Failed to create view for CSV file <" +
-                                props.filename + ">: ");
+    throw md_error::ExceptionWithTaskResolution("Failed to create view for CSV file <" +
+                                props.filename + ">: " + create_view_res->GetError());
   }
   logger->info("    view created for file " + props.filename);
 
