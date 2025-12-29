@@ -610,8 +610,7 @@ std::string extract_readable_error(const std::exception &ex) {
   // from file "motherduck.duckdb_extension" threw an exception: "Failed to
   // attach 'my_db': no database/share named 'my_db' found". We are only
   // interested in the last part.
-  const std::string boilerplate =
-      "Initialization function \"motherduck_duckdb_cpp_init\" from file";
+  const std::string boilerplate = "Initialization function \"motherduck_";
   if (error_message.find(boilerplate) != std::string::npos) {
     const std::string search_string = "threw an exception: ";
     const auto pos = error_message.find(search_string);
