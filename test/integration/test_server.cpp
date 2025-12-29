@@ -1974,8 +1974,9 @@ TEST_CASE("WriteBatch and WriteBatchHistory with upsert",
           "[integration][write-batch]") {
   DestinationSdkImpl service;
 
-  // Integration test that tries to mimic the destination tester on input_5.json (with history mode) and creates two
-  // tables, of which one is a live table and one is a historic table.
+  // Integration test that tries to mimic the destination tester on input_5.json
+  // (with history mode) and creates two tables, of which one is a live table
+  // and one is a historic table.
 
   // Schema will be main
   const std::string transaction_table_name =

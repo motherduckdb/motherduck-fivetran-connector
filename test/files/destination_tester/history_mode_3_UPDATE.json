@@ -1,0 +1,14 @@
+{
+   "ops" : [
+      {
+         "update": {
+            "transaction_history": [
+               {"id":10, "amount": 400, "op_time":"2005-07-26T20:57:00Z"}
+            ]
+         }
+      }
+   ],
+   "describe_table" : [
+      "transaction_history"
+   ]
+}
