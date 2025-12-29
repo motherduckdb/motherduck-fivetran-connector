@@ -39,8 +39,9 @@ void preload_extensions() {
     }
 
     for (idx_t row = 0; row < check_exts_res->RowCount(); row++) {
-      const auto ext_name = check_exts_res->GetValue<std::string>(0, row);
-      const auto is_loaded = check_exts_res->GetValue<bool>(1, row);
+      const auto ext_name =
+          check_exts_res->GetValue(0, row).GetValue<std::string>();
+      const auto is_loaded = check_exts_res->GetValue(1, row).GetValue<bool>();
       if (!is_loaded) {
         throw duckdb::InternalException(
             "Expected %s extension to be loaded, but it is not", ext_name);
