@@ -63,7 +63,9 @@ set(ENABLE_EXTENSION_AUTOINSTALL OFF)
 set(ENABLE_EXTENSION_AUTOLOADING OFF)
 set(BUILD_SHELL OFF)
 set(BUILD_UNITTESTS OFF)
-# core_functions is always built
+# core_functions extension is always built
+# Parquet is needed to enable zstd compression:
+# https://github.com/duckdb/duckdb/blob/c8906e701ea8202fce34813b151933275f501f4b/src/common/virtual_file_system.cpp#L52-54
 set(BUILD_EXTENSIONS "parquet")
 
 set(ENABLE_SANITIZER ${USE_SANITIZERS})
