@@ -1971,6 +1971,25 @@ TEST_CASE("WriteBatchHistory upsert and delete", "[integration][write-batch]") {
   }
 
   {
+    // same as above (history write with delete file only), but this delete file
+    // has only the primary keys in it
+    ::fivetran_sdk::v2::WriteHistoryBatchRequest request;
+    set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+    request.mutable_file_params()->set_unmodified_string(
+        "unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
+    request.mutable_file_params()->set_null_string("magic-nullvalue");
+
+    define_history_test_table(request, table_name);
+
+    request.add_delete_files(TEST_RESOURCES_DIR +
+                             "books_history_delete_pk_only.csv");
+
+    ::fivetran_sdk::v2::WriteBatchResponse response;
+    auto status = service.WriteHistoryBatch(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
     // check that id=2 ("The Two Towers") got deleted because it's newer than
     // the date in books_history_earliest.csv
     auto res = con->Query(
