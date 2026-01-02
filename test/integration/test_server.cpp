@@ -1006,7 +1006,8 @@ TEST_CASE("Table with huge VARCHAR value", "[integration][write-batch]") {
     // indication of this error.
     REQUIRE(status.error_message().empty());
     CHECK_THAT(response.task().message(),
-     Catch::Matchers::ContainsSubstring("Maximum line size of 2000000 bytes exceeded"));
+               Catch::Matchers::ContainsSubstring(
+                   "Maximum line size of 2000000 bytes exceeded"));
   }
 
   {
@@ -1037,7 +1038,8 @@ TEST_CASE("Table with huge VARCHAR value", "[integration][write-batch]") {
     REQUIRE(status.ok());
     REQUIRE(status.error_message().empty());
     CHECK_THAT(response.task().message(),
-     Catch::Matchers::ContainsSubstring("Maximum line size of 2000000 bytes exceeded"));
+               Catch::Matchers::ContainsSubstring(
+                   "Maximum line size of 2000000 bytes exceeded"));
   }
 
   {

@@ -4,6 +4,8 @@
 
 #include "../includes/sql_generator.hpp"
 
+#include "md_error.hpp"
+
 using duckdb::KeywordHelper;
 
 // Utility
@@ -228,8 +230,17 @@ void MdSqlGenerator::create_table(
 
   const auto result = con.Query(query);
   if (result->HasError()) {
+    // const std::string error_msg(e.what());
+    const std::string error_msg = result->GetError();
+
+    if (error_msg.find("is attached in read-only mode") != std::string::npos) {
+      throw md_error::RecoverableError(
+          "The database is attached in read-only mode. Please change your "
+          "MotherDuck token to a Read/Write Token.");
+    }
+
     throw std::runtime_error("Could not create table <" + absolute_table_name +
-                             ">" + result->GetError());
+                             ">: " + result->GetError());
   }
 }
 

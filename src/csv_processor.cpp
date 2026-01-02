@@ -21,7 +21,6 @@
 #include <sys/mman.h>
 #endif
 
-
 namespace fs = std::filesystem;
 
 namespace {
