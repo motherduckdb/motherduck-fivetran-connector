@@ -1323,13 +1323,18 @@ template <typename T>
 void define_history_test_table_reordered(T &request,
                                          const std::string &table_name) {
   request.mutable_table()->set_name(table_name);
-  add_col(request, "_fivetran_end", ::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
+  add_col(request, "_fivetran_end", ::fivetran_sdk::v2::DataType::UTC_DATETIME,
+          false);
   add_col(request, "magic_number", ::fivetran_sdk::v2::DataType::INT, false);
-  add_col(request, "_fivetran_active", ::fivetran_sdk::v2::DataType::BOOLEAN, false);
+  add_col(request, "_fivetran_active", ::fivetran_sdk::v2::DataType::BOOLEAN,
+          false);
   add_col(request, "title", ::fivetran_sdk::v2::DataType::STRING, false);
-  add_col(request, "_fivetran_synced", ::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
-  add_col(request, "_fivetran_start", ::fivetran_sdk::v2::DataType::UTC_DATETIME, true);
-  add_col(request, "_fivetran_deleted", ::fivetran_sdk::v2::DataType::BOOLEAN, false);
+  add_col(request, "_fivetran_synced",
+          ::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
+  add_col(request, "_fivetran_start",
+          ::fivetran_sdk::v2::DataType::UTC_DATETIME, true);
+  add_col(request, "_fivetran_deleted", ::fivetran_sdk::v2::DataType::BOOLEAN,
+          false);
   add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
 }
 
@@ -1972,7 +1977,29 @@ TEST_CASE("WriteBatchHistory upsert and delete", "[integration][write-batch]") {
 
   {
     // same as above (history write with delete file only), but this delete file
-    // has only the primary keys in it
+    // is missing _fivetran_start and _fivetran_active columns. This seems to be
+    // the structure of the historical delete files that come through in real
+    // life
+    ::fivetran_sdk::v2::WriteHistoryBatchRequest request;
+    set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+    request.mutable_file_params()->set_unmodified_string(
+        "unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
+    request.mutable_file_params()->set_null_string("magic-nullvalue");
+
+    define_history_test_table(request, table_name);
+
+    request.add_delete_files(
+        TEST_RESOURCES_DIR +
+        "books_history_delete_fivetran_start_and_fivetran_active_missing.csv");
+
+    ::fivetran_sdk::v2::WriteBatchResponse response;
+    auto status = service.WriteHistoryBatch(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // same as above (history write with delete file only), but this delete file
+    // has only the _fivetran_end column and the primary key in it
     ::fivetran_sdk::v2::WriteHistoryBatchRequest request;
     set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
     request.mutable_file_params()->set_unmodified_string(
@@ -2094,14 +2121,14 @@ TEST_CASE("WriteBatch and WriteBatchHistory with reordered CSV columns",
   {
     // Verify the update was applied correctly - id=1 should have new values,
     // id=2 should have preserved values from the unmodified marker
-    auto res = con->Query(
-        "SELECT id, title, magic_number FROM " + table_name +
-        " WHERE _fivetran_start >= '2025-03-01' ORDER BY id");
+    auto res = con->Query("SELECT id, title, magic_number FROM " + table_name +
+                          " WHERE _fivetran_start >= '2025-03-01' ORDER BY id");
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 2);
 
-    check_row(res, 0, {1, "Updated Book", 999});  // updated
-    check_row(res, 1, {2, "Second Book", 200});   // preserved via unmodified marker
+    check_row(res, 0, {1, "Updated Book", 999}); // updated
+    check_row(res, 1,
+              {2, "Second Book", 200}); // preserved via unmodified marker
   }
 }
 
