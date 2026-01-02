@@ -576,8 +576,22 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     for (auto &filename : request->delete_files()) {
       logger->info("delete file " + filename);
-      IngestProperties props = create_ingest_props(
-          filename, request, cols, UnmodifiedMarker::Disallowed, temp_db.name);
+      // Fivetran delete files won't contain all the columns in the request
+      // proto. Only primary keys and _fivetran_end are useful for the soft
+      // delete. _fivetran_start is not present in delete files despite being a
+      // primary key.
+      std::vector<column_def> cols_to_read;
+      cols_to_read.reserve(columns_pk.size() + 1);
+      for (const auto &col : cols) {
+        if ((col.primary_key && col.name != "_fivetran_start") ||
+            col.name == "_fivetran_end") {
+          cols_to_read.push_back(col);
+        }
+      }
+
+      IngestProperties props =
+          create_ingest_props(filename, request, cols_to_read,
+                              UnmodifiedMarker::Disallowed, temp_db.name);
 
       csv_processor::ProcessFile(*con, props, logger,
                                  [&](const std::string &view_name) {
