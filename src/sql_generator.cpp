@@ -402,9 +402,9 @@ void MdSqlGenerator::alter_table(
                    new_col_it->second.name + ">");
       recreate_table = true;
     } else if (new_col_it->second.type != col.type ||
-               new_col_it->second.type == duckdb::LogicalTypeId::DECIMAL &&
+               (new_col_it->second.type == duckdb::LogicalTypeId::DECIMAL &&
                    (new_col_it->second.scale != col.scale ||
-                    new_col_it->second.width != col.width)) {
+                    new_col_it->second.width != col.width))) {
       alter_types.emplace(col.name);
     }
   }

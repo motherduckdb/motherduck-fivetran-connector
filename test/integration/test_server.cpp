@@ -2489,7 +2489,7 @@ TEST_CASE("AlterTable decimal width change", "[integration]") {
 
   auto con = get_test_connection(MD_TOKEN);
 
-  auto verify_decimal_column = [&](int expected_precision, int expected_scale) {
+  auto verify_decimal_column = [&](uint32_t expected_precision, uint32_t expected_scale) {
     ::fivetran_sdk::v2::DescribeTableRequest request;
     add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
     request.set_table_name(table_name);
