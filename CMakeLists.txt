@@ -54,7 +54,7 @@ set(FETCHCONTENT_QUIET OFF)
 FetchContent_Declare(
     duckdb
     GIT_REPOSITORY https://github.com/duckdb/duckdb.git
-    GIT_TAG v1.4.1
+    GIT_TAG v1.4.3
     GIT_SHALLOW TRUE
     SYSTEM
 )
