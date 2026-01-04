@@ -1,29 +1,14 @@
-cmake_minimum_required(VERSION 3.10...3.20)
+cmake_minimum_required(VERSION 3.25)
 project(MotherDuckFivetranDestination C CXX)
+
+include(FetchContent)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Debug Asan/Ubsan
-if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT DISABLE_SANITIZER)
-  if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang$")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize-blacklist=${CMAKE_CURRENT_LIST_DIR}/sanitizer-disallowed-entries.txt")
-    set(ENABLE_UBSAN TRUE)
-  else()
-    set(ENABLE_UBSAN FALSE)
-  endif()
-
-  add_compile_options("-fsanitize=address,undefined")
-  add_link_options("-fsanitize=address,undefined")
-  set(ENABLE_SANITIZER TRUE)
-else()
-  set(ENABLE_SANITIZER FALSE)
-  set(ENABLE_UBSAN FALSE)
-endif()
-
-message("-- ENABLE_SANITIZER=${ENABLE_SANITIZER}")
-message("-- ENABLE_UBSAN=${ENABLE_UBSAN}")
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+add_compile_options(-ftime-trace)
 
 if(DEFINED ENV{MD_FIVETRAN_DEPENDENCIES_DIR})
     set(DEPENDENCIES_DIR "$ENV{MD_FIVETRAN_DEPENDENCIES_DIR}")
@@ -32,7 +17,7 @@ else()
 endif()
 message(STATUS "DEPENDENCIES DIR: ${DEPENDENCIES_DIR}")
 
-foreach(dependency grpc arrow openssl)
+foreach(dependency grpc openssl)
     if(NOT EXISTS ${DEPENDENCIES_DIR}/${dependency})
         message(FATAL_ERROR "Directory ${DEPENDENCIES_DIR}/${dependency} does not exist. Make sure to install the dependencies using `make build_dependencies` first.")
     endif()
@@ -43,8 +28,6 @@ find_package(Threads REQUIRED)
 # absl and utf8_range are required by protobuf
 find_package(absl CONFIG REQUIRED PATHS ${DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
 find_package(utf8_range CONFIG REQUIRED PATHS ${DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
-find_package(Arrow REQUIRED PATHS ${DEPENDENCIES_DIR}/arrow NO_DEFAULT_PATH)
-message(STATUS "Using arrow ${ARROW_VERSION}")
 find_package(Protobuf CONFIG REQUIRED PATHS ${DEPENDENCIES_DIR}/grpc NO_DEFAULT_PATH)
 message(STATUS "Using protobuf ${Protobuf_VERSION}")
 set(Protobuf_INCLUDE_DIR "${DEPENDENCIES_DIR}/grpc/include")
@@ -58,6 +41,45 @@ message(STATUS "Using gRPC ${gRPC_VERSION}")
 
 add_link_options(-rdynamic)
 add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(USE_SANITIZERS ON)
+else()
+    set(USE_SANITIZERS OFF)
+endif()
+
+### DuckDB dependency ###
+message(STATUS "Fetching DuckDB...")
+set(FETCHCONTENT_TRY_FIND_PACKAGE_MODE NEVER)
+set(FETCHCONTENT_QUIET OFF)
+FetchContent_Declare(
+    duckdb
+    GIT_REPOSITORY https://github.com/duckdb/duckdb.git
+    GIT_TAG v1.4.1
+    GIT_SHALLOW TRUE
+    SYSTEM
+)
+
+set(ENABLE_EXTENSION_AUTOINSTALL OFF)
+set(ENABLE_EXTENSION_AUTOLOADING OFF)
+set(BUILD_SHELL OFF)
+set(BUILD_UNITTESTS OFF)
+# core_functions extension is always built
+# Parquet is needed to enable zstd compression:
+# https://github.com/duckdb/duckdb/blob/c8906e701ea8202fce34813b151933275f501f4b/src/common/virtual_file_system.cpp#L52-54
+set(BUILD_EXTENSIONS "parquet")
+
+set(ENABLE_SANITIZER ${USE_SANITIZERS})
+set(ENABLE_UBSAN ${USE_SANITIZERS})
+
+# Set build type to RELEASE for DuckDB because we use the release build of the MotherDuck extension
+set(CMAKE_BUILD_TYPE_BACKUP ${CMAKE_BUILD_TYPE})
+set(CMAKE_BUILD_TYPE Release)
+FetchContent_MakeAvailable(duckdb)
+# Restore build type
+set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE_BACKUP})
+
+get_target_property(DuckDB_INCLUDE_DIRS duckdb_static INTERFACE_INCLUDE_DIRECTORIES)
 
 ### Store latest git commit SHA ###
 if(DEFINED GIT_COMMIT_SHA_OVERRIDE AND NOT GIT_COMMIT_SHA_OVERRIDE STREQUAL "")
@@ -91,13 +113,6 @@ endif()
 
 ### Proto generation ###
 set(FIVETRAN_SDK ${PROJECT_SOURCE_DIR}/gen)
-
-if(CMAKE_CROSSCOMPILING)
-    find_program(_GRPC_CPP_PLUGIN_EXECUTABLE grpc_cpp_plugin)
-else()
-    set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
-endif()
-
 # Loads the generate_protos and link_dependencies functions
 set(TARGET_ROOT ${FIVETRAN_SDK})
 include(./proto_helper.cmake)
@@ -114,36 +129,6 @@ add_library(fivetran_sdk OBJECT
 )
 target_include_directories(fivetran_sdk PUBLIC ${FIVETRAN_SDK}/cpp)
 link_dependencies(fivetran_sdk)
-
-### DuckDB ###
-# Explicitly order static libraries: DuckDB comes first, then extensions, then third-party libs
-set(DUCKDB_STATIC_LIBS
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_static.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libautocomplete_extension.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libcore_functions_extension.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libicu_extension.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libjson_extension.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libparquet_extension.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_fastpforlib.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_fmt.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_fsst.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_hyperloglog.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_mbedtls.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_miniz.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_pg_query.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_re2.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_skiplistlib.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_utf8proc.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_yyjson.a"
-    "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libduckdb_zstd.a"
-)
-# jemalloc is only shipped by default on Linux
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    set(DUCKDB_STATIC_LIBS ${DUCKDB_STATIC_LIBS} "${CMAKE_CURRENT_LIST_DIR}/libduckdb/libjemalloc_extension.a")
-endif()
-add_library(duckdb_static INTERFACE)
-target_link_libraries(duckdb_static INTERFACE ${DUCKDB_STATIC_LIBS})
-target_include_directories(duckdb_static INTERFACE "${CMAKE_CURRENT_LIST_DIR}/libduckdb")
 
 ### MotherDuck destination connector ###
 add_library(motherduck_destination_sources STATIC
@@ -164,10 +149,11 @@ add_library(motherduck_destination_sources STATIC
 
 target_include_directories(motherduck_destination_sources PUBLIC
         includes
+        PUBLIC SYSTEM
+        ${DuckDB_INCLUDE_DIRS}
 )
 
 target_link_libraries(motherduck_destination_sources PUBLIC
-        Arrow::arrow_static
         duckdb_static
         fivetran_sdk
         OpenSSL::Crypto
@@ -179,6 +165,10 @@ target_compile_definitions(motherduck_destination_sources PRIVATE
 )
 
 target_compile_options(motherduck_destination_sources PUBLIC -Wall -Wextra -Wpedantic -Werror)
+if(USE_SANITIZERS)
+    target_compile_options(motherduck_destination_sources PUBLIC "-fsanitize=address,undefined")
+    target_link_options(motherduck_destination_sources PUBLIC "-fsanitize=address,undefined")
+endif()
 
 add_executable(motherduck_destination src/motherduck_destination.cpp)
 target_link_libraries(

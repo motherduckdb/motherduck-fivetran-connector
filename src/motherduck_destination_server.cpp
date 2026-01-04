@@ -12,10 +12,8 @@
 #include "sql_generator.hpp"
 #include "temp_database.hpp"
 
-#include <cstdint>
 #include <exception>
 #include <filesystem>
-#include <fstream>
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <mutex>
@@ -83,20 +81,6 @@ DestinationSdkImpl::get_duckdb(const std::string &md_token,
 
     duckdb::Connection con(db);
 
-    const auto load_res = con.Query("LOAD core_functions");
-    if (load_res->HasError()) {
-      throw std::runtime_error("Could not LOAD core_functions: " +
-                               load_res->GetError());
-    }
-    logger->info("    initialize_db: loaded core_functions");
-
-    const auto load_res2 = con.Query("LOAD parquet");
-    if (load_res2->HasError()) {
-      throw std::runtime_error("Could not LOAD parquet: " +
-                               load_res2->GetError());
-    }
-    logger->info("    initialize_db: loaded parquet");
-
     initial_md_token = md_token;
   };
 
@@ -145,14 +129,6 @@ std::unique_ptr<duckdb::Connection> DestinationSdkImpl::get_connection(
     throw std::runtime_error(
         "    get_connection: Could not SET default_collation: " +
         set_collation_res->GetError());
-  }
-
-  // Set the time zone to UTC. This can be removed once we do not load ICU
-  // anymore.
-  const auto set_timezone_res = con->Query("SET timezone='UTC'");
-  if (set_timezone_res->HasError()) {
-    throw std::runtime_error("    get_connection: Could not SET TimeZone: " +
-                             set_timezone_res->GetError());
   }
 
   logger->info("    get_connection: all done, returning connection");
@@ -578,8 +554,22 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     for (auto &filename : request->delete_files()) {
       logger->info("delete file " + filename);
-      IngestProperties props = create_ingest_props(
-          filename, request, cols, UnmodifiedMarker::Disallowed, temp_db.name);
+      // Fivetran delete files won't contain all the columns in the request
+      // proto. Only primary keys and _fivetran_end are useful for the soft
+      // delete. _fivetran_start is not present in delete files despite being a
+      // primary key.
+      std::vector<column_def> cols_to_read;
+      cols_to_read.reserve(columns_pk.size() + 1);
+      for (const auto &col : cols) {
+        if ((col.primary_key && col.name != "_fivetran_start") ||
+            col.name == "_fivetran_end") {
+          cols_to_read.push_back(col);
+        }
+      }
+
+      IngestProperties props =
+          create_ingest_props(filename, request, cols_to_read,
+                              UnmodifiedMarker::Disallowed, temp_db.name);
 
       csv_processor::ProcessFile(*con, props, logger,
                                  [&](const std::string &view_name) {
@@ -612,8 +602,7 @@ std::string extract_readable_error(const std::exception &ex) {
   // from file "motherduck.duckdb_extension" threw an exception: "Failed to
   // attach 'my_db': no database/share named 'my_db' found". We are only
   // interested in the last part.
-  const std::string boilerplate =
-      "Initialization function \"motherduck_duckdb_cpp_init\" from file";
+  const std::string boilerplate = "Initialization function \"motherduck_";
   if (error_message.find(boilerplate) != std::string::npos) {
     const std::string search_string = "threw an exception: ";
     const auto pos = error_message.find(search_string);

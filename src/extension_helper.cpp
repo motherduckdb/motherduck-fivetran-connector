@@ -20,22 +20,33 @@ void preload_extensions() {
           "Could not load motherduck extension during pre-loading: ");
     }
   }
+
+#ifndef NDEBUG
   {
-    // Preinstall core_functions; no need to load as every duckdb instance will
-    // do that
-    const auto core_functions_load_res = con.Query("INSTALL core_functions");
-    if (core_functions_load_res->HasError()) {
-      core_functions_load_res->ThrowError(
-          "Could not install core_functions during pre-loading: ");
+    const std::string query =
+        "SELECT extension_name, loaded FROM duckdb_extensions() WHERE "
+        "extension_name IN ('core_functions', 'parquet')";
+    const auto check_exts_res = con.Query(query);
+    if (check_exts_res->HasError()) {
+      check_exts_res->ThrowError(
+          "Could not check extensions during pre-loading: ");
+    }
+
+    if (check_exts_res->RowCount() != 2) {
+      throw duckdb::InternalException(
+          "Expected core_functions and parquet extensions to be loaded, but "
+          "not all extensions were found");
+    }
+
+    for (idx_t row = 0; row < check_exts_res->RowCount(); row++) {
+      const auto ext_name =
+          check_exts_res->GetValue(0, row).GetValue<std::string>();
+      const auto is_loaded = check_exts_res->GetValue(1, row).GetValue<bool>();
+      if (!is_loaded) {
+        throw duckdb::InternalException(
+            "Expected %s extension to be loaded, but it is not", ext_name);
+      }
     }
   }
-  {
-    // Parquet is needed to enable zstd compression:
-    // https://github.com/duckdb/duckdb/blob/c8906e701ea8202fce34813b151933275f501f4b/src/common/virtual_file_system.cpp#L52-54
-    const auto parquet_load_res = con.Query("INSTALL parquet");
-    if (parquet_load_res->HasError()) {
-      parquet_load_res->ThrowError(
-          "Could not install parquet during pre-loading: ");
-    }
-  }
+#endif
 }

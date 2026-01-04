@@ -49,5 +49,5 @@ docker build --build-arg GIT_COMMIT_SHA_OVERRIDE=$(git rev-parse --short HEAD) -
 
 ## Upgrading DuckDB
 
-This connector uses DuckDB's amalgamation sources.
-To upgrade, change `DUCKDB_VERSION` in [Makefile](Makefile) and re-run `make get_duckdb`.
+This connector builds DuckDB from source.
+To upgrade, change the `GIT_TAG` in `FetchContent_Declare(duckdb)` in _CMakeLists.txt_ to the new version tag.
