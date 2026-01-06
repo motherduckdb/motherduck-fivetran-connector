@@ -84,19 +84,18 @@ DestinationSdkImpl::get_duckdb(const std::string &md_token,
 
       if (msg.find("Jwt is expired") != std::string::npos) {
         throw md_error::RecoverableError(
-            "initialize_db: failed to create database instance (" + db_name +
-            ") because your MotherDuck token is expired. Please configure a "
+            "Failed to connect to MotherDuck database \"" + db_name +
+            "\" because your MotherDuck token has expired. Please configure a "
             "new MotherDuck token." +
             " \nOriginal error: " + msg);
       }
       if (msg.find("Your request is not authenticated") !=
               std::string::npos || // Random JWT token
-          msg.find("CreateShortLivedToken: Invalid MotherDuck token") !=
+          msg.find("Invalid MotherDuck token") !=
               std::string::npos) { // Revoked token
         throw md_error::RecoverableError(
-            "    initialize_db: failed to create database instance (" +
-            db_name +
-            ") because your MotherDuck token is invalid. Please configure a "
+            "Failed to connect to MotherDuck database \"" + db_name +
+            "\" because your MotherDuck token is invalid. Please configure a "
             "new MotherDuck token." +
             " \nOriginal error: " + msg);
       }

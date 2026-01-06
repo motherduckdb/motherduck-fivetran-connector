@@ -230,17 +230,16 @@ void MdSqlGenerator::create_table(
 
   const auto result = con.Query(query);
   if (result->HasError()) {
-    // const std::string error_msg(e.what());
-    const std::string error_msg = result->GetError();
+    const std::string& error_msg = result->GetError();
 
     if (error_msg.find("is attached in read-only mode") != std::string::npos) {
       throw md_error::RecoverableError(
-          "The database is attached in read-only mode. Please change your "
-          "MotherDuck token to a Read/Write Token.");
+          "The database is attached in read-only mode. Please make sure your MotherDuck token is a Read/Write "
+          "Token and check that it can write to the target database.");
     }
 
     throw std::runtime_error("Could not create table <" + absolute_table_name +
-                             ">: " + result->GetError());
+                             ">: " + error_msg);
   }
 }
 
