@@ -9,6 +9,6 @@ class RecoverableError : public std::runtime_error {
   // into an actionable task instead of an error. A custom exception class
   // allows us to explicitly catch the errors we want to turn into a task.
 public:
-  explicit RecoverableError(const std::string &msg);
+  explicit RecoverableError(const std::string &msg) : runtime_error(msg) {}
 };
 } // namespace md_error
