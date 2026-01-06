@@ -998,8 +998,9 @@ void MdSqlGenerator::add_column_with_default(duckdb::Connection &con,
   std::ostringstream sql;
   sql << "ALTER TABLE " << absolute_table_name << " ADD COLUMN "
       << quoted_column << " " << type_str;
+
   if (!default_value.empty()) {
-    sql << " DEFAULT " << default_value;
+    sql << " DEFAULT " << KeywordHelper::WriteQuoted(default_value, '\'');
   }
 
   run_query(con, "add_column_with_default", sql.str(),
@@ -1045,7 +1046,7 @@ void MdSqlGenerator::add_column_in_history_mode(
   const std::string quoted_column = KeywordHelper::WriteQuoted(column, '"');
   const std::string type_str = fivetran_type_to_duckdb_type_string(type);
   const std::string casted_default_value =
-      "CAST(" + default_value + " AS " + type_str + ")";
+      "CAST(" + KeywordHelper::WriteQuoted(default_value, '\'') + " AS " + type_str + ")";
   const std::string quoted_timestamp =
       "'" + operation_timestamp + "'::TIMESTAMPTZ";
 
