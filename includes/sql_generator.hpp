@@ -111,7 +111,9 @@ public:
                                const std::string &column,
                                fivetran_sdk::v2::DataType type,
                                const std::string &default_value);
-  bool validate_history_table(duckdb::Connection& con, std::string absolute_table_name, std::string quoted_timestamp);
+  bool validate_history_table(duckdb::Connection &con,
+                              std::string absolute_table_name,
+                              std::string quoted_timestamp);
 
   void add_column_in_history_mode(duckdb::Connection &con,
                                   const table_def &table,

@@ -831,8 +831,7 @@ void MdSqlGenerator::drop_column_in_history_mode(
   const std::string quoted_timestamp =
       "'" + operation_timestamp + "'::TIMESTAMPTZ";
 
-  if (validate_history_table(con, absolute_table_name, quoted_timestamp))
-  {
+  if (validate_history_table(con, absolute_table_name, quoted_timestamp)) {
     return;
   }
 
@@ -1008,11 +1007,10 @@ void MdSqlGenerator::add_column_with_default(duckdb::Connection &con,
                 absolute_table_name + ">");
 }
 
-bool MdSqlGenerator::validate_history_table(duckdb::Connection& con, const std::string absolute_table_name, const std::string quoted_timestamp)
-{
-  auto result = con.Query(
-    "SELECT COUNT(*) FROM " + absolute_table_name
-  );
+bool MdSqlGenerator::validate_history_table(
+    duckdb::Connection &con, const std::string absolute_table_name,
+    const std::string quoted_timestamp) {
+  auto result = con.Query("SELECT COUNT(*) FROM " + absolute_table_name);
 
   if (result->HasError()) {
     throw std::runtime_error("Could not query table size");
@@ -1024,16 +1022,16 @@ bool MdSqlGenerator::validate_history_table(duckdb::Connection& con, const std::
   }
 
   auto max_result = con.Query(
-    "SELECT MAX(\"_fivetran_start\") <= " + quoted_timestamp + " FROM " + absolute_table_name +
-    " WHERE \"_fivetran_active\" = true"
-  );
+      "SELECT MAX(\"_fivetran_start\") <= " + quoted_timestamp + " FROM " +
+      absolute_table_name + " WHERE \"_fivetran_active\" = true");
 
   if (max_result->HasError()) {
     throw std::runtime_error("Could not query _fivetran_start value");
   }
 
   if (max_result->GetValue(0, 0) != true) {
-    throw std::runtime_error("_fivetran_start column contains values larger than the operation timestamp");
+    throw std::runtime_error("_fivetran_start column contains values larger "
+                             "than the operation timestamp");
   }
 
   return false;
@@ -1051,9 +1049,7 @@ void MdSqlGenerator::add_column_in_history_mode(
   const std::string quoted_timestamp =
       "'" + operation_timestamp + "'::TIMESTAMPTZ";
 
-
-  if (validate_history_table(con, absolute_table_name, quoted_timestamp))
-  {
+  if (validate_history_table(con, absolute_table_name, quoted_timestamp)) {
     return;
   }
 
@@ -1203,7 +1199,8 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
   // "ADD CONSTRAINT and DROP CONSTRAINT clauses are not yet supported in
   // DuckDB." In particular, we cannot drop the primary key constraint from the
   // original table. Hence, we need to create a new table.
-  table_def temp_table(table.db_name, table.schema_name, table.table_name + "_temp");
+  table_def temp_table(table.db_name, table.schema_name,
+                       table.table_name + "_temp");
   const std::string temp_absolute_table_name = temp_table.to_escaped_string();
 
   // Combine steps 1, 2, 4 and 5
@@ -1265,7 +1262,8 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection &con,
   // "ADD CONSTRAINT and DROP CONSTRAINT clauses are not yet supported in
   // DuckDB." In particular, we cannot drop the primary key constraint from the
   // original table. Hence, we need to create a new table.
-  table_def temp_table(table.db_name, table.schema_name, table.table_name + "_temp");
+  table_def temp_table(table.db_name, table.schema_name,
+                       table.table_name + "_temp");
   const std::string temp_absolute_table_name = temp_table.to_escaped_string();
 
   // Combine steps 1 and 3

@@ -3006,7 +3006,8 @@ TEST_CASE("Migrate - copy table to history mode from soft delete",
   con->Query("DROP TABLE IF EXISTS " + dest_table);
   {
     auto res = con->Query("CREATE TABLE " + source_table +
-                          " (id INT, name VARCHAR, _fivetran_deleted BOOLEAN, _fivetran_synced TIMESTAMPTZ)");
+                          " (id INT, name VARCHAR, _fivetran_deleted BOOLEAN, "
+                          "_fivetran_synced TIMESTAMPTZ)");
     REQUIRE_NO_FAIL(res);
   }
 
@@ -3740,9 +3741,10 @@ TEST_CASE("Migrate - soft delete to history", "[integration][migrate]") {
 
   // Create a table with soft delete column
   {
-    auto res = con->Query("CREATE TABLE " + table_name +
-                          " (id INT PRIMARY KEY, name VARCHAR, "
-                          "_fivetran_deleted BOOLEAN, _fivetran_synced TIMESTAMPTZ)");
+    auto res =
+        con->Query("CREATE TABLE " + table_name +
+                   " (id INT PRIMARY KEY, name VARCHAR, "
+                   "_fivetran_deleted BOOLEAN, _fivetran_synced TIMESTAMPTZ)");
     REQUIRE_NO_FAIL(res);
   }
 
