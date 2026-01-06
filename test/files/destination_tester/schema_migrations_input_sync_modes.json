@@ -53,13 +53,6 @@
                "operation_timestamp": "2005-05-28T20:57:00Z"
             }
          ],
-         "drop_column_in_history_mode": [
-            {
-               "table": "transaction_history",
-               "column": "desc",
-               "operation_timestamp": "2005-05-28T20:57:00Z"
-            }
-         ],
          "copy_table_to_history_mode": [
             {
                "from_table": "transaction",
