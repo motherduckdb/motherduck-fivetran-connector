@@ -84,8 +84,7 @@ DestinationSdkImpl::get_duckdb(const std::string &md_token,
 
       if (msg.find("Jwt is expired") != std::string::npos) {
         throw md_error::RecoverableError(
-            "    initialize_db: failed to create database instance (" +
-            db_name +
+            "initialize_db: failed to create database instance (" + db_name +
             ") because your MotherDuck token is expired. Please configure a "
             "new MotherDuck token." +
             " \nOriginal error: " + msg);
@@ -645,7 +644,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     }
 
   } catch (const md_error::RecoverableError &mde) {
-    auto const msg = "WriteBatch endpoint failed for schema <" +
+    auto const msg = "WriteHistoryBatch endpoint failed for schema <" +
                      request->schema_name() + ">, table <" +
                      request->table().name() + ">:" + std::string(mde.what());
     response->mutable_task()->set_message(mde.what());
