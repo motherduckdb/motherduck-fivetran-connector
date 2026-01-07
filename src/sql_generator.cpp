@@ -1216,7 +1216,8 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
 
   std::vector<const column_def *> columns_pk;
   std::vector<const column_def *> columns_regular;
-  find_primary_keys(describe_table(con, table), columns_pk, &columns_regular,
+  const auto columns = describe_table(con, table);
+  find_primary_keys(columns, columns_pk, &columns_regular,
                     "_fivetran_start");
 
   if (!columns_pk.empty()) {
@@ -1276,14 +1277,15 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection &con,
   run_query(con, "migrate_history_to_live create", add_sql.str(),
             "Could not add soft_deleted_column");
 
+  const auto columns = describe_table(con, table);
+
   std::vector<const column_def *> columns_pk;
   std::vector<const column_def *> columns_regular;
-  find_primary_keys(describe_table(con, table), columns_pk, &columns_regular,
+  find_primary_keys(columns, columns_pk, &columns_regular,
                     "_fivetran_start");
 
-  if (!columns_pk.empty()) {
-    // Add the right primary key. Note that "CREATE TABLE AS SELECT" does not
-    // add any primary key constraints.
+  if (!columns_pk.empty() && !keep_deleted_rows) {  // We can't set the original primary key if we keep duplicates...
+    // Add the right primary key. Note that "CREATE TABLE AS SELECT" does not add any primary key constraints.
     std::ostringstream alter_sql;
 
     alter_sql << "ALTER TABLE " << temp_absolute_table_name

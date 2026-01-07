@@ -3607,10 +3607,12 @@ TEST_CASE("Migrate - history to live", "[integration][migrate]") {
   con->Query("DROP TABLE IF EXISTS " + table_name);
   {
     auto res = con->Query("CREATE TABLE " + table_name +
-                          " (id INT, value VARCHAR, "
-                          "_fivetran_start TIMESTAMPTZ, "
-                          "_fivetran_end TIMESTAMPTZ, "
-                          "_fivetran_active BOOLEAN)");
+        " (id INT, value VARCHAR, "
+        "_fivetran_start TIMESTAMPTZ, "
+        "_fivetran_end TIMESTAMPTZ, "
+        "_fivetran_active BOOLEAN, "
+        "primary key (id, _fivetran_start))"
+    );
     REQUIRE_NO_FAIL(res);
   }
 
