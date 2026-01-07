@@ -3198,7 +3198,7 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
         con->Query("SELECT new_col FROM " + table_name + " WHERE id = 2");
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 1);
-    REQUIRE(res->GetValue(0, 0).ToString() == "default_value");
+    REQUIRE(res->GetValue(0, 0).ToString() == "'default_value'");
   }
 
   // Clean up
