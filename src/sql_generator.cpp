@@ -1201,8 +1201,8 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
   // "ADD CONSTRAINT and DROP CONSTRAINT clauses are not yet supported in
   // DuckDB." In particular, we cannot drop the primary key constraint from the
   // original table. Hence, we need to create a new table.
-  table_def temp_table(table.db_name, table.schema_name,
-                       table.table_name + "_temp");
+  table_def temp_table{table.db_name, table.schema_name,
+                       table.table_name + "_temp"};
   const std::string temp_absolute_table_name = temp_table.to_escaped_string();
 
   std::vector<const column_def *> columns_pk;
@@ -1278,8 +1278,8 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection &con,
   // "ADD CONSTRAINT and DROP CONSTRAINT clauses are not yet supported in
   // DuckDB." In particular, we cannot drop the primary key constraint from the
   // original table. Hence, we need to create a new table.
-  table_def temp_table(table.db_name, table.schema_name,
-                       table.table_name + "_temp");
+  table_def temp_table{table.db_name, table.schema_name,
+                       table.table_name + "_temp"};
   const std::string temp_absolute_table_name = temp_table.to_escaped_string();
 
   // Combine steps 1 and 3
