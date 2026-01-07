@@ -1204,21 +1204,31 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
                        table.table_name + "_temp");
   const std::string temp_absolute_table_name = temp_table.to_escaped_string();
 
-  // Combine steps 1, 2, 4 and 5
-  std::ostringstream add_sql;
-  add_sql << "CREATE TABLE " << temp_absolute_table_name
-          << " AS SELECT * EXCLUDE (\"_fivetran_start\", \"_fivetran_end\", "
-             "\"_fivetran_active\"), "
-          << "NOT \"_fivetran_active\" as " << soft_deleted_column << " FROM "
-          << absolute_table_name << ";";
-  run_query(con, "migrate_history_to_soft_delete create", add_sql.str(),
-            "Could not add soft_deleted_column");
-
   std::vector<const column_def *> columns_pk;
   std::vector<const column_def *> columns_regular;
   const auto columns = describe_table(con, table);
   find_primary_keys(columns, columns_pk, &columns_regular,
                     "_fivetran_start");
+
+  std::ostringstream add_sql;
+  add_sql << "CREATE TABLE " << temp_absolute_table_name
+          << " AS SELECT * EXCLUDE (\"_fivetran_start\", \"_fivetran_end\", \"_fivetran_active\"), "
+          << "NOT \"_fivetran_active\" as " << soft_deleted_column << " FROM " << absolute_table_name;
+
+  if (!columns_pk.empty()) {
+    // Keep only the latest record for a primary key based on the highest _fivetran_start, using QUALIFY
+    add_sql << " QUALIFY row_number() OVER (partition by ";
+    write_joined(add_sql, columns_pk, print_column);
+    add_sql << " ORDER BY \"_fivetran_start\" DESC) = 1";
+  }
+  run_query(con, "migrate_history_to_soft_delete create", add_sql.str(),
+            "Could not add soft_deleted_column");
+
+  std::ostringstream add_col_sql;
+  add_col_sql << "ALTER TABLE " << temp_absolute_table_name
+          << " ADD COLUMN IF NOT EXISTS \"_fivetran_deleted\" BOOLEAN DEFAULT false;";
+  run_query(con, "migrate_history_to_soft_delete add_col", add_col_sql.str(),
+            "Could not add column _fivetran_deleted");
 
   if (!columns_pk.empty()) {
     // Add the right primary key. Note that "CREATE TABLE AS SELECT" does not
