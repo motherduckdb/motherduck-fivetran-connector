@@ -3635,12 +3635,11 @@ TEST_CASE("Migrate - history to live", "[integration][migrate]") {
   con->Query("DROP TABLE IF EXISTS " + table_name);
   {
     auto res = con->Query("CREATE TABLE " + table_name +
-        " (id INT, value VARCHAR, "
-        "_fivetran_start TIMESTAMPTZ, "
-        "_fivetran_end TIMESTAMPTZ, "
-        "_fivetran_active BOOLEAN, "
-        "primary key (id, _fivetran_start))"
-    );
+                          " (id INT, value VARCHAR, "
+                          "_fivetran_start TIMESTAMPTZ, "
+                          "_fivetran_end TIMESTAMPTZ, "
+                          "_fivetran_active BOOLEAN, "
+                          "primary key (id, _fivetran_start))");
     REQUIRE_NO_FAIL(res);
   }
 
@@ -3718,9 +3717,11 @@ TEST_CASE("Migrate - history to soft delete", "[integration][migrate]") {
   {
     auto res = con->Query(
         "INSERT INTO " + table_name +
-        " VALUES (1, 1, 'active_row', NOW(), '9999-12-31 23:59:59'::TIMESTAMPTZ, true),"
+        " VALUES (1, 1, 'active_row', NOW(), '9999-12-31 "
+        "23:59:59'::TIMESTAMPTZ, true),"
         "(1, 1, 'inactive_row', '2020-01-01'::TIMESTAMPTZ, NOW(), false), "
-        "(2, 1, 'active_row', NOW(), '9999-12-31 23:59:59'::TIMESTAMPTZ, false)");
+        "(2, 1, 'active_row', NOW(), '9999-12-31 23:59:59'::TIMESTAMPTZ, "
+        "false)");
     REQUIRE_NO_FAIL(res);
   }
 
