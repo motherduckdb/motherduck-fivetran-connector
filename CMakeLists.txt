@@ -149,7 +149,8 @@ add_library(motherduck_destination_sources STATIC
 
 target_include_directories(motherduck_destination_sources PUBLIC
         includes
-        PUBLIC SYSTEM
+)
+target_include_directories(motherduck_destination_sources SYSTEM PUBLIC
         ${DuckDB_INCLUDE_DIRS}
 )
 
@@ -164,7 +165,10 @@ target_compile_definitions(motherduck_destination_sources PRIVATE
     GIT_COMMIT_SHA="${GIT_COMMIT_SHA}"
 )
 
-target_compile_options(motherduck_destination_sources PUBLIC -Wall -Wextra -Wpedantic -Werror)
+target_compile_options(motherduck_destination_sources PUBLIC
+        -Wall -Wextra -Wpedantic -Wnon-virtual-dtor -Wold-style-cast
+        -Woverloaded-virtual -Wdouble-promotion -Wconversion -Wformat=2
+        -Wnull-dereference -Werror)
 if(USE_SANITIZERS)
     target_compile_options(motherduck_destination_sources PUBLIC "-fsanitize=address,undefined")
     target_link_options(motherduck_destination_sources PUBLIC "-fsanitize=address,undefined")

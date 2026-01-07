@@ -12,6 +12,10 @@
 #include <thread>
 #include <vector>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+#pragma GCC diagnostic ignored "-Wshorten-64-to-32"
+
 namespace {
 std::string generate_random_string(const size_t length) {
   std::string result(length, '\0');
@@ -88,8 +92,9 @@ void encrypt_stream(std::istream &input, std::ostream &output,
   // The istream bool operator evaluates to true if all requested bytes could be
   // read and no error occurred. The gcount() function returns the number of
   // bytes read by the last read operation.
-  while (input.read(reinterpret_cast<char *>(input_buffer.data()), buffer_size) ||
-         input.gcount() > 0) {
+  while (
+      input.read(reinterpret_cast<char *>(input_buffer.data()), buffer_size) ||
+      input.gcount() > 0) {
     // Stream is only allowed to fail if EOF has been reached
     if (input.bad() || (input.fail() && !input.eof())) {
       throw std::system_error(errno, std::iostream_category(),
@@ -97,8 +102,9 @@ void encrypt_stream(std::istream &input, std::ostream &output,
     }
 
     const auto bytes_read = static_cast<int>(input.gcount());
-    if (1 != EVP_EncryptUpdate(ctx, ciphertext_buffer.data(), &ciphertext_length,
-                               input_buffer.data(), bytes_read)) {
+    if (1 != EVP_EncryptUpdate(ctx, ciphertext_buffer.data(),
+                               &ciphertext_length, input_buffer.data(),
+                               bytes_read)) {
       openssl_helper::raise_openssl_error("Error during encryption update");
     }
     output.write(reinterpret_cast<char *>(ciphertext_buffer.data()),
@@ -108,7 +114,8 @@ void encrypt_stream(std::istream &input, std::ostream &output,
   if (!EVP_EncryptFinal_ex(ctx, ciphertext_buffer.data(), &ciphertext_length)) {
     openssl_helper::raise_openssl_error("Error during encryption finalization");
   }
-  output.write(reinterpret_cast<char *>(ciphertext_buffer.data()), ciphertext_length);
+  output.write(reinterpret_cast<char *>(ciphertext_buffer.data()),
+               ciphertext_length);
 }
 } // namespace
 
@@ -129,3 +136,5 @@ TEST_CASE("Decrypt is inverse function of encrypt") {
 
   REQUIRE(result_str == plaintext);
 }
+
+#pragma GCC diagnostic pop

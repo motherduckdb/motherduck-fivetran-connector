@@ -6,6 +6,20 @@
 
 using duckdb::KeywordHelper;
 
+void find_primary_keys(const std::vector<column_def> &cols,
+                       std::vector<const column_def *> &columns_pk,
+                       std::vector<const column_def *> *columns_regular,
+                       const std::string &ignored_primary_key) {
+  for (auto &col : cols) {
+    if (col.primary_key && col.name != ignored_primary_key) {
+      columns_pk.push_back(&col);
+    } else if (columns_regular != nullptr) {
+      columns_regular->push_back(&col);
+    }
+  }
+}
+
+namespace {
 // Utility
 
 std::ostream &operator<<(std::ostream &os, const column_def &col) {
@@ -34,19 +48,6 @@ void write_joined(
   }
 }
 
-void find_primary_keys(const std::vector<column_def> &cols,
-                       std::vector<const column_def *> &columns_pk,
-                       std::vector<const column_def *> *columns_regular,
-                       const std::string &ignored_primary_key) {
-  for (auto &col : cols) {
-    if (col.primary_key && col.name != ignored_primary_key) {
-      columns_pk.push_back(&col);
-    } else if (columns_regular != nullptr) {
-      columns_regular->push_back(&col);
-    }
-  }
-}
-
 std::string
 make_full_column_list(const std::vector<const column_def *> &columns_pk,
                       const std::vector<const column_def *> &columns_regular) {
@@ -62,9 +63,9 @@ make_full_column_list(const std::vector<const column_def *> &columns_pk,
   return full_column_list.str();
 }
 
-const std::string primary_key_join(std::vector<const column_def *> &columns_pk,
-                                   const std::string tbl1,
-                                   const std::string tbl2) {
+static const std::string
+primary_key_join(std::vector<const column_def *> &columns_pk,
+                 const std::string tbl1, const std::string tbl2) {
   std::ostringstream primary_key_join_condition_stream;
   write_joined(
       primary_key_join_condition_stream, columns_pk,
@@ -94,6 +95,7 @@ create_latest_active_records_table(duckdb::Connection &con,
   }
   return table_name;
 }
+} // namespace
 
 MdSqlGenerator::MdSqlGenerator(std::shared_ptr<mdlog::MdLog> &logger_)
     : logger(logger_) {}
@@ -403,8 +405,8 @@ void MdSqlGenerator::alter_table(
       recreate_table = true;
     } else if (new_col_it->second.type != col.type ||
                (new_col_it->second.type == duckdb::LogicalTypeId::DECIMAL &&
-                   (new_col_it->second.scale != col.scale ||
-                    new_col_it->second.width != col.width))) {
+                (new_col_it->second.scale != col.scale ||
+                 new_col_it->second.width != col.width))) {
       alter_types.emplace(col.name);
     }
   }

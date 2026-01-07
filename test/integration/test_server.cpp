@@ -1298,7 +1298,7 @@ void add_col(T &request, const std::string &name,
 
 template <typename T>
 void add_decimal_col(T &request, const std::string &name, bool is_primary_key,
-                     int precision, int scale) {
+                     std::uint32_t precision, std::uint32_t scale) {
   auto col = request.mutable_table()->add_columns();
   col->set_name(name);
   col->set_type(::fivetran_sdk::v2::DataType::DECIMAL);
@@ -2489,7 +2489,8 @@ TEST_CASE("AlterTable decimal width change", "[integration]") {
 
   auto con = get_test_connection(MD_TOKEN);
 
-  auto verify_decimal_column = [&](uint32_t expected_precision, uint32_t expected_scale) {
+  auto verify_decimal_column = [&](uint32_t expected_precision,
+                                   uint32_t expected_scale) {
     ::fivetran_sdk::v2::DescribeTableRequest request;
     add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
     request.set_table_name(table_name);

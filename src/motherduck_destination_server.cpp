@@ -200,8 +200,7 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
 }
 
 grpc::Status DestinationSdkImpl::Capabilities(
-    ::grpc::ServerContext *,
-    const ::fivetran_sdk::v2::CapabilitiesRequest *,
+    ::grpc::ServerContext *, const ::fivetran_sdk::v2::CapabilitiesRequest *,
     ::fivetran_sdk::v2::CapabilitiesResponse *response) {
   response->set_batch_file_format(::fivetran_sdk::v2::CSV);
   return ::grpc::Status(::grpc::StatusCode::OK, "");
