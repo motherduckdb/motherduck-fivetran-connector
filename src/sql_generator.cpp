@@ -63,7 +63,7 @@ make_full_column_list(const std::vector<const column_def *> &columns_pk,
   return full_column_list.str();
 }
 
-static const std::string
+std::string
 primary_key_join(std::vector<const column_def *> &columns_pk,
                  const std::string tbl1, const std::string tbl2) {
   std::ostringstream primary_key_join_condition_stream;
