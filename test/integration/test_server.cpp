@@ -3307,6 +3307,26 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
     REQUIRE_NO_FAIL(status);
     REQUIRE(response.success());
   }
+  // Add another column in history mode with the same operation timestamp
+  {
+    ::fivetran_sdk::v2::MigrateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_details()->set_table(table_name);
+    auto *add_col = request.mutable_details()
+                        ->mutable_add()
+                        ->mutable_add_column_in_history_mode();
+    add_col->set_column("switch");
+    add_col->set_column_type(::fivetran_sdk::v2::DataType::BOOLEAN);
+    add_col->set_default_value("false");
+    add_col->set_operation_timestamp("2024-06-01T00:00:00Z");
+
+    ::fivetran_sdk::v2::MigrateResponse response;
+    auto status = service.Migrate(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(response.success());
+  }
 
   // Verify: should have 2 rows now (old inactive + new active)
   {
@@ -3322,6 +3342,14 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 1);
     REQUIRE(res->GetValue(0, 0) == 25);
+  }
+  // Verify: new active row has the new column with default value
+  {
+    auto res = con->Query("SELECT switch FROM " + table_name +
+                          " WHERE _fivetran_active = TRUE");
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 1);
+    REQUIRE(res->GetValue(0, 0) == false);
   }
 
   // Verify: old row is now inactive
