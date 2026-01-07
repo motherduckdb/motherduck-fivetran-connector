@@ -345,11 +345,6 @@
                "table": "products",
                "deleted_column": "_fivetran_deleted"
             }
-         ],
-         "migrate_live_to_history": [
-            {
-               "table": "inventory_history"
-            }
          ]
       }
    ],
