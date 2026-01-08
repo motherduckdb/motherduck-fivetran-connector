@@ -1,0 +1,14 @@
+{
+   "ops" : [
+      {
+         "delete": {
+            "transaction_history": [
+               {"id":10, "op_time":"2005-08-26T20:57:00Z"}
+            ]
+         }
+      }
+   ],
+   "describe_table" : [
+      "transaction_history"
+   ]
+}

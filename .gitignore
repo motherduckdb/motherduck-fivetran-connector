@@ -41,3 +41,4 @@ gen
 libduckdb
 libduckdb-src
 protos
+.DS_STORE

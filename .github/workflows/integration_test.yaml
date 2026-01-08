@@ -28,7 +28,7 @@ jobs:
           CXX: clang++-15
           CPP: clang-cpp-15
         run: |
-          make build_openssl_native build_grpc build_arrow build_test_dependencies
+          make build_openssl_native build_grpc build_test_dependencies
 
       - name: build the connector
         env:
@@ -36,11 +36,10 @@ jobs:
           CXX: clang++-15
           CPP: clang-cpp-15
         run: |
-          make get_fivetran_protos get_duckdb
+          make get_fivetran_protos
           make build_connector_debug
 
       - name: run tests
         env:
           motherduck_token: ${{ secrets.CI_TESTING_TOKEN }}
-        run: |
-          ASAN_OPTIONS=alloc_dealloc_mismatch=0:fast_unwind_on_malloc=0  LSAN_OPTIONS=suppressions=lsan-suppressions.supp  ./build/Debug/integration_tests
+        run: ./build/Debug/integration_tests

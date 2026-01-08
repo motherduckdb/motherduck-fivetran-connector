@@ -1,0 +1,3 @@
+_fivetran_active,magic_number,title,_fivetran_synced,_fivetran_start,_fivetran_deleted,id,_fivetran_end
+true,999,"Updated Book","2025-03-01T10:00:00.000Z","2025-03-01T10:00:00.000Z",false,1,"9999-03-01T10:00:00.000Z"
+true,"unmod-testmarker","unmod-testmarker","2025-03-01T10:00:00.000Z","2025-03-01T10:00:00.000Z",false,2,"9999-03-01T10:00:00.000Z"

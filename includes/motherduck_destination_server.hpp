@@ -7,23 +7,6 @@
 #include <memory>
 #include <mutex>
 
-static constexpr const char *const MD_PROP_DATABASE = "motherduck_database";
-
-static constexpr const char *const MD_PROP_TOKEN = "motherduck_token";
-
-static constexpr const char *const MD_PROP_CSV_BLOCK_SIZE =
-    "motherduck_csv_block_size";
-
-static constexpr const char *const CONFIG_TEST_NAME_AUTHENTICATE =
-    "test_authentication";
-
-static constexpr const char *const CONFIG_TEST_NAME_CSV_BLOCK_SIZE =
-    "test_csv_block_size";
-
-static constexpr const int DUCKDB_DEFAULT_PRECISION = 18;
-
-static constexpr const int DUCKDB_DEFAULT_SCALE = 3;
-
 class DestinationSdkImpl final
     : public fivetran_sdk::v2::DestinationConnector::Service {
 public:
@@ -72,10 +55,10 @@ private:
   duckdb::DuckDB db;
   std::once_flag db_init_flag;
 
-  duckdb::DuckDB &get_duckdb(const std::string &md_token,
+  duckdb::DuckDB &get_duckdb(const std::string &md_auth_token,
                              const std::string &db_name,
                              const std::shared_ptr<mdlog::MdLog> &logger);
   std::unique_ptr<duckdb::Connection> get_connection(
-      const std::string &motherduck_auth_token,
+      const std::string &md_auth_token,
       const std::string &db_name, const std::shared_ptr<mdlog::MdLog> &logger);
 };
