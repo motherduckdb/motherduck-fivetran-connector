@@ -5,34 +5,40 @@
 #include <deque>
 #include <iostream>
 #include <map>
+#include <mutex>
 #include <string>
 #include <utility>
 
 namespace mdlog {
 
-class MdLog {
+class Logger {
 public:
-  void log(const std::string &level, const std::string &message);
+  static Logger CreateStdoutLogger() {
+    return Logger();
+  }
+  static Logger CreateMultiSinkLogger(duckdb::Connection *connection) {
+    return Logger(connection);
+  }
 
-  void info(const std::string &message);
-  void warning(const std::string &message);
-  void severe(const std::string &message);
-
-  void set_duckdb_id(const std::string &duckdb_id_);
-  void set_connection_id(const std::string &connection_id_);
-  void set_connection(duckdb::Connection *connection_);
+  void log(const std::string &level, const std::string &message) const;
+  void info(const std::string &message) const;
+  void warning(const std::string &message) const;
+  void severe(const std::string &message) const;
 
 private:
-  static constexpr size_t MAX_BUFFERED_MESSAGES = 64;
+  // Only logs to stdout
+  explicit Logger() { }
 
-  void log_to_stdout(const std::string &level, const std::string &message);
-  void log_to_duckdb(const std::string &level, const std::string &message);
-  void flush_buffer();
+  // Logs to both stdout and DuckDB
+  explicit Logger(duckdb::Connection *con_);
 
+  bool enable_duckdb_logging;
+  duckdb::Connection *con;
   std::string duckdb_id = "none";
   std::string connection_id = "none";
-  duckdb::Connection *connection = nullptr;
-  std::deque<std::pair<std::string, std::string>> buffered_messages;
-};
+  std::once_flag enable_duckdb_logging_flag;
 
+  static void log_to_stdout(const std::string &level, const std::string &message);
+  static void log_to_duckdb(duckdb::Connection &con, const std::string &level, const std::string &message);
+};
 } // namespace mdlog

@@ -17,7 +17,7 @@ void find_primary_keys(
 class MdSqlGenerator {
 
 public:
-  explicit MdSqlGenerator(std::shared_ptr<mdlog::MdLog> &logger_);
+  explicit MdSqlGenerator(mdlog::Logger &logger_);
 
   bool schema_exists(duckdb::Connection &con, const std::string &db_name,
                      const std::string &schema_name);
@@ -80,10 +80,10 @@ public:
                               std::vector<const column_def *> &columns_pk);
 
 private:
-  std::shared_ptr<mdlog::MdLog> logger;
+  mdlog::Logger &logger;
 
   void run_query(duckdb::Connection &con, const std::string &log_prefix,
-                 const std::string &query, const std::string &error_message);
+                 const std::string &query, const std::string &error_message) const;
   void alter_table_recreate(duckdb::Connection &con, const table_def &table,
                             const std::vector<column_def> &all_columns,
                             const std::set<std::string> &common_columns);

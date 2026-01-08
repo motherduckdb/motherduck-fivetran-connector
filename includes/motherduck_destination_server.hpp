@@ -1,16 +1,12 @@
 #pragma once
 
+#include "connection_factory.hpp"
 #include "destination_sdk.grpc.pb.h"
-#include "duckdb.hpp"
-#include "md_logging.hpp"
-
-#include <memory>
-#include <mutex>
 
 class DestinationSdkImpl final
     : public fivetran_sdk::v2::DestinationConnector::Service {
 public:
-  DestinationSdkImpl() = default;
+  explicit DestinationSdkImpl() = default;
   ~DestinationSdkImpl() override = default;
 
   ::grpc::Status ConfigurationForm(
@@ -51,14 +47,5 @@ public:
                     ::fivetran_sdk::v2::WriteBatchResponse *response) override;
 
 private:
-  std::string initial_md_token;
-  duckdb::DuckDB db;
-  std::once_flag db_init_flag;
-
-  duckdb::DuckDB &get_duckdb(const std::string &md_auth_token,
-                             const std::string &db_name,
-                             const std::shared_ptr<mdlog::MdLog> &logger);
-  std::unique_ptr<duckdb::Connection> get_connection(
-      const std::string &md_auth_token,
-      const std::string &db_name, const std::shared_ptr<mdlog::MdLog> &logger);
+  ConnectionFactory connection_factory;
 };
