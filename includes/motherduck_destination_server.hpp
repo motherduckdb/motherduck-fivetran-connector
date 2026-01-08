@@ -49,6 +49,10 @@ public:
   WriteHistoryBatch(::grpc::ServerContext *context,
                     const ::fivetran_sdk::v2::WriteHistoryBatchRequest *request,
                     ::fivetran_sdk::v2::WriteBatchResponse *response) override;
+  ::grpc::Status
+  Migrate(::grpc::ServerContext *context,
+          const ::fivetran_sdk::v2::MigrateRequest *request,
+          ::fivetran_sdk::v2::MigrateResponse *response) override;
 
 private:
   std::string initial_md_token;

@@ -47,4 +47,6 @@ docker run --interactive --tty --rm --network=host --mount type=bind,source=$(pw
   --input-file history_mode_1_INIT.json
 ```
 
+By default, the files are run in alphabetical order, so this should work without specifying any input file as well.
+
 The generated files use the current time as timestamps, e.g. for `_fivetran_synced`.
