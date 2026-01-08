@@ -84,8 +84,8 @@ build_grpc:
 
 get_fivetran_protos:
 	mkdir -p protos
-	curl --no-progress-meter --output protos/destination_sdk.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/v2/destination_sdk.proto
-	curl --no-progress-meter --output protos/common.proto https://raw.githubusercontent.com/fivetran/fivetran_sdk/v2/common.proto
+	curl --no-progress-meter --output protos/destination_sdk.proto https://raw.githubusercontent.com/fivetran/fivetran_partner_sdk/76b142243f5dd80d7a104b53ed537c148f38a34a/destination_sdk.proto
+	curl --no-progress-meter --output protos/common.proto https://raw.githubusercontent.com/fivetran/fivetran_partner_sdk/76b142243f5dd80d7a104b53ed537c148f38a34a/common.proto
 
 build_dependencies: build_openssl_native build_grpc build_test_dependencies
 
