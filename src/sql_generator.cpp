@@ -418,7 +418,8 @@ void MdSqlGenerator::alter_table(
       } else {
         logger->info("Source connector requested that table " +
                      absolute_table_name + " column " + col.name +
-                     " be dropped, but dropping columns is not allowed");
+                     " be dropped, but dropping columns is not allowed when "
+                     "drop_columns is false");
       }
     } else if (new_col_it->second.primary_key != col.primary_key) {
       logger->info("Altering primary key requested for column <" +
