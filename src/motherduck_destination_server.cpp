@@ -320,7 +320,8 @@ grpc::Status DestinationSdkImpl::AlterTable(
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
     sql_generator->alter_table(*con, table_name,
-                               get_duckdb_columns(request->table().columns()));
+                               get_duckdb_columns(request->table().columns()),
+                               request->drop_columns());
     response->set_success(true);
   } catch (const std::exception &e) {
     logger->severe("AlterTable endpoint failed for schema <" +

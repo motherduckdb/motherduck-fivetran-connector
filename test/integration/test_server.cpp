@@ -2262,7 +2262,8 @@ TEST_CASE("WriteBatch and WriteBatchHistory with upsert",
   }
 }
 
-TEST_CASE("AlterTable must not drop columns", "[integration]") {
+TEST_CASE("AlterTable must not drop columns unless specified",
+          "[integration]") {
   DestinationSdkImpl service;
 
   const std::string table_name =
@@ -2289,6 +2290,7 @@ TEST_CASE("AlterTable must not drop columns", "[integration]") {
 
     add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
     add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
+    request.set_drop_columns(false);
     // the second column is missing, but it should be retained
 
     ::fivetran_sdk::v2::AlterTableResponse response;
@@ -2478,6 +2480,60 @@ TEST_CASE("AlterTable must not drop columns", "[integration]") {
     REQUIRE(response.table().columns(5).type() ==
             ::fivetran_sdk::v2::DataType::STRING);
     REQUIRE_FALSE(response.table().columns(5).primary_key());
+  }
+}
+
+TEST_CASE("AlterTable must drop columns when specified", "[integration]") {
+  DestinationSdkImpl service;
+
+  const std::string table_name =
+      "some_table" + std::to_string(Catch::rngSeed());
+
+  auto con = get_test_connection(MD_TOKEN);
+
+  {
+    // Create Table
+    ::fivetran_sdk::v2::CreateTableRequest request;
+    add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
+    add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, false);
+    add_col(request, "test", ::fivetran_sdk::v2::DataType::STRING, false);
+
+    ::fivetran_sdk::v2::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // Alter Table to drop the name column
+    ::fivetran_sdk::v2::AlterTableRequest request;
+
+    add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+    add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
+    add_col(request, "test", ::fivetran_sdk::v2::DataType::STRING, false);
+    request.set_drop_columns(true);
+
+    ::fivetran_sdk::v2::AlterTableResponse response;
+    auto status = service.AlterTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    ::fivetran_sdk::v2::DescribeTableRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.set_table_name(table_name);
+
+    ::fivetran_sdk::v2::DescribeTableResponse response;
+    auto status = service.DescribeTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(!response.not_found());
+
+    REQUIRE(response.table().name() == table_name);
+    REQUIRE(response.table().columns_size() == 2);
+    REQUIRE(response.table().columns(0).name() == "id");
+    REQUIRE(response.table().columns(1).name() == "test");
   }
 }
 
