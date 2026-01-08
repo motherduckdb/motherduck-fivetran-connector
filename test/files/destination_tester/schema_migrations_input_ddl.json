@@ -38,6 +38,12 @@
           "column": "amount",
           "data_type": "FLOAT"
         }
+      ],
+      "drop_column": [
+        {
+          "table": "transaction",
+          "column": "desc"
+        }
       ]
     }
   ],
