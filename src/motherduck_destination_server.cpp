@@ -143,7 +143,8 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     ::grpc::ServerContext *context,
     const ::fivetran_sdk::v2::DescribeTableRequest *request,
     ::fivetran_sdk::v2::DescribeTableResponse *response) {
-  RequestContext ctx("DescribeTable", connection_factory, request->configuration());
+  RequestContext ctx("DescribeTable", connection_factory,
+                     request->configuration());
   auto &con = ctx.get_connection();
   auto &logger = ctx.get_logger();
 
@@ -154,9 +155,9 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     table_def table_name{db_name, get_schema_name(request),
                          get_table_name(request)};
     logger.info("Endpoint <DescribeTable>: schema name <" +
-                 table_name.schema_name + ">");
+                table_name.schema_name + ">");
     logger.info("Endpoint <DescribeTable>: table name <" +
-                 table_name.table_name + ">");
+                table_name.table_name + ">");
     if (!sql_generator->table_exists(con, table_name)) {
       logger.info("Endpoint <DescribeTable>: table not found");
       response->set_not_found(true);
@@ -166,7 +167,7 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     logger.info("Endpoint <DescribeTable>: table exists; getting columns");
     auto duckdb_columns = sql_generator->describe_table(con, table_name);
     logger.info("Endpoint <DescribeTable>: got " +
-                 std::to_string(duckdb_columns.size()) + " columns");
+                std::to_string(duckdb_columns.size()) + " columns");
 
     fivetran_sdk::v2::Table *table = response->mutable_table();
     table->set_name(get_table_name(request));
@@ -177,7 +178,7 @@ grpc::Status DestinationSdkImpl::DescribeTable(
       ft_col->set_name(col.name);
       const auto fivetran_type = get_fivetran_type(col.type);
       logger.info("Endpoint <DescribeTable>:   column type = " +
-                   std::to_string(fivetran_type));
+                  std::to_string(fivetran_type));
       ft_col->set_type(fivetran_type);
       ft_col->set_primary_key(col.primary_key);
       if (fivetran_type == fivetran_sdk::v2::DECIMAL) {
@@ -188,14 +189,14 @@ grpc::Status DestinationSdkImpl::DescribeTable(
 
   } catch (const md_error::RecoverableError &mde) {
     logger.warning("DescribeTable endpoint failed for schema <" +
-                    request->schema_name() + ">, table <" +
-                    request->table_name() + ">:" + std::string(mde.what()));
+                   request->schema_name() + ">, table <" +
+                   request->table_name() + ">:" + std::string(mde.what()));
     response->mutable_task()->set_message(mde.what());
     return ::grpc::Status(::grpc::StatusCode::OK, "");
   } catch (const std::exception &e) {
     logger.severe("DescribeTable endpoint failed for schema <" +
-                   request->schema_name() + ">, table <" +
-                   request->table_name() + ">:" + std::string(e.what()));
+                  request->schema_name() + ">, table <" +
+                  request->table_name() + ">:" + std::string(e.what()));
     response->mutable_task()->set_message(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
@@ -207,7 +208,8 @@ grpc::Status DestinationSdkImpl::CreateTable(
     ::grpc::ServerContext *context,
     const ::fivetran_sdk::v2::CreateTableRequest *request,
     ::fivetran_sdk::v2::CreateTableResponse *response) {
-  RequestContext ctx("CreateTable", connection_factory, request->configuration());
+  RequestContext ctx("CreateTable", connection_factory,
+                     request->configuration());
   auto &con = ctx.get_connection();
   auto &logger = ctx.get_logger();
 
@@ -228,14 +230,14 @@ grpc::Status DestinationSdkImpl::CreateTable(
     response->set_success(true);
   } catch (const md_error::RecoverableError &mde) {
     logger.warning("CreateTable endpoint failed for schema <" +
-                    request->schema_name() + ">, table <" +
-                    request->table().name() + ">:" + std::string(mde.what()));
+                   request->schema_name() + ">, table <" +
+                   request->table().name() + ">:" + std::string(mde.what()));
     response->mutable_task()->set_message(mde.what());
     return ::grpc::Status(::grpc::StatusCode::OK, "");
   } catch (const std::exception &e) {
     logger.severe("CreateTable endpoint failed for schema <" +
-                   request->schema_name() + ">, table <" +
-                   request->table().name() + ">:" + std::string(e.what()));
+                  request->schema_name() + ">, table <" +
+                  request->table().name() + ">:" + std::string(e.what()));
     response->mutable_task()->set_message(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
@@ -247,10 +249,11 @@ grpc::Status DestinationSdkImpl::AlterTable(
     ::grpc::ServerContext *context,
     const ::fivetran_sdk::v2::AlterTableRequest *request,
     ::fivetran_sdk::v2::AlterTableResponse *response) {
-  RequestContext ctx("AlterTable", connection_factory, request->configuration());
+  RequestContext ctx("AlterTable", connection_factory,
+                     request->configuration());
   auto &con = ctx.get_connection();
   auto &logger = ctx.get_logger();
-  
+
   try {
     std::string db_name =
         config::find_property(request->configuration(), config::PROP_DATABASE);
@@ -264,14 +267,14 @@ grpc::Status DestinationSdkImpl::AlterTable(
     response->set_success(true);
   } catch (const md_error::RecoverableError &mde) {
     logger.severe("AlterTable endpoint failed for schema <" +
-                   request->schema_name() + ">, table <" +
-                   request->table().name() + ">:" + std::string(mde.what()));
+                  request->schema_name() + ">, table <" +
+                  request->table().name() + ">:" + std::string(mde.what()));
     response->mutable_task()->set_message(mde.what());
     return ::grpc::Status(::grpc::StatusCode::OK, "");
   } catch (const std::exception &e) {
     logger.severe("AlterTable endpoint failed for schema <" +
-                   request->schema_name() + ">, table <" +
-                   request->table().name() + ">:" + std::string(e.what()));
+                  request->schema_name() + ">, table <" +
+                  request->table().name() + ">:" + std::string(e.what()));
     response->mutable_task()->set_message(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
@@ -308,20 +311,20 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
                                     delete_before_ts, deleted_column);
     } else {
       logger.warning("Table <" + request->table_name() +
-                      "> not found in schema <" + request->schema_name() +
-                      ">; not truncated");
+                     "> not found in schema <" + request->schema_name() +
+                     ">; not truncated");
     }
 
   } catch (const md_error::RecoverableError &mde) {
     logger.warning("Truncate endpoint failed for schema <" +
-                    request->schema_name() + ">, table <" +
-                    request->table_name() + ">:" + std::string(mde.what()));
+                   request->schema_name() + ">, table <" +
+                   request->table_name() + ">:" + std::string(mde.what()));
     response->mutable_task()->set_message(mde.what());
     return ::grpc::Status(::grpc::StatusCode::OK, "");
   } catch (const std::exception &e) {
     logger.severe("Truncate endpoint failed for schema <" +
-                   request->schema_name() + ">, table <" +
-                   request->table_name() + ">:" + std::string(e.what()));
+                  request->schema_name() + ">, table <" +
+                  request->table_name() + ">:" + std::string(e.what()));
     response->mutable_task()->set_message(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
@@ -333,7 +336,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     ::grpc::ServerContext *context,
     const ::fivetran_sdk::v2::WriteBatchRequest *request,
     ::fivetran_sdk::v2::WriteBatchResponse *response) {
-  RequestContext ctx("WriteBatch", connection_factory, request->configuration());
+  RequestContext ctx("WriteBatch", connection_factory,
+                     request->configuration());
   auto &con = ctx.get_connection();
   auto &logger = ctx.get_logger();
 
@@ -430,7 +434,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     ::grpc::ServerContext *context,
     const ::fivetran_sdk::v2::WriteHistoryBatchRequest *request,
     ::fivetran_sdk::v2::WriteBatchResponse *response) {
-  RequestContext ctx("WriteHistoryBatch", connection_factory, request->configuration());
+  RequestContext ctx("WriteHistoryBatch", connection_factory,
+                     request->configuration());
   auto &con = ctx.get_connection();
   auto &logger = ctx.get_logger();
 
@@ -582,26 +587,18 @@ std::string extract_readable_error(const std::exception &ex) {
 grpc::Status
 DestinationSdkImpl::Test(::grpc::ServerContext *context,
                          const ::fivetran_sdk::v2::TestRequest *request,
-                         ::fivetran_sdk::v2::TestResponse *response) {  
+                         ::fivetran_sdk::v2::TestResponse *response) {
   const std::string test_name = request->name();
   const std::string error_prefix = "Test <" + test_name + "> failed: ";
   const auto user_config = request->configuration();
 
-  RequestContext ctx;
-  // This function already loads the extension and connects to MotherDuck.
-  // If this fails, we catch the exception and rewrite it a bit to make
-  // it more actionable.
   try {
-    ctx = RequestContext("Test", connection_factory, request->configuration());
-  } catch (const std::exception &ex) {
-    const auto error_message = extract_readable_error(ex);
-    response->set_failure(error_prefix + error_message);
-    return ::grpc::Status::OK;
-  }
+    // This constructor already loads the extension and connects to MotherDuck.
+    // If this fails, we catch the exception and rewrite it a bit to make
+    // it more actionable.
+    RequestContext ctx("Test", connection_factory, request->configuration());
 
-  // Run actual tests
-  try {
-    auto test_result = config_tester::run_test(test_name, con);
+    auto test_result = config_tester::run_test(test_name, ctx.get_connection());
     if (test_result.success) {
       response->set_success(true);
     } else {

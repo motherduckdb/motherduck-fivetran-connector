@@ -9,8 +9,7 @@
 /// Its lifetime must be shorter than the connection it is attached to.
 class TempDatabase final {
 public:
-  explicit TempDatabase(duckdb::Connection &_con,
-                        mdlog::Logger &_logger);
+  explicit TempDatabase(duckdb::Connection &_con, mdlog::Logger &_logger);
   ~TempDatabase();
 
   std::string name;

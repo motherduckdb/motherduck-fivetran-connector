@@ -97,7 +97,7 @@ create_latest_active_records_table(duckdb::Connection &con,
   return table_name;
 }
 
-MdSqlGenerator::MdSqlGenerator(mdlog::Logger &logger_)  : logger(logger_) {}
+MdSqlGenerator::MdSqlGenerator(mdlog::Logger &logger_) : logger(logger_) {}
 
 void MdSqlGenerator::run_query(duckdb::Connection &con,
                                const std::string &log_prefix,
@@ -160,7 +160,7 @@ bool MdSqlGenerator::table_exists(duckdb::Connection &con,
   auto materialized_result = duckdb::unique_ptr_cast<
       duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
   logger.info("    materialized table_exists results for table " +
-               table.table_name);
+              table.table_name);
   return materialized_result->RowCount() > 0;
 }
 
@@ -405,11 +405,11 @@ void MdSqlGenerator::alter_table(
 
     if (new_col_it == new_column_map.end()) {
       logger.info("Source connector requested that table " +
-                   absolute_table_name + " column " + col.name +
-                   " be dropped, but dropping columns is not allowed");
+                  absolute_table_name + " column " + col.name +
+                  " be dropped, but dropping columns is not allowed");
     } else if (new_col_it->second.primary_key != col.primary_key) {
       logger.info("Altering primary key requested for column <" +
-                   new_col_it->second.name + ">");
+                  new_col_it->second.name + ">");
       recreate_table = true;
     } else if (new_col_it->second.type != col.type ||
                new_col_it->second.type == duckdb::LogicalTypeId::DECIMAL &&
@@ -419,8 +419,8 @@ void MdSqlGenerator::alter_table(
     }
   }
   logger.info("    inventoried columns; recreate_table = " +
-               std::to_string(recreate_table) +
-               "; num alter_types = " + std::to_string(alter_types.size()));
+              std::to_string(recreate_table) +
+              "; num alter_types = " + std::to_string(alter_types.size()));
 
   auto primary_key_added_it =
       std::find_if(added_columns.begin(), added_columns.end(),
@@ -429,7 +429,7 @@ void MdSqlGenerator::alter_table(
                    });
   if (primary_key_added_it != added_columns.end()) {
     logger.info("Adding primary key requested for column <" +
-                 *primary_key_added_it + ">");
+                *primary_key_added_it + ">");
     recreate_table = true;
   }
 
@@ -824,7 +824,7 @@ void MdSqlGenerator::truncate_table(duckdb::Connection &con,
   duckdb::vector<duckdb::Value> params = {duckdb::Value(cutoff_microseconds)};
 
   logger.info("truncate_table: cutoff_microseconds = <" +
-               std::to_string(cutoff_microseconds) + ">");
+              std::to_string(cutoff_microseconds) + ">");
   auto result = statement->Execute(params, false);
   if (result->HasError()) {
     throw std::runtime_error(err + ": " + result->GetError());

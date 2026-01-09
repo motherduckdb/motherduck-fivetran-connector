@@ -13,9 +13,12 @@ namespace mdlog {
 
 class Logger {
 public:
-  static Logger CreateStdoutLogger() {
-    return Logger();
-  }
+  enum class SinkType { NONE = 0, STDOUT = 1 << 0, DUCKDB = 1 << 1 };
+
+  static Logger CreateNopLogger() { return Logger(SinkType::NONE); }
+
+  static Logger CreateStdoutLogger() { return Logger(SinkType::STDOUT); }
+
   static Logger CreateMultiSinkLogger(duckdb::Connection *connection) {
     return Logger(connection);
   }
@@ -26,19 +29,21 @@ public:
   void severe(const std::string &message) const;
 
 private:
-  // Only logs to stdout
-  explicit Logger() { }
+  // Used for NopLogger and StdoutLogger
+  explicit Logger(SinkType sinks);
 
   // Logs to both stdout and DuckDB
   explicit Logger(duckdb::Connection *con_);
 
-  bool enable_duckdb_logging;
+  SinkType enabled_sinks = SinkType::NONE;
   duckdb::Connection *con;
   std::string duckdb_id = "none";
   std::string connection_id = "none";
-  std::once_flag enable_duckdb_logging_flag;
+  mutable std::once_flag initialize_duckdb_logging_flag;
 
-  static void log_to_stdout(const std::string &level, const std::string &message);
-  static void log_to_duckdb(duckdb::Connection &con, const std::string &level, const std::string &message);
+  static void log_to_stdout(const std::string &level,
+                            const std::string &message);
+  static void log_to_duckdb(duckdb::Connection &con, const std::string &level,
+                            const std::string &message);
 };
 } // namespace mdlog

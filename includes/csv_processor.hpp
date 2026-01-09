@@ -14,7 +14,7 @@ namespace csv_processor {
 /// the created view.
 void ProcessFile(
     duckdb::Connection &con, const IngestProperties &props,
-    std::shared_ptr<mdlog::MdLog> &logger,
+    const mdlog::Logger &logger,
     const std::function<void(const std::string &view_name)> &process_view);
 
 } // namespace csv_processor

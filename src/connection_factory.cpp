@@ -5,40 +5,43 @@
 #include "md_error.hpp"
 
 #include <exception>
-#include <stdexcept>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 
 namespace {
-  void maybe_rewrite_error(const std::exception &ex, const std::string &db_name) {
-    const duckdb::ErrorData error(ex);
-    const auto &msg = error.Message();
+void maybe_rewrite_error(const std::exception &ex, const std::string &db_name) {
+  const duckdb::ErrorData error(ex);
+  const auto &msg = error.Message();
 
-    if (msg.find("Jwt is expired") != std::string::npos) {
-      throw md_error::RecoverableError(
-          "Failed to connect to MotherDuck database \"" + db_name +
-          "\" because your MotherDuck token has expired. Please configure a "
-          "new MotherDuck token.\nOriginal error: " + msg);
-    }
-
-    if (msg.find("Your request is not authenticated") !=
-            std::string::npos || // Random JWT token
-        msg.find("Invalid MotherDuck token") !=
-            std::string::npos) { // Revoked token
-      throw md_error::RecoverableError(
-          "Failed to connect to MotherDuck database \"" + db_name +
-          "\" because your MotherDuck token is invalid. Please configure a "
-          "new MotherDuck token.\nOriginal error: " + msg);
-    }
-
+  if (msg.find("Jwt is expired") != std::string::npos) {
+    throw md_error::RecoverableError(
+        "Failed to connect to MotherDuck database \"" + db_name +
+        "\" because your MotherDuck token has expired. Please configure a "
+        "new MotherDuck token.\nOriginal error: " +
+        msg);
   }
+
+  if (msg.find("Your request is not authenticated") !=
+          std::string::npos || // Random JWT token
+      msg.find("Invalid MotherDuck token") !=
+          std::string::npos) { // Revoked token
+    throw md_error::RecoverableError(
+        "Failed to connect to MotherDuck database \"" + db_name +
+        "\" because your MotherDuck token is invalid. Please configure a "
+        "new MotherDuck token.\nOriginal error: " +
+        msg);
+  }
+}
 } // namespace
 
-duckdb::DuckDB &ConnectionFactory::get_duckdb(const std::string &md_auth_token, const std::string &db_name) {
+duckdb::DuckDB &ConnectionFactory::get_duckdb(const std::string &md_auth_token,
+                                              const std::string &db_name) {
   auto initialize_db = [this, &md_auth_token, &db_name]() {
     duckdb::DBConfig config;
     config.SetOptionByName(config::PROP_TOKEN, md_auth_token);
-    config.SetOptionByName("custom_user_agent", std::string("fivetran/") + GIT_COMMIT_SHA);
+    config.SetOptionByName("custom_user_agent",
+                           std::string("fivetran/") + GIT_COMMIT_SHA);
     config.SetOptionByName("old_implicit_casting", true);
     config.SetOptionByName("motherduck_attach_mode", "single");
     stdout_logger.info("initialize_db: created configuration");
@@ -65,7 +68,9 @@ duckdb::DuckDB &ConnectionFactory::get_duckdb(const std::string &md_auth_token, 
   return db;
 }
 
-duckdb::Connection ConnectionFactory::GetConnection(const std::string &md_auth_token, const std::string &db_name) {
+duckdb::Connection
+ConnectionFactory::GetConnection(const std::string &md_auth_token,
+                                 const std::string &db_name) {
   stdout_logger.info("get_connection: start");
   duckdb::DuckDB &db = get_duckdb(md_auth_token, db_name);
   auto con = duckdb::Connection(db);
