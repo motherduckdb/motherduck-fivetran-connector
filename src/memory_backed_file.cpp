@@ -1,5 +1,7 @@
 #include "memory_backed_file.hpp"
 
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <system_error>
 #include <unistd.h>
@@ -48,7 +50,12 @@ MemoryBackedFile MemoryBackedFile::Create(const size_t file_size) {
   }
 #endif
 
-  if (ftruncate(fd, file_size) == -1) {
+  if (file_size > static_cast<size_t>(std::numeric_limits<off_t>::max())) {
+    close(fd);
+    throw std::overflow_error("file_size exceeds maximum off_t value");
+  }
+
+  if (ftruncate(fd, static_cast<off_t>(file_size)) == -1) {
     close(fd);
     throw std::system_error(errno, std::generic_category(),
                             "Failed to truncate temp memfile with fd=" +

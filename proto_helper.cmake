@@ -66,7 +66,7 @@ function(GENERATE_PROTOS PROTO_FILE_IN)
 endfunction()
 
 function(LINK_DEPENDENCIES LIBRARY_NAME)
-    target_include_directories(${LIBRARY_NAME} PUBLIC SYSTEM
+    target_include_directories(${LIBRARY_NAME} SYSTEM PUBLIC
             ${TARGET_ROOT}/cpp/
             ${DEPENDENCIES_DIR}/grpc/include/
     )
