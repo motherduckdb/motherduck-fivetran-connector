@@ -23,8 +23,8 @@ bool HasFlag(const Logger::SinkType value, const Logger::SinkType flag) {
 void initialize_duckdb_logging(duckdb::Connection &con) {
   con.Query("CALL enable_logging()");
   con.Query("SET logging_storage='motherduck_log_storage'");
-  con.Query("SET logging_level='info'");
-  con.Query("SET motherduck_log_level='info'");
+  con.Query("SET logging_level='WARN'");
+  con.Query("SET motherduck_log_level='WARN'");
 }
 
 std::string create_json_log_message(const std::string &level,
@@ -75,10 +75,21 @@ void Logger::log_to_stdout(const std::string &message) {
 
 void Logger::log_to_duckdb(duckdb::Connection &con, const std::string &level,
                            const std::string &message) {
-  const std::string query = "SELECT write_log(" +
-                            duckdb::KeywordHelper::WriteQuoted(message, '\'') +
-                            ", log_type:='Fivetran', level:=" +
-                            duckdb::KeywordHelper::WriteQuoted(level) + ")";
+  std::string ddb_log_level;
+  if (level == "INFO") {
+    ddb_log_level = "INFO";
+  } else if (level == "WARNING") {
+    ddb_log_level = "WARN";
+  } else if (level == "SEVERE") {
+    ddb_log_level = "ERROR";
+  } else {
+    ddb_log_level = "INFO";
+  }
+
+  const std::string query =
+      "SELECT write_log(" + duckdb::KeywordHelper::WriteQuoted(message, '\'') +
+      ", log_type:='Fivetran', level:=" +
+      duckdb::KeywordHelper::WriteQuoted(ddb_log_level) + ")";
   // Ignore errors from the query
   con.Query(query);
 }
