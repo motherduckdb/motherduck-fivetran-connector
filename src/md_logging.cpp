@@ -8,7 +8,7 @@ namespace mdlog {
 namespace {
 std::string escape_char(const std::string &str, const char &c) {
   std::string result = str;
-  int start_pos = 0;
+  size_t start_pos = 0;
   const std::string escaped = std::string("\\") + c;
   while ((start_pos = result.find(c, start_pos)) != std::string::npos) {
     result.replace(start_pos, 1, escaped);

@@ -1,8 +1,15 @@
 #include "decryption.hpp"
 #include "openssl_helper.hpp"
 
+#include <cassert>
 #include <fstream>
+#include <limits>
+#include <stdexcept>
+
 #include <openssl/evp.h>
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-conversion"
 
 /// Decrypts the provided file using AES-256-CBC with PKCS5 padding.
 /// The `input_name` parameter is used to provide additional context in error
@@ -40,10 +47,15 @@ std::vector<unsigned char> decrypt_stream(std::istream &input,
     openssl_helper::raise_openssl_error(
         "Failed to initialize decryption context for file " + input_name);
   }
+  if (encrypted_data.size() >
+      static_cast<size_t>(std::numeric_limits<int>::max())) {
+    throw std::overflow_error("encrypted_data size exceeds maximum int value");
+  }
+
   int len = 0;
   std::vector<unsigned char> plaintext(encrypted_data.size());
   if (1 != EVP_DecryptUpdate(ctx, plaintext.data(), &len, encrypted_data.data(),
-                             encrypted_data.size())) {
+                             static_cast<int>(encrypted_data.size()))) {
     openssl_helper::raise_openssl_error("Could not decrypt UPDATE file " +
                                         input_name);
   }
@@ -54,7 +66,8 @@ std::vector<unsigned char> decrypt_stream(std::istream &input,
   }
   plaintext_len += len;
 
-  plaintext.resize(plaintext_len);
+  assert(len >= 0);
+  plaintext.resize(static_cast<size_t>(plaintext_len));
 
   return plaintext;
 }
@@ -66,3 +79,5 @@ std::vector<unsigned char> decrypt_file(const std::string &filename,
   std::ifstream file(filename, std::ios::binary);
   return decrypt_stream(file, filename, decryption_key);
 }
+
+#pragma GCC diagnostic pop
