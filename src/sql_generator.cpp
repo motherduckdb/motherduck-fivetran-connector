@@ -883,6 +883,9 @@ void MdSqlGenerator::drop_column_in_history_mode(
              << " WHERE \"_fivetran_active\" = TRUE"
              << " AND " << quoted_column << " IS NOT NULL"
              << " AND \"_fivetran_start\" < " << quoted_timestamp;
+
+  con.BeginTransaction();
+
   run_query(con, "drop_column_in_history_mode insert", insert_sql.str(),
             "Could not insert new rows for drop_column_in_history_mode");
 
@@ -918,6 +921,8 @@ void MdSqlGenerator::drop_column_in_history_mode(
   run_query(
       con, "drop_column_in_history_mode update_prev", update_prev_sql.str(),
       "Could not update previous records for drop_column_in_history_mode");
+
+  con.Commit();
 }
 
 void MdSqlGenerator::copy_table(duckdb::Connection &con,
@@ -958,6 +963,8 @@ void MdSqlGenerator::copy_column(duckdb::Connection &con,
   add_sql << "ALTER TABLE " << absolute_table_name << " ADD COLUMN "
           << quoted_to << " " << *source_col;
 
+  con.BeginTransaction();
+
   run_query(con, "copy_column add", add_sql.str(),
             "Could not add column for copy_column");
 
@@ -967,6 +974,8 @@ void MdSqlGenerator::copy_column(duckdb::Connection &con,
              << " = " << quoted_from;
   run_query(con, "copy_column update", update_sql.str(),
             "Could not copy column values");
+
+  con.Commit();
 }
 
 void MdSqlGenerator::copy_table_to_history_mode(
@@ -1097,6 +1106,9 @@ void MdSqlGenerator::add_column_in_history_mode(
   std::ostringstream add_sql;
   add_sql << "ALTER TABLE " << absolute_table_name << " ADD COLUMN "
           << quoted_column << " " << type_str;
+
+  con.BeginTransaction();
+
   run_query(con, "add_column_in_history_mode add", add_sql.str(),
             "Could not add column for add_column_in_history_mode");
 
@@ -1139,6 +1151,8 @@ void MdSqlGenerator::add_column_in_history_mode(
 
   run_query(con, "add_column_in_history_mode update", update_prev_sql.str(),
             "Could not update records for add_column_in_history_mode");
+
+  con.Commit();
 }
 
 void MdSqlGenerator::update_column_value(duckdb::Connection &con,
