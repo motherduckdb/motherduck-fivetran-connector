@@ -12,12 +12,13 @@ struct column_def {
   std::uint32_t scale;
 };
 
-inline std::ostream &operator<<(std::ostream &os, const column_def &col) {
-  os << duckdb::EnumUtil::ToChars(col.type);
+inline std::string format_type(const column_def &col) {
   if (col.type == duckdb::LogicalTypeId::DECIMAL) {
-    os << " (" << col.width << "," << col.scale << ")";
+    return duckdb::EnumUtil::ToString(col.type) + " (" +
+           std::to_string(col.width) + "," + std::to_string(col.scale) + ")";
   }
-  return os;
+
+  return duckdb::EnumUtil::ToChars(col.type);
 }
 
 struct table_def {

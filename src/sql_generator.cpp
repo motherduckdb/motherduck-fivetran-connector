@@ -201,7 +201,7 @@ void MdSqlGenerator::create_table(
   ddl << "CREATE OR REPLACE TABLE " << absolute_table_name << " (";
 
   for (const auto &col : all_columns) {
-    ddl << KeywordHelper::WriteQuoted(col.name, '"') << " " << col;
+    ddl << KeywordHelper::WriteQuoted(col.name, '"') << " " << format_type(col);
     if (columns_with_default_value.find(col.name) !=
         columns_with_default_value.end()) {
       ddl << " DEFAULT " + get_default_value(col.type);
@@ -363,7 +363,8 @@ void MdSqlGenerator::alter_table_in_place(
     out << "ALTER TABLE " << absolute_table_name << " ALTER ";
     const auto &col = new_column_map.at(col_name);
 
-    out << KeywordHelper::WriteQuoted(col_name, '"') << " TYPE " << col;
+    out << KeywordHelper::WriteQuoted(col_name, '"') << " TYPE "
+        << format_type(col);
 
     run_query(con, "alter table change type", out.str(),
               "Could not alter type for column <" + col_name + "> in table <" +
@@ -878,14 +879,13 @@ void MdSqlGenerator::drop_column_in_history_mode(
     // Query 1: Insert new rows for active records where column is not null
     std::ostringstream sql;
     sql << "INSERT INTO " << absolute_table_name << " SELECT * REPLACE"
-               << " (NULL as" << quoted_column << ", " << quoted_timestamp
-               << " as \"_fivetran_start\""
-               << ")"
-               << " FROM " << absolute_table_name
-               << " WHERE \"_fivetran_active\" = TRUE"
-               << " AND " << quoted_column << " IS NOT NULL"
-               << " AND \"_fivetran_start\" < " << quoted_timestamp;
-
+        << " (NULL as" << quoted_column << ", " << quoted_timestamp
+        << " as \"_fivetran_start\""
+        << ")"
+        << " FROM " << absolute_table_name
+        << " WHERE \"_fivetran_active\" = TRUE"
+        << " AND " << quoted_column << " IS NOT NULL"
+        << " AND \"_fivetran_start\" < " << quoted_timestamp;
 
     run_query(con, "drop_column_in_history_mode insert", sql.str(),
               "Could not insert new rows for drop_column_in_history_mode");
@@ -894,19 +894,20 @@ void MdSqlGenerator::drop_column_in_history_mode(
   {
     // Query 2: Update newly added rows to set column to NULL. Per the docs:
     //   "This step is important in case of source connector sends multiple
-    //   DROP_COLUMN_IN_HISTORY_MODE operations with the same operation_timestamp.
-    //   It will ensure, we only record history once for that timestamp."
+    //   DROP_COLUMN_IN_HISTORY_MODE operations with the same
+    //   operation_timestamp. It will ensure, we only record history once for
+    //   that timestamp."
     // To elaborate: if columns A and B are dropped at the same time in the
-    // source, and we first have to drop A (as this endpoint only handles 1 column
-    // at a time), this operation only sets A to NULL for the operation_timestamp,
-    // not B. When we receive the request to drop B, we skip all the rows we
-    // already re-inserted in query 1 because of the \"_fivetran_start\" <
-    // quoted_timestamp clause. Query 2 assures we also set B to NULL for the rows
-    // inserted while handling column A.
+    // source, and we first have to drop A (as this endpoint only handles 1
+    // column at a time), this operation only sets A to NULL for the
+    // operation_timestamp, not B. When we receive the request to drop B, we
+    // skip all the rows we already re-inserted in query 1 because of the
+    // \"_fivetran_start\" < quoted_timestamp clause. Query 2 assures we also
+    // set B to NULL for the rows inserted while handling column A.
 
     std::ostringstream sql;
     sql << "UPDATE " << absolute_table_name << " SET " << quoted_column
-                   << " = NULL WHERE \"_fivetran_start\" = " << quoted_timestamp;
+        << " = NULL WHERE \"_fivetran_start\" = " << quoted_timestamp;
 
     run_query(con, "drop_column_in_history_mode update_new", sql.str(),
               "Could not update new rows for drop_column_in_history_mode");
@@ -915,12 +916,12 @@ void MdSqlGenerator::drop_column_in_history_mode(
     // Query 3: Update previous active records to mark them inactive
     std::ostringstream sql;
     sql << "UPDATE " << absolute_table_name
-                    << " SET \"_fivetran_active\" = FALSE,"
-                    << " \"_fivetran_end\" = (" << quoted_timestamp
-                    << "::TIMESTAMP - (INTERVAL '1 millisecond'))"
-                    << " WHERE \"_fivetran_active\" = TRUE"
-                    << " AND " << quoted_column << " IS NOT NULL"
-                    << " AND \"_fivetran_start\" < " << quoted_timestamp;
+        << " SET \"_fivetran_active\" = FALSE,"
+        << " \"_fivetran_end\" = (" << quoted_timestamp
+        << "::TIMESTAMP - (INTERVAL '1 millisecond'))"
+        << " WHERE \"_fivetran_active\" = TRUE"
+        << " AND " << quoted_column << " IS NOT NULL"
+        << " AND \"_fivetran_start\" < " << quoted_timestamp;
 
     run_query(
         con, "drop_column_in_history_mode update_prev", sql.str(),
@@ -966,7 +967,7 @@ void MdSqlGenerator::copy_column(duckdb::Connection &con,
   // Add the new column
   std::ostringstream add_sql;
   add_sql << "ALTER TABLE " << absolute_table_name << " ADD COLUMN "
-          << quoted_to << " " << *source_col;
+          << quoted_to << " " << format_type(*source_col);
 
   con.BeginTransaction();
 

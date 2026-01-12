@@ -85,12 +85,14 @@ public:
   // Drop the destination table
   void drop_table(duckdb::Connection &con, const table_def &table);
 
-  // In history mode, instead of dropping the actual column we pretend that all column values have been set to NULL in
-  // the source. This means that for all rows where the column was not NULL yet, we insert new historic entries where
-  // we change the value to NULL and always insert NULL for the column for that point onward.
+  // In history mode, instead of dropping the actual column we pretend that all
+  // column values have been set to NULL in the source. This means that for all
+  // rows where the column was not NULL yet, we insert new historic entries
+  // where we change the value to NULL and always insert NULL for the column for
+  // that point onward.
   //
-  // Note: if two columns were dropped at the same time in the source, we get two separate DROP_COLUMN requests with
-  // the same operation_timestamp.
+  // Note: if two columns were dropped at the same time in the source, we get
+  // two separate DROP_COLUMN requests with the same operation_timestamp.
   void drop_column_in_history_mode(duckdb::Connection &con,
                                    const table_def &table,
                                    const std::string &column,
@@ -105,8 +107,10 @@ public:
                    const std::string &from_column,
                    const std::string &to_column);
 
-  // For a table that is in either in live- or soft-delete-mode, copy it into a new table in history mode. For
-  // soft-delete-mode, in which case soft_deleted_column is not empty, we try to retain historic info as much as we can.
+  // For a table that is in either in live- or soft-delete-mode, copy it into a
+  // new table in history mode. For soft-delete-mode, in which case
+  // soft_deleted_column is not empty, we try to retain historic info as much as
+  // we can.
   void copy_table_to_history_mode(duckdb::Connection &con,
                                   const table_def &from_table,
                                   const table_def &to_table,
@@ -132,8 +136,9 @@ public:
                               std::string absolute_table_name,
                               std::string quoted_timestamp);
 
-  // Add a column in history mode, which means we copy all active tables over to new historic entries with the new
-  // column set to the default value, and invalidate old historic entries (where we set the value to NULL).
+  // Add a column in history mode, which means we copy all active tables over to
+  // new historic entries with the new column set to the default value, and
+  // invalidate old historic entries (where we set the value to NULL).
   void add_column_in_history_mode(duckdb::Connection &con,
                                   const table_def &table,
                                   const std::string &column,
@@ -145,45 +150,54 @@ public:
   void update_column_value(duckdb::Connection &con, const table_def &table,
                            const std::string &column, const std::string &value);
 
-  // Switch between sync modes: soft-delete to live. Here this means that we should drop the soft-deleted rows and
-  // remove the soft-deleted column (the column used to determine if a row is soft-deleted, often "_fivetran_deleted"
-  // unless the source defines its own column).
+  // Switch between sync modes: soft-delete to live. Here this means that we
+  // should drop the soft-deleted rows and remove the soft-deleted column (the
+  // column used to determine if a row is soft-deleted, often
+  // "_fivetran_deleted" unless the source defines its own column).
   void migrate_soft_delete_to_live(duckdb::Connection &con,
                                    const table_def &table,
                                    const std::string &soft_deleted_column);
 
-  // Switch between sync modes: soft-delete to history. Here this means we use the soft-deleted column to determine
-  // the value of "_fivetran_active" (i.e. the inverse of the soft-deleted column). The fivetran start/end columns are
-  // set to the epoch for deleted rows (we don't know when they were deleted). They are set to MAX(\"_fivetran_synced\")
-  // and the maximum possible timestamp respectively for active rows, because we interpret the latest sync as the
-  // initial insert into the historic table.
+  // Switch between sync modes: soft-delete to history. Here this means we use
+  // the soft-deleted column to determine the value of "_fivetran_active" (i.e.
+  // the inverse of the soft-deleted column). The fivetran start/end columns are
+  // set to the epoch for deleted rows (we don't know when they were deleted).
+  // They are set to MAX(\"_fivetran_synced\") and the maximum possible
+  // timestamp respectively for active rows, because we interpret the latest
+  // sync as the initial insert into the historic table.
   void migrate_soft_delete_to_history(duckdb::Connection &con,
                                       const table_def &table,
                                       const std::string &soft_deleted_column);
 
-  // Switch between sync modes: history to soft-delete. This means keeping only the last entries based on per
-  // MAX("_fivetran_start") per primary key, setting the soft_deleted_column values to "NOT _fivetran_active" and
+  // Switch between sync modes: history to soft-delete. This means keeping only
+  // the last entries based on per MAX("_fivetran_start") per primary key,
+  // setting the soft_deleted_column values to "NOT _fivetran_active" and
   // dropping the unused history mode columns.
   void migrate_history_to_soft_delete(duckdb::Connection &con,
                                       const table_def &table,
                                       const std::string &soft_deleted_column);
 
-  // Switch between sync modes: history to live. This means only keeping the rows that are active as indicated by
+  // Switch between sync modes: history to live. This means only keeping the
+  // rows that are active as indicated by
   // "_fivetran_active".
   void migrate_history_to_live(duckdb::Connection &con, const table_def &table,
                                bool keep_deleted_rows);
 
-  // Switch between sync modes: live to soft-delete. In general live-mode does not keep track of deletions, in which
-  // case just adds we want to set the soft-deleted column to False for all rows. But the soft-deleted column
-  // might have been defined in the source already, in which case we can take advantage of that. Hence, the
-  // implementation adds the column unless it exists and only updates values where the column is NULL.
+  // Switch between sync modes: live to soft-delete. In general live-mode does
+  // not keep track of deletions, in which case just adds we want to set the
+  // soft-deleted column to False for all rows. But the soft-deleted column
+  // might have been defined in the source already, in which case we can take
+  // advantage of that. Hence, the implementation adds the column unless it
+  // exists and only updates values where the column is NULL.
   void migrate_live_to_soft_delete(duckdb::Connection &con,
                                    const table_def &table,
                                    const std::string &soft_deleted_column);
 
-  // Switch between sync modes: live to history. We do not consider the possibility that a soft-deleted column was
-  // already defined here. Hence, this just adds the needed history-mode columns and sets sane defaults: all rows are
-  // active, _fivetran_start = NOW() and _fivetran_end is the maximum timestamp possible.
+  // Switch between sync modes: live to history. We do not consider the
+  // possibility that a soft-deleted column was already defined here. Hence,
+  // this just adds the needed history-mode columns and sets sane defaults: all
+  // rows are active, _fivetran_start = NOW() and _fivetran_end is the maximum
+  // timestamp possible.
   void migrate_live_to_history(duckdb::Connection &con, const table_def &table);
 
 private:
