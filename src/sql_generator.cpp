@@ -77,24 +77,21 @@ const std::string primary_key_join(std::vector<const column_def *> &columns_pk,
   return primary_key_join_condition_stream.str();
 }
 
-/*
- * create an empty table structure in-memory to store latest active records.
- * this will not be cleaned up manually just in case further update files need
- * to refer to the latest values.
- */
-std::string
-create_latest_active_records_table(duckdb::Connection &con,
-                                   const std::string &absolute_table_name,
-                                   const std::string &temp_db_name) {
-  const std::string table_name =
-      "\"" + temp_db_name + R"("."main"."latest_active_records")";
+/// Create an empty table structure in-memory to store latest active records
+/// (LAR). This will not be cleaned up manually just in case further update
+/// files need to refer to the latest values.
+std::string get_or_create_lar_table(duckdb::Connection &con,
+                                    const std::string &source_table_name) {
+  const std::string target_table_name = "latest_active_records";
+  // Temporary table that is connection-scoped. Lives on the client side in
+  // memory.
   const auto create_res =
-      con.Query("CREATE TABLE IF NOT EXISTS " + table_name + " AS FROM " +
-                absolute_table_name + " WITH NO DATA");
+      con.Query("CREATE TEMPORARY TABLE IF NOT EXISTS " + target_table_name +
+                " AS FROM " + source_table_name + " WITH NO DATA");
   if (create_res->HasError()) {
     create_res->ThrowError("Could not create latest_active_records table: ");
   }
-  return table_name;
+  return target_table_name;
 }
 
 MdSqlGenerator::MdSqlGenerator(std::shared_ptr<mdlog::MdLog> &logger_)
@@ -603,7 +600,7 @@ void MdSqlGenerator::add_partial_historical_values(
     const std::string &staging_table_name,
     std::vector<const column_def *> &columns_pk,
     std::vector<const column_def *> &columns_regular,
-    const std::string &unmodified_string, const std::string &temp_db_name) {
+    const std::string &unmodified_string) {
   std::ostringstream sql;
   auto absolute_table_name = table.to_escaped_string();
 
@@ -619,8 +616,7 @@ void MdSqlGenerator::add_partial_historical_values(
 
   // create empty table structure just in case there were not any earliest files
   // that would have created it.
-  const auto lar_table = create_latest_active_records_table(
-      con, absolute_table_name, temp_db_name);
+  const auto lar_table = get_or_create_lar_table(con, absolute_table_name);
 
   auto full_column_list = make_full_column_list(columns_pk, columns_regular);
   sql << "INSERT INTO " << absolute_table_name << " (" << full_column_list
@@ -689,8 +685,7 @@ void MdSqlGenerator::delete_rows(duckdb::Connection &con,
 void MdSqlGenerator::deactivate_historical_records(
     duckdb::Connection &con, const table_def &table,
     const std::string &staging_table_name,
-    std::vector<const column_def *> &columns_pk,
-    const std::string &temp_db_name) {
+    std::vector<const column_def *> &columns_pk) {
 
   const std::string absolute_table_name = table.to_escaped_string();
 
@@ -724,10 +719,8 @@ void MdSqlGenerator::deactivate_historical_records(
     }
   }
 
-  const auto lar_table = create_latest_active_records_table(
-      con, absolute_table_name, temp_db_name);
-
   {
+    const auto lar_table = get_or_create_lar_table(con, absolute_table_name);
     // store latest versions of records before they get deactivated
     // per spec, this should be limited to _fivetran_active = TRUE, but it's
     // safer to get all latest versions even if deactivated to prevent null

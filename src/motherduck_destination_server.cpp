@@ -10,7 +10,6 @@
 #include "ingest_properties.hpp"
 #include "md_logging.hpp"
 #include "sql_generator.hpp"
-#include "temp_database.hpp"
 
 #include "md_error.hpp"
 #include <exception>
@@ -181,13 +180,12 @@ template <typename T>
 IngestProperties
 create_ingest_props(const std::string &filename, const T &request,
                     const std::vector<column_def> &cols,
-                    const UnmodifiedMarker allow_unmodified_string,
-                    const std::string &temp_db_name) {
+                    const UnmodifiedMarker allow_unmodified_string) {
   const std::string decryption_key = get_encryption_key(
       filename, request->keys(), request->file_params().encryption());
   return IngestProperties(filename, decryption_key, cols,
                           request->file_params().null_string(),
-                          allow_unmodified_string, temp_db_name);
+                          allow_unmodified_string);
 }
 
 grpc::Status DestinationSdkImpl::ConfigurationForm(
@@ -459,8 +457,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       throw std::invalid_argument("No primary keys found");
     }
 
-    TempDatabase temp_db(*con, logger);
-
     for (auto &filename : request->replace_files()) {
       logger->info("Processing replace file " + filename);
       const auto decryption_key = get_encryption_key(
@@ -468,12 +464,12 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
       IngestProperties props(filename, decryption_key, cols,
                              request->file_params().null_string(),
-                             UnmodifiedMarker::Disallowed, temp_db.name);
+                             UnmodifiedMarker::Disallowed);
 
       csv_processor::ProcessFile(
-          *con, props, logger, [&](const std::string &view_name) {
-            sql_generator->upsert(*con, table_name, view_name, columns_pk,
-                                  columns_regular);
+          *con, props, logger, [&](const std::string &staging_table_name) {
+            sql_generator->upsert(*con, table_name, staging_table_name,
+                                  columns_pk, columns_regular);
           });
     }
 
@@ -483,13 +479,13 @@ grpc::Status DestinationSdkImpl::WriteBatch(
           filename, request->keys(), request->file_params().encryption());
       IngestProperties props(filename, decryption_key, cols,
                              request->file_params().null_string(),
-                             UnmodifiedMarker::Allowed, temp_db.name);
+                             UnmodifiedMarker::Allowed);
 
       csv_processor::ProcessFile(
-          *con, props, logger, [&](const std::string &view_name) {
+          *con, props, logger, [&](const std::string &staging_table_name) {
             sql_generator->update_values(
-                *con, table_name, view_name, columns_pk, columns_regular,
-                request->file_params().unmodified_string());
+                *con, table_name, staging_table_name, columns_pk,
+                columns_regular, request->file_params().unmodified_string());
           });
     }
 
@@ -503,11 +499,12 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       }
       IngestProperties props(filename, decryption_key, cols_to_read,
                              request->file_params().null_string(),
-                             UnmodifiedMarker::Disallowed, temp_db.name);
+                             UnmodifiedMarker::Disallowed);
 
       csv_processor::ProcessFile(
-          *con, props, logger, [&](const std::string &view_name) {
-            sql_generator->delete_rows(*con, table_name, view_name, columns_pk);
+          *con, props, logger, [&](const std::string &staging_table_name) {
+            sql_generator->delete_rows(*con, table_name, staging_table_name,
+                                       columns_pk);
           });
     }
 
@@ -559,8 +556,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       throw std::invalid_argument("No primary keys found");
     }
 
-    TempDatabase temp_db(*con, logger);
-
     // delete overlapping records
     for (auto &filename : request->earliest_start_files()) {
       logger->info("Processing earliest start file " + filename);
@@ -574,26 +569,25 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       earliest_start_cols.push_back(
           {.name = "_fivetran_start",
            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ});
-      IngestProperties props =
-          create_ingest_props(filename, request, earliest_start_cols,
-                              UnmodifiedMarker::Disallowed, temp_db.name);
+      IngestProperties props = create_ingest_props(
+          filename, request, earliest_start_cols, UnmodifiedMarker::Disallowed);
       csv_processor::ProcessFile(
-          *con, props, logger, [&](const std::string &view_name) {
+          *con, props, logger, [&](const std::string &staging_table_name) {
             sql_generator->deactivate_historical_records(
-                *con, table_name, view_name, columns_pk, temp_db.name);
+                *con, table_name, staging_table_name, columns_pk);
           });
     }
 
     for (auto &filename : request->update_files()) {
       logger->info("update file " + filename);
-      IngestProperties props = create_ingest_props(
-          filename, request, cols, UnmodifiedMarker::Allowed, temp_db.name);
+      IngestProperties props = create_ingest_props(filename, request, cols,
+                                                   UnmodifiedMarker::Allowed);
 
       csv_processor::ProcessFile(
-          *con, props, logger, [&](const std::string &view_name) {
+          *con, props, logger, [&](const std::string &staging_table_name) {
             sql_generator->add_partial_historical_values(
-                *con, table_name, view_name, columns_pk, columns_regular,
-                request->file_params().unmodified_string(), temp_db.name);
+                *con, table_name, staging_table_name, columns_pk,
+                columns_regular, request->file_params().unmodified_string());
           });
     }
 
@@ -601,11 +595,11 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     for (auto &filename : request->replace_files()) {
       logger->info("replace/upsert file " + filename);
       IngestProperties props = create_ingest_props(
-          filename, request, cols, UnmodifiedMarker::Disallowed, temp_db.name);
+          filename, request, cols, UnmodifiedMarker::Disallowed);
       csv_processor::ProcessFile(
-          *con, props, logger, [&](const std::string &view_name) {
-            sql_generator->insert(*con, table_name, view_name, columns_pk,
-                                  columns_regular);
+          *con, props, logger, [&](const std::string &staging_table_name) {
+            sql_generator->insert(*con, table_name, staging_table_name,
+                                  columns_pk, columns_regular);
           });
     }
 
@@ -624,15 +618,14 @@ grpc::Status DestinationSdkImpl::WriteBatch(
         }
       }
 
-      IngestProperties props =
-          create_ingest_props(filename, request, cols_to_read,
-                              UnmodifiedMarker::Disallowed, temp_db.name);
+      IngestProperties props = create_ingest_props(
+          filename, request, cols_to_read, UnmodifiedMarker::Disallowed);
 
-      csv_processor::ProcessFile(*con, props, logger,
-                                 [&](const std::string &view_name) {
-                                   sql_generator->delete_historical_rows(
-                                       *con, table_name, view_name, columns_pk);
-                                 });
+      csv_processor::ProcessFile(
+          *con, props, logger, [&](const std::string &staging_table_name) {
+            sql_generator->delete_historical_rows(
+                *con, table_name, staging_table_name, columns_pk);
+          });
     }
 
   } catch (const md_error::RecoverableError &mde) {

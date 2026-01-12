@@ -59,7 +59,7 @@ public:
       const std::string &staging_table_name,
       std::vector<const column_def *> &columns_pk,
       std::vector<const column_def *> &columns_regular,
-      const std::string &unmodified_string, const std::string &temp_db_name);
+      const std::string &unmodified_string);
 
   void truncate_table(duckdb::Connection &con, const table_def &table,
                       const std::string &synced_column,
@@ -73,8 +73,7 @@ public:
   void
   deactivate_historical_records(duckdb::Connection &con, const table_def &table,
                                 const std::string &staging_table_name,
-                                std::vector<const column_def *> &columns_pk,
-                                const std::string &temp_db_name);
+                                std::vector<const column_def *> &columns_pk);
 
   void delete_historical_rows(duckdb::Connection &con, const table_def &table,
                               const std::string &staging_table_name,

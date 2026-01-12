@@ -128,9 +128,38 @@ CompressionType determine_compression_type(const std::string &file_path) {
   return is_zstd_compressed ? CompressionType::ZSTD : CompressionType::None;
 }
 
+/// Generates a randomized table name which is not used yet in the database
+std::string generate_temp_table_name(duckdb::Connection &con,
+                                     std::shared_ptr<mdlog::MdLog> &logger) {
+  constexpr uint_fast8_t MAX_ATTEMPTS = 100; // This should be more than enough
+  for (uint_fast8_t i = 0; i < MAX_ATTEMPTS; i++) {
+    const std::string table_name = "__fivetran_ingest_staging_tbl" +
+                                   duckdb::StringUtil::GenerateRandomName(16);
+    const std::string check_query =
+        "FROM (SHOW TABLES) WHERE name = " +
+        duckdb::KeywordHelper::WriteQuoted(table_name, '\'');
+    const auto check_res = con.Query(check_query);
+    if (check_res->HasError()) {
+      logger->severe("Could not check for existence of temporary table <" +
+                     table_name + ">: " + check_res->GetError());
+      // Optimistically use this name in case there was an error during checking
+      return table_name;
+    }
+
+    // If there is no such table, we can use this name
+    if (check_res->RowCount() == 0) {
+      return table_name;
+    }
+  }
+
+  throw std::runtime_error(
+      "Could not generate a unique temporary table name after " +
+      std::to_string(MAX_ATTEMPTS) + " attempts");
+}
+
 /// Adds a SELECT clause with the specified columns to the query
 void add_projections(std::ostringstream &query,
-                     const std::vector<column_def> &columns) {
+                     const std::vector<column_def> &columns) noexcept {
   query << " SELECT";
 
   if (columns.empty()) {
@@ -149,7 +178,7 @@ void add_projections(std::ostringstream &query,
 void add_type_options(std::ostringstream &query,
                       const std::vector<column_def> &columns,
                       const bool allow_unmodified_string,
-                      const std::shared_ptr<mdlog::MdLog> &logger) {
+                      const std::shared_ptr<mdlog::MdLog> &logger) noexcept {
   // We set all_varchar=true if we have to deal with `unmodified_string`. Those
   // are string values that represent an unchanged value in an UPDATE or UPSERT,
   // and they break type conversion in the CSV reader. DuckDB does an implicit
@@ -211,7 +240,7 @@ std::string
 generate_read_csv_query(const std::string &filepath,
                         const IngestProperties &props,
                         const CompressionType compression,
-                        const std::shared_ptr<mdlog::MdLog> &logger) {
+                        const std::shared_ptr<mdlog::MdLog> &logger) noexcept {
   std::ostringstream query;
   query << "FROM read_csv("
         << duckdb::KeywordHelper::WriteQuoted(filepath, '\'');
@@ -276,7 +305,7 @@ namespace csv_processor {
 void ProcessFile(
     duckdb::Connection &con, const IngestProperties &props,
     std::shared_ptr<mdlog::MdLog> &logger,
-    const std::function<void(const std::string &view_name)> &process_view) {
+    const std::function<void(const std::string &)> &process_staging_table) {
 
   validate_file(props.filename);
   logger->info("    validated file " + props.filename);
@@ -307,21 +336,24 @@ void ProcessFile(
     reset_file_cursor(temp_file.value().fd);
   }
 
-  const std::string view_name =
-      "\"" + props.temp_db_name + R"("."main"."csv_view")";
+  // Start a transaction to ensure the temporary table is cleaned up
+  con.BeginTransaction();
+  // TODO: Use absolute table name to ensure we are in the same database
+  const std::string staging_table_name = generate_temp_table_name(con, logger);
 
-  // The temporary in-memory database is reused for multiple calls of
-  // ProcessFile, hence we need `CREATE OR REPLACE` here.
+  // Create staging table in remote database. We upload all data anyway, and
+  // this way we make sure that all processing happens remotely.
   const auto final_query =
-      "CREATE OR REPLACE VIEW " + view_name + " AS " +
+      "CREATE TABLE " + staging_table_name + " AS " +
       generate_read_csv_query(decrypted_file_path, props, compression, logger);
-  logger->info("    creating view: " + final_query);
-  const auto create_view_res = con.Query(final_query);
-  if (create_view_res->HasError()) {
-    create_view_res->ThrowError("Failed to create view for CSV file <" +
-                                props.filename + ">: ");
+  logger->info("    creating staging table: " + final_query);
+  const auto create_temp_table_res = con.Query(final_query);
+  if (create_temp_table_res->HasError()) {
+    create_temp_table_res->ThrowError(
+        "Failed to create staging table for CSV file <" + props.filename +
+        ">: ");
   }
-  logger->info("    view created for file " + props.filename);
+  logger->info("    staging table created for file " + props.filename);
 
   // `read_csv` opened and read the file for binding. Reset the file cursor
   // again for execution.
@@ -329,7 +361,16 @@ void ProcessFile(
     reset_file_cursor(temp_file.value().fd);
   }
 
-  process_view(view_name);
-  logger->info("    view processed for file " + props.filename);
+  process_staging_table(staging_table_name);
+  logger->info("    CSV file " + props.filename + " processed successfully");
+
+  const auto drop_temp_table_res =
+      con.Query("DROP TABLE " + staging_table_name);
+  if (drop_temp_table_res->HasError()) {
+    logger->severe("Failed to drop temporary table <" + staging_table_name +
+                   "> after processing CSV file <" + props.filename +
+                   ">: " + drop_temp_table_res->GetError());
+  }
+  con.Commit();
 }
 } // namespace csv_processor
