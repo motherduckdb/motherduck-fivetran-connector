@@ -56,6 +56,7 @@ duckdb::DuckDB &ConnectionFactory::get_duckdb(const std::string &md_auth_token,
 
     duckdb::Connection con(db);
     initial_md_token = md_auth_token;
+    initial_db_name = db_name;
   };
 
   std::call_once(db_init_flag, initialize_db);
@@ -63,6 +64,12 @@ duckdb::DuckDB &ConnectionFactory::get_duckdb(const std::string &md_auth_token,
   if (md_auth_token != initial_md_token) {
     throw std::runtime_error("Trying to connect to MotherDuck with a different "
                              "token than initially provided");
+  }
+
+  if (db_name != initial_db_name) {
+    throw std::runtime_error(
+        "Trying to connect to a different MotherDuck database (" + db_name +
+        ") than on the initial connection (" + initial_db_name + ")");
   }
 
   return db;
@@ -79,8 +86,8 @@ ConnectionFactory::GetConnection(const std::string &md_auth_token,
   // Trigger welcome pack fetch, but do not raise errors
   const auto welcome_pack_res = con.Query("FROM md_welcome_messages()");
   if (welcome_pack_res->HasError()) {
-    stdout_logger.warning("get_connection: Could not fetch welcome pack: " +
-                          welcome_pack_res->GetError());
+    stdout_logger.severe("get_connection: Could not fetch welcome pack: " +
+                         welcome_pack_res->GetError());
   } else {
     stdout_logger.info("get_connection: fetched welcome pack");
   }

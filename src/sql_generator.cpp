@@ -65,9 +65,8 @@ make_full_column_list(const std::vector<const column_def *> &columns_pk,
   return full_column_list.str();
 }
 
-std::string
-primary_key_join(std::vector<const column_def *> &columns_pk,
-                 const std::string tbl1, const std::string tbl2) {
+std::string primary_key_join(std::vector<const column_def *> &columns_pk,
+                             const std::string tbl1, const std::string tbl2) {
   std::ostringstream primary_key_join_condition_stream;
   write_joined(
       primary_key_join_condition_stream, columns_pk,
@@ -429,9 +428,9 @@ void MdSqlGenerator::alter_table(
         }
       } else {
         logger.info("Source connector requested that table " +
-                     absolute_table_name + " column " + col.name +
-                     " be dropped, but dropping columns is not allowed when "
-                     "drop_columns is false");
+                    absolute_table_name + " column " + col.name +
+                    " be dropped, but dropping columns is not allowed when "
+                    "drop_columns is false");
       }
     } else if (new_col_it->second.primary_key != col.primary_key) {
       logger.info("Altering primary key requested for column <" +
