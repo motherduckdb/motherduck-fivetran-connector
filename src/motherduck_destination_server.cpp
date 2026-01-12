@@ -9,6 +9,7 @@
 #include "fivetran_duckdb_interop.hpp"
 #include "ingest_properties.hpp"
 #include "md_logging.hpp"
+#include "request_context.hpp"
 #include "sql_generator.hpp"
 #include "temp_database.hpp"
 
@@ -17,11 +18,8 @@
 #include <filesystem>
 #include <grpcpp/grpcpp.h>
 #include <memory>
-#include <mutex>
+#include <optional>
 #include <string>
-
-#include "connection_factory.hpp"
-#include "request_context.hpp"
 
 template <typename T> std::string get_schema_name(const T *request) {
   std::string schema_name = request->schema_name();
@@ -142,10 +140,14 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     ::grpc::ServerContext *,
     const ::fivetran_sdk::v2::DescribeTableRequest *request,
     ::fivetran_sdk::v2::DescribeTableResponse *response) {
-  RequestContext ctx("DescribeTable", connection_factory,
-                     request->configuration());
-  auto &con = ctx.get_connection();
-  auto &logger = ctx.get_logger();
+  std::optional<RequestContext> ctx;
+  try {
+    ctx.emplace("DescribeTable", connection_factory, request->configuration());
+  } catch (const std::exception &e) {
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  }
+  auto &con = ctx->GetConnection();
+  auto &logger = ctx->GetLogger();
 
   try {
     std::string db_name =
@@ -207,10 +209,14 @@ grpc::Status DestinationSdkImpl::CreateTable(
     ::grpc::ServerContext *,
     const ::fivetran_sdk::v2::CreateTableRequest *request,
     ::fivetran_sdk::v2::CreateTableResponse *response) {
-  RequestContext ctx("CreateTable", connection_factory,
-                     request->configuration());
-  auto &con = ctx.get_connection();
-  auto &logger = ctx.get_logger();
+  std::optional<RequestContext> ctx;
+  try {
+    ctx.emplace("CreateTable", connection_factory, request->configuration());
+  } catch (const std::exception &e) {
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  }
+  auto &con = ctx->GetConnection();
+  auto &logger = ctx->GetLogger();
 
   try {
     auto schema_name = get_schema_name(request);
@@ -248,10 +254,14 @@ grpc::Status DestinationSdkImpl::AlterTable(
     ::grpc::ServerContext *,
     const ::fivetran_sdk::v2::AlterTableRequest *request,
     ::fivetran_sdk::v2::AlterTableResponse *response) {
-  RequestContext ctx("AlterTable", connection_factory,
-                     request->configuration());
-  auto &con = ctx.get_connection();
-  auto &logger = ctx.get_logger();
+  std::optional<RequestContext> ctx;
+  try {
+    ctx.emplace("AlterTable", connection_factory, request->configuration());
+  } catch (const std::exception &e) {
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  }
+  auto &con = ctx->GetConnection();
+  auto &logger = ctx->GetLogger();
 
   try {
     std::string db_name =
@@ -285,10 +295,15 @@ grpc::Status
 DestinationSdkImpl::Truncate(::grpc::ServerContext *,
                              const ::fivetran_sdk::v2::TruncateRequest *request,
                              ::fivetran_sdk::v2::TruncateResponse *response) {
+  std::optional<RequestContext> ctx;
+  try {
+    ctx.emplace("Truncate", connection_factory, request->configuration());
+  } catch (const std::exception &e) {
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  }
+  auto &con = ctx->GetConnection();
+  auto &logger = ctx->GetLogger();
 
-  RequestContext ctx("Truncate", connection_factory, request->configuration());
-  auto &con = ctx.get_connection();
-  auto &logger = ctx.get_logger();
   try {
     std::string db_name =
         config::find_property(request->configuration(), config::PROP_DATABASE);
@@ -335,10 +350,14 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     ::grpc::ServerContext *,
     const ::fivetran_sdk::v2::WriteBatchRequest *request,
     ::fivetran_sdk::v2::WriteBatchResponse *response) {
-  RequestContext ctx("WriteBatch", connection_factory,
-                     request->configuration());
-  auto &con = ctx.get_connection();
-  auto &logger = ctx.get_logger();
+  std::optional<RequestContext> ctx;
+  try {
+    ctx.emplace("WriteBatch", connection_factory, request->configuration());
+  } catch (const std::exception &e) {
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  }
+  auto &con = ctx->GetConnection();
+  auto &logger = ctx->GetLogger();
 
   try {
     auto schema_name = get_schema_name(request);
@@ -433,10 +452,15 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     ::grpc::ServerContext *,
     const ::fivetran_sdk::v2::WriteHistoryBatchRequest *request,
     ::fivetran_sdk::v2::WriteBatchResponse *response) {
-  RequestContext ctx("WriteHistoryBatch", connection_factory,
-                     request->configuration());
-  auto &con = ctx.get_connection();
-  auto &logger = ctx.get_logger();
+  std::optional<RequestContext> ctx;
+  try {
+    ctx.emplace("WriteHistoryBatch", connection_factory,
+                request->configuration());
+  } catch (const std::exception &e) {
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  }
+  auto &con = ctx->GetConnection();
+  auto &logger = ctx->GetLogger();
 
   try {
     auto schema_name = get_schema_name(request);
@@ -597,7 +621,7 @@ DestinationSdkImpl::Test(::grpc::ServerContext *,
     // it more actionable.
     RequestContext ctx("Test", connection_factory, request->configuration());
 
-    auto test_result = config_tester::run_test(test_name, ctx.get_connection());
+    auto test_result = config_tester::run_test(test_name, ctx.GetConnection());
     if (test_result.success) {
       response->set_success(true);
     } else {

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "config.hpp"
 #include "connection_factory.hpp"
 #include "duckdb.hpp"
 #include "google/protobuf/map.h"
@@ -18,9 +17,9 @@ public:
   ~RequestContext();
 
   /// Get the DuckDB connection for the current request
-  duckdb::Connection &get_connection() { return con; }
+  duckdb::Connection &GetConnection() { return con; }
   /// Get the logger for the current request
-  mdlog::Logger &get_logger() { return logger; }
+  mdlog::Logger &GetLogger() { return logger; }
 
 private:
   std::string endpoint_name;

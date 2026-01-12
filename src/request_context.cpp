@@ -1,4 +1,9 @@
 #include "request_context.hpp"
+#include "config.hpp"
+#include "connection_factory.hpp"
+#include "google/protobuf/map.h"
+
+#include <string>
 
 RequestContext::RequestContext(
     const std::string &endpoint_name_, ConnectionFactory &connection_factory,
