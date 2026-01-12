@@ -8,6 +8,20 @@
 
 using duckdb::KeywordHelper;
 
+void find_primary_keys(const std::vector<column_def> &cols,
+                       std::vector<const column_def *> &columns_pk,
+                       std::vector<const column_def *> *columns_regular,
+                       const std::string &ignored_primary_key) {
+  for (auto &col : cols) {
+    if (col.primary_key && col.name != ignored_primary_key) {
+      columns_pk.push_back(&col);
+    } else if (columns_regular != nullptr) {
+      columns_regular->push_back(&col);
+    }
+  }
+}
+
+namespace {
 // Utility
 
 std::ostream &operator<<(std::ostream &os, const column_def &col) {
@@ -36,19 +50,6 @@ void write_joined(
   }
 }
 
-void find_primary_keys(const std::vector<column_def> &cols,
-                       std::vector<const column_def *> &columns_pk,
-                       std::vector<const column_def *> *columns_regular,
-                       const std::string &ignored_primary_key) {
-  for (auto &col : cols) {
-    if (col.primary_key && col.name != ignored_primary_key) {
-      columns_pk.push_back(&col);
-    } else if (columns_regular != nullptr) {
-      columns_regular->push_back(&col);
-    }
-  }
-}
-
 std::string
 make_full_column_list(const std::vector<const column_def *> &columns_pk,
                       const std::vector<const column_def *> &columns_regular) {
@@ -64,9 +65,9 @@ make_full_column_list(const std::vector<const column_def *> &columns_pk,
   return full_column_list.str();
 }
 
-const std::string primary_key_join(std::vector<const column_def *> &columns_pk,
-                                   const std::string tbl1,
-                                   const std::string tbl2) {
+std::string
+primary_key_join(std::vector<const column_def *> &columns_pk,
+                 const std::string tbl1, const std::string tbl2) {
   std::ostringstream primary_key_join_condition_stream;
   write_joined(
       primary_key_join_condition_stream, columns_pk,
@@ -96,6 +97,7 @@ create_latest_active_records_table(duckdb::Connection &con,
   }
   return table_name;
 }
+} // namespace
 
 MdSqlGenerator::MdSqlGenerator(mdlog::Logger &logger_) : logger(logger_) {}
 
@@ -349,12 +351,15 @@ void MdSqlGenerator::alter_table_recreate(
 void MdSqlGenerator::alter_table_in_place(
     duckdb::Connection &con, const std::string &absolute_table_name,
     const std::vector<column_def> &added_columns,
+    const std::set<std::string> &deleted_columns,
     const std::set<std::string> &alter_types,
     const std::map<std::string, column_def> &new_column_map) {
   for (const auto &col : added_columns) {
     std::ostringstream out;
-    out << "ALTER TABLE " << absolute_table_name << " ADD COLUMN "
-        << KeywordHelper::WriteQuoted(col.name, '"') << " " << col;
+    out << "ALTER TABLE " << absolute_table_name << " ADD COLUMN ";
+
+    out << KeywordHelper::WriteQuoted(col.name, '"') << " "
+        << duckdb::EnumUtil::ToChars(col.type);
 
     run_query(con, "alter_table add", out.str(),
               "Could not add column <" + col.name + "> to table <" +
@@ -372,17 +377,28 @@ void MdSqlGenerator::alter_table_in_place(
               "Could not alter type for column <" + col_name + "> in table <" +
                   absolute_table_name + ">");
   }
+
+  for (const auto &col_name : deleted_columns) {
+    std::ostringstream out;
+    out << "ALTER TABLE " << absolute_table_name << " DROP COLUMN ";
+
+    out << KeywordHelper::WriteQuoted(col_name, '"');
+
+    run_query(con, "alter_table drop", out.str(),
+              "Could not drop column <" + col_name + "> from table <" +
+                  absolute_table_name + ">");
+  }
 }
 
 void MdSqlGenerator::alter_table(
     duckdb::Connection &con, const table_def &table,
-    const std::vector<column_def> &requested_columns) {
-
+    const std::vector<column_def> &requested_columns, const bool drop_columns) {
   bool recreate_table = false;
 
   auto absolute_table_name = table.to_escaped_string();
   std::set<std::string> alter_types;
   std::set<std::string> added_columns;
+  std::set<std::string> deleted_columns;
   std::set<std::string> common_columns;
 
   logger.info("    in MdSqlGenerator::alter_table for " + absolute_table_name);
@@ -404,17 +420,27 @@ void MdSqlGenerator::alter_table(
     }
 
     if (new_col_it == new_column_map.end()) {
-      logger.info("Source connector requested that table " +
-                  absolute_table_name + " column " + col.name +
-                  " be dropped, but dropping columns is not allowed");
+      if (drop_columns) { // Only drop physical columns if drop_columns is true
+                          // (from the alter table request)
+        deleted_columns.emplace(col.name);
+
+        if (col.primary_key) {
+          recreate_table = true;
+        }
+      } else {
+        logger.info("Source connector requested that table " +
+                     absolute_table_name + " column " + col.name +
+                     " be dropped, but dropping columns is not allowed when "
+                     "drop_columns is false");
+      }
     } else if (new_col_it->second.primary_key != col.primary_key) {
       logger.info("Altering primary key requested for column <" +
                   new_col_it->second.name + ">");
       recreate_table = true;
     } else if (new_col_it->second.type != col.type ||
-               new_col_it->second.type == duckdb::LogicalTypeId::DECIMAL &&
-                   (new_col_it->second.scale != col.scale ||
-                    new_col_it->second.width != col.width)) {
+               (new_col_it->second.type == duckdb::LogicalTypeId::DECIMAL &&
+                (new_col_it->second.scale != col.scale ||
+                 new_col_it->second.width != col.width))) {
       alter_types.emplace(col.name);
     }
   }
@@ -469,7 +495,7 @@ void MdSqlGenerator::alter_table(
   } else {
     logger.info("    altering table in place");
     alter_table_in_place(con, absolute_table_name, added_columns_ordered,
-                         alter_types, new_column_map);
+                         deleted_columns, alter_types, new_column_map);
   }
 
   run_query(con, "commit alter table transaction", "END TRANSACTION",
