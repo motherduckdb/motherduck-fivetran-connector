@@ -1,6 +1,5 @@
 #pragma once
 
-#include "common.pb.h"
 #include "duckdb.hpp"
 #include "schema_types.hpp"
 #include <map>
