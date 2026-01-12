@@ -27,5 +27,4 @@ private:
   duckdb::Connection con;
   // Logger has to have a shorter lifetime than the connection
   mdlog::Logger logger;
-  // TODO: SQLGenerator sql_generator;
 };
