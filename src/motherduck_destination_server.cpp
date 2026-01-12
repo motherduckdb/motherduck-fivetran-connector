@@ -191,8 +191,8 @@ create_ingest_props(const std::string &filename, const T &request,
 }
 
 grpc::Status DestinationSdkImpl::ConfigurationForm(
-    ::grpc::ServerContext *context,
-    const ::fivetran_sdk::v2::ConfigurationFormRequest *request,
+    ::grpc::ServerContext *,
+    const ::fivetran_sdk::v2::ConfigurationFormRequest *,
     ::fivetran_sdk::v2::ConfigurationFormResponse *response) {
 
   response->set_schema_selection_supported(true);
@@ -226,15 +226,14 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
 }
 
 grpc::Status DestinationSdkImpl::Capabilities(
-    ::grpc::ServerContext *context,
-    const ::fivetran_sdk::v2::CapabilitiesRequest *request,
+    ::grpc::ServerContext *, const ::fivetran_sdk::v2::CapabilitiesRequest *,
     ::fivetran_sdk::v2::CapabilitiesResponse *response) {
   response->set_batch_file_format(::fivetran_sdk::v2::CSV);
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
 grpc::Status DestinationSdkImpl::DescribeTable(
-    ::grpc::ServerContext *context,
+    ::grpc::ServerContext *,
     const ::fivetran_sdk::v2::DescribeTableRequest *request,
     ::fivetran_sdk::v2::DescribeTableResponse *response) {
   auto logger = std::make_shared<mdlog::MdLog>();
@@ -300,7 +299,7 @@ grpc::Status DestinationSdkImpl::DescribeTable(
 }
 
 grpc::Status DestinationSdkImpl::CreateTable(
-    ::grpc::ServerContext *context,
+    ::grpc::ServerContext *,
     const ::fivetran_sdk::v2::CreateTableRequest *request,
     ::fivetran_sdk::v2::CreateTableResponse *response) {
 
@@ -342,7 +341,7 @@ grpc::Status DestinationSdkImpl::CreateTable(
 }
 
 grpc::Status DestinationSdkImpl::AlterTable(
-    ::grpc::ServerContext *context,
+    ::grpc::ServerContext *,
     const ::fivetran_sdk::v2::AlterTableRequest *request,
     ::fivetran_sdk::v2::AlterTableResponse *response) {
   auto logger = std::make_shared<mdlog::MdLog>();
@@ -380,7 +379,7 @@ grpc::Status DestinationSdkImpl::AlterTable(
 }
 
 grpc::Status
-DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
+DestinationSdkImpl::Truncate(::grpc::ServerContext *,
                              const ::fivetran_sdk::v2::TruncateRequest *request,
                              ::fivetran_sdk::v2::TruncateResponse *response) {
 
@@ -432,7 +431,7 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *context,
 }
 
 grpc::Status DestinationSdkImpl::WriteBatch(
-    ::grpc::ServerContext *context,
+    ::grpc::ServerContext *,
     const ::fivetran_sdk::v2::WriteBatchRequest *request,
     ::fivetran_sdk::v2::WriteBatchResponse *response) {
 
@@ -532,7 +531,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 }
 
 ::grpc::Status DestinationSdkImpl::WriteHistoryBatch(
-    ::grpc::ServerContext *context,
+    ::grpc::ServerContext *,
     const ::fivetran_sdk::v2::WriteHistoryBatchRequest *request,
     ::fivetran_sdk::v2::WriteBatchResponse *response) {
 
@@ -688,7 +687,7 @@ std::string extract_readable_error(const std::exception &ex) {
 }
 
 grpc::Status
-DestinationSdkImpl::Test(::grpc::ServerContext *context,
+DestinationSdkImpl::Test(::grpc::ServerContext *,
                          const ::fivetran_sdk::v2::TestRequest *request,
                          ::fivetran_sdk::v2::TestResponse *response) {
   const std::string test_name = request->name();
