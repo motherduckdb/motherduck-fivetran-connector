@@ -1046,8 +1046,9 @@ void MdSqlGenerator::add_column_with_default(duckdb::Connection &con,
 bool MdSqlGenerator::validate_history_table(
     duckdb::Connection &con, const std::string absolute_table_name,
     const std::string quoted_timestamp) {
-  // This performs the "Validation before starting the migration" part of add/drop column in history mode as specified
-  // in the docs: https://github.com/fivetran/fivetran_partner_sdk/blob/bdaea1a/schema-migration-helper-service.md
+  // This performs the "Validation before starting the migration" part of
+  // add/drop column in history mode as specified in the docs:
+  // https://github.com/fivetran/fivetran_partner_sdk/blob/bdaea1a/schema-migration-helper-service.md
   auto result = con.Query("SELECT COUNT(*) FROM " + absolute_table_name);
 
   if (result->HasError()) {
