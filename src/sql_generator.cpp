@@ -1030,12 +1030,6 @@ void MdSqlGenerator::rename_column(duckdb::Connection &con,
                 "> in table <" + absolute_table_name + ">");
 }
 
-std::string
-fivetran_type_to_duckdb_type_string(fivetran_sdk::v2::DataType type) {
-  duckdb::LogicalTypeId duckdb_type = get_duckdb_type(type);
-  return duckdb::EnumUtil::ToChars(duckdb_type);
-}
-
 void MdSqlGenerator::add_column_with_default(duckdb::Connection &con,
                                              const table_def &table,
                                              const std::string &column,
