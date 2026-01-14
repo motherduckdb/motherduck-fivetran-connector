@@ -1461,9 +1461,9 @@ void MdSqlGenerator::migrate_live_to_soft_delete(
   const std::string quoted_deleted_col =
       KeywordHelper::WriteQuoted(soft_deleted_column, '"');
 
-  // Add soft_deleted_column if it doesn't exist (ignore error if it exists)
+  // Add soft_deleted_column if it doesn't exist
   std::ostringstream add_sql;
-  add_sql << "ALTER TABLE " << absolute_table_name << " ADD COLUMN "
+  add_sql << "ALTER TABLE " << absolute_table_name << " ADD COLUMN IF NOT EXISTS "
           << quoted_deleted_col << " BOOLEAN;";
   run_query(con, "migrate_live_to_soft_delete add", add_sql.str(),
             "Could not add soft_deleted_column");
