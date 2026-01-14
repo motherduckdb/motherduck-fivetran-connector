@@ -1238,7 +1238,7 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
             "Could not add _fivetran_end column");
   run_query(con, "migrate_soft_delete_to_history add_active",
             "ALTER TABLE " + absolute_table_name +
-                " ADD COLUMN \"_fivetran_active\" BOOLEAN",
+                " ADD COLUMN \"_fivetran_active\" BOOLEAN DEFAULT TRUE",
             "Could not add _fivetran_active column");
 
   // Set values based on soft_deleted_column
