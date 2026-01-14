@@ -1499,7 +1499,7 @@ void MdSqlGenerator::migrate_live_to_history(duckdb::Connection &con,
   run_query(con, "migrate_live_to_history update",
             "UPDATE " + absolute_table_name +
                 " SET \"_fivetran_start\" = NOW(),"
-                " \"_fivetran_end\" = '9999-12-31 23:59:59'::TIMESTAMPTZ,"
+                " \"_fivetran_end\" = '9999-12-31T23:59:59.999Z'::TIMESTAMPTZ,"
                 " \"_fivetran_active\" = TRUE",
             "Could not set history column values");
 }
