@@ -59,7 +59,7 @@ std::vector<column_def> get_duckdb_columns(
                            ? col.params().decimal().scale()
                            : DUCKDB_DEFAULT_SCALE;
     duckdb_columns.push_back(
-        column_def{col.name(), ddbtype, col.primary_key(), precision, scale});
+        column_def{col.name(), ddbtype,  "", col.primary_key(), precision, scale});
   }
   return duckdb_columns;
 }

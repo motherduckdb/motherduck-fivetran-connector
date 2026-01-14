@@ -247,6 +247,7 @@ std::vector<column_def> MdSqlGenerator::describe_table(duckdb::Connection &con,
   auto query = "SELECT "
                "column_name, "
                "data_type_id, "
+               "column_default, "
                "NOT is_nullable, "
                "numeric_precision, "
                "numeric_scale "
@@ -275,11 +276,11 @@ std::vector<column_def> MdSqlGenerator::describe_table(duckdb::Connection &con,
   for (const auto &row : materialized_result.Collection().GetRows()) {
     duckdb::LogicalTypeId column_type =
         static_cast<duckdb::LogicalTypeId>(row.GetValue(1).GetValue<int8_t>());
-    column_def col{row.GetValue(0).GetValue<duckdb::string>(), column_type,
-                   row.GetValue(2).GetValue<bool>(), 0, 0};
+    column_def col{row.GetValue(0).GetValue<duckdb::string>(), column_type, row.GetValue(2).GetValue<duckdb::string>(),
+                   row.GetValue(3).GetValue<bool>(), 0, 0};
     if (column_type == duckdb::LogicalTypeId::DECIMAL) {
-      col.width = row.GetValue(3).GetValue<uint32_t>();
-      col.scale = row.GetValue(4).GetValue<uint32_t>();
+      col.width = row.GetValue(4).GetValue<uint32_t>();
+      col.scale = row.GetValue(5).GetValue<uint32_t>();
     }
     columns.push_back(col);
   }
@@ -935,19 +936,35 @@ void MdSqlGenerator::copy_table(duckdb::Connection &con,
                                 const table_def &from_table,
                                 const table_def &to_table) {
   con.BeginTransaction();
-  std::ostringstream sql;
-  sql << "CREATE TABLE " << to_table.to_escaped_string() << " AS SELECT * FROM "
-      << from_table.to_escaped_string();
 
-  run_query(con, "copy_table", sql.str(),
-            "Could not copy table <" + from_table.to_escaped_string() +
-                "> to <" + to_table.to_escaped_string() + ">");
+  {
+    std::ostringstream sql;
+    sql << "CREATE TABLE " << to_table.to_escaped_string() << " AS SELECT * FROM "
+        << from_table.to_escaped_string();
+
+    run_query(con, "copy_table", sql.str(),
+              "Could not copy table <" + from_table.to_escaped_string() +
+                  "> to <" + to_table.to_escaped_string() + ">");
+  }
 
   const auto columns = describe_table(con, from_table);
 
   std::vector<const column_def *> columns_pk;
   std::vector<const column_def *> columns_regular;
   find_primary_keys(columns, columns_pk, &columns_regular, "_fivetran_start");
+
+  for (const auto &column : columns) {
+    if (column.column_default.empty() || column.column_default == "NULL") {
+      continue;
+    }
+
+    std::ostringstream sql;
+    sql << "ALTER TABLE " << to_table.to_escaped_string()
+        << " ALTER COLUMN " << KeywordHelper::WriteQuoted(column.name, '"')
+        << " SET DEFAULT " << KeywordHelper::WriteQuoted(column.column_default, '\'') << ";";
+    run_query(con, "copy_table set_default", sql.str(),
+              "Could not add default to column " + column.name);
+  }
 
   if (!columns_pk.empty()) {
     // Note that "CREATE TABLE AS SELECT" does not add any primary key
@@ -1287,40 +1304,60 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
   const auto columns = describe_table(con, table);
   find_primary_keys(columns, columns_pk, &columns_regular, "_fivetran_start");
 
-  std::ostringstream add_sql;
-  add_sql << "CREATE TABLE " << temp_absolute_table_name
-          << " AS SELECT * EXCLUDE (\"_fivetran_start\", \"_fivetran_end\", "
-             "\"_fivetran_active\"), "
-          << "NOT \"_fivetran_active\" as " << soft_deleted_column << " FROM "
-          << absolute_table_name;
+  {
+    std::ostringstream sql;
+    sql << "CREATE TABLE " << temp_absolute_table_name
+            << " AS SELECT * EXCLUDE (\"_fivetran_start\", \"_fivetran_end\", "
+               "\"_fivetran_active\"), "
+            << "NOT \"_fivetran_active\" as " << soft_deleted_column << " FROM "
+            << absolute_table_name;
 
-  if (!columns_pk.empty()) {
-    // Keep only the latest record for a primary key based on the highest
-    // _fivetran_start, using QUALIFY
-    add_sql << " QUALIFY row_number() OVER (partition by ";
-    write_joined(add_sql, columns_pk, print_column);
-    add_sql << " ORDER BY \"_fivetran_start\" DESC) = 1";
+    if (!columns_pk.empty()) {
+      // Keep only the latest record for a primary key based on the highest
+      // _fivetran_start, using QUALIFY
+      sql << " QUALIFY row_number() OVER (partition by ";
+      write_joined(sql, columns_pk, print_column);
+      sql << " ORDER BY \"_fivetran_start\" DESC) = 1";
+    }
+    run_query(con, "migrate_history_to_soft_delete create", sql.str(),
+              "Could not add soft_deleted_column");
   }
-  run_query(con, "migrate_history_to_soft_delete create", add_sql.str(),
-            "Could not add soft_deleted_column");
 
-  std::ostringstream add_col_sql;
-  add_col_sql << "ALTER TABLE " << temp_absolute_table_name
-              << " ADD COLUMN IF NOT EXISTS \"_fivetran_deleted\" BOOLEAN "
-                 "DEFAULT false;";
-  run_query(con, "migrate_history_to_soft_delete add_col", add_col_sql.str(),
-            "Could not add column _fivetran_deleted");
+  {
+    std::ostringstream sql;
+    sql << "ALTER TABLE " << temp_absolute_table_name
+                << " ADD COLUMN IF NOT EXISTS \"_fivetran_deleted\" BOOLEAN "
+                   "DEFAULT false;";
+    run_query(con, "migrate_history_to_soft_delete add_col", sql.str(),
+              "Could not add column _fivetran_deleted");
+  }
+
+  for (const auto &column : columns) {
+    if (column.column_default.empty() || column.column_default == "NULL") {
+      continue;
+    }
+    if (column.name == "_fivetran_start" || column.name == "_fivetran_end" || column.name == "_fivetran_active" || column.name == "_fivetran_deleted" ) {
+      continue;
+    }
+
+    std::ostringstream sql;
+    sql << "ALTER TABLE " << temp_absolute_table_name
+        << " ALTER COLUMN " << KeywordHelper::WriteQuoted(column.name, '"')
+        << " SET DEFAULT " << KeywordHelper::WriteQuoted(column.column_default, '\'') << ";";
+    run_query(con, "migrate_history_to_soft_delete set_default", sql.str(),
+              "Could not add default to column " + column.name);
+  }
 
   if (!columns_pk.empty()) {
     // Add the right primary key. Note that "CREATE TABLE AS SELECT" does not
     // add any primary key constraints.
-    std::ostringstream alter_sql;
+    std::ostringstream sql;
 
-    alter_sql << "ALTER TABLE " << temp_absolute_table_name
+    sql << "ALTER TABLE " << temp_absolute_table_name
               << " ADD PRIMARY KEY (";
-    write_joined(alter_sql, columns_pk, print_column);
-    alter_sql << ");";
-    run_query(con, "migrate_history_to_soft_delete alter", alter_sql.str(),
+    write_joined(sql, columns_pk, print_column);
+    sql << ");";
+    run_query(con, "migrate_history_to_soft_delete alter", sql.str(),
               "Could not alter soft_delete table");
   }
 
@@ -1330,7 +1367,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
             "Could not drop original soft_delete table");
   run_query(con, "migrate_history_to_soft_delete rename",
             "ALTER TABLE " + temp_absolute_table_name + " RENAME TO " +
-                table.table_name,
+                KeywordHelper::WriteQuoted(table.table_name, '"'),
             "Could not rename temp table to soft_delete table");
 
   con.Commit();
@@ -1374,6 +1411,22 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection &con,
   std::vector<const column_def *> columns_regular;
   find_primary_keys(columns, columns_pk, &columns_regular, "_fivetran_start");
 
+  for (const auto &column : columns) {
+    if (column.column_default.empty() || column.column_default == "NULL") {
+      continue;
+    }
+    if (column.name == "_fivetran_start" || column.name == "_fivetran_end" || column.name == "_fivetran_active") {
+      continue;
+    }
+
+    std::ostringstream sql;
+    sql << "ALTER TABLE " << temp_absolute_table_name
+        << " ALTER COLUMN " << KeywordHelper::WriteQuoted(column.name, '"')
+        << " SET DEFAULT " << KeywordHelper::WriteQuoted(column.column_default, '\'') << ";";
+    run_query(con, "migrate_history_to_live set_default", sql.str(),
+              "Could not add default to column " + column.name);
+  }
+
   if (!columns_pk.empty() &&
       !keep_deleted_rows) { // We can't set the original primary key if we keep
                             // duplicates...
@@ -1395,7 +1448,7 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection &con,
             "Could not drop original soft_delete table");
   run_query(con, "migrate_history_to_live rename",
             "ALTER TABLE " + temp_absolute_table_name + " RENAME TO " +
-                table.table_name,
+                KeywordHelper::WriteQuoted(table.table_name, '"'),
             "Could not rename temp table to soft_delete table");
 
   con.Commit();

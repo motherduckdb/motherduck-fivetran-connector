@@ -1056,7 +1056,7 @@ TEST_CASE("Migrate - history to soft delete", "[integration][migrate]") {
   con->Query("DROP TABLE IF EXISTS " + table_name);
   {
     auto res = con->Query("CREATE TABLE " + table_name +
-                          " (id INT, id2 INT, value VARCHAR, "
+                          " (id INT, id2 INT, value VARCHAR default 'abc', "
                           "_fivetran_start TIMESTAMPTZ, "
                           "_fivetran_end TIMESTAMPTZ, "
                           "_fivetran_active BOOLEAN,"

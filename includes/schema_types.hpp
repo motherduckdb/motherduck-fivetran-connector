@@ -7,6 +7,7 @@
 struct column_def {
   std::string name;
   duckdb::LogicalTypeId type;
+  std::string column_default;
   bool primary_key;
   std::uint32_t width;
   std::uint32_t scale;
