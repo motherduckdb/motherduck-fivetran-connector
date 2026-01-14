@@ -691,24 +691,19 @@ void MdSqlGenerator::deactivate_historical_records(
 
   const std::string absolute_table_name = table.to_escaped_string();
 
-  // persist the data (it's only 2 columns) to not read CSV file twice
-  const std::string temp_earliest_table_name = "local_earliest_file";
-  con.Query("CREATE TABLE " + temp_earliest_table_name + " AS SELECT * FROM " +
-            staging_table_name);
-
   // primary keys condition (list of primary keys already excludes
   // _fivetran_start)
   std::string primary_key_join_condition = primary_key_join(
-      columns_pk, absolute_table_name, temp_earliest_table_name);
+      columns_pk, absolute_table_name, staging_table_name);
 
   {
     // delete overlapping records
     std::ostringstream sql;
     sql << "DELETE FROM " + absolute_table_name << " USING "
-        << temp_earliest_table_name << " WHERE ";
+        << staging_table_name << " WHERE ";
     sql << primary_key_join_condition;
     sql << " AND " << absolute_table_name
-        << "._fivetran_start >= " << temp_earliest_table_name
+        << "._fivetran_start >= " << staging_table_name
         << "._fivetran_start";
 
     auto query = sql.str();
@@ -739,7 +734,7 @@ void MdSqlGenerator::deactivate_historical_records(
     sql << " ORDER BY " << absolute_table_name
         << "._fivetran_start DESC) as row_num FROM " << absolute_table_name;
     // inner join to earliest table to only select rows that are in this batch
-    sql << " INNER JOIN " << temp_earliest_table_name << " ON "
+    sql << " INNER JOIN " << staging_table_name << " ON "
         << primary_key_join_condition << ")\n";
 
     sql << "INSERT INTO " << lar_table
@@ -760,9 +755,9 @@ void MdSqlGenerator::deactivate_historical_records(
     sql << "UPDATE " + absolute_table_name << " SET _fivetran_active = FALSE, ";
     // converting to TIMESTAMP with no timezone because otherwise ICU is
     // required to do TIMESTAMPZ math. Need to test this well.
-    sql << "_fivetran_end = (" << temp_earliest_table_name
+    sql << "_fivetran_end = (" << staging_table_name
         << "._fivetran_start::TIMESTAMP - (INTERVAL '1 millisecond'))";
-    sql << " FROM " << temp_earliest_table_name;
+    sql << " FROM " << staging_table_name;
     sql << " WHERE " << absolute_table_name << "._fivetran_active = TRUE AND ";
     sql << primary_key_join_condition;
 
@@ -773,12 +768,6 @@ void MdSqlGenerator::deactivate_historical_records(
       throw std::runtime_error("Error deactivating records <" +
                                absolute_table_name + ">:" + result->GetError());
     }
-  }
-
-  {
-    // clean up the temp in memory table, so it can get recreated by another
-    // earliest file
-    con.Query("DROP TABLE " + temp_earliest_table_name);
   }
 }
 
