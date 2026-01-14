@@ -950,10 +950,12 @@ void MdSqlGenerator::copy_table(duckdb::Connection &con,
   find_primary_keys(columns, columns_pk, &columns_regular, "_fivetran_start");
 
   if (!columns_pk.empty()) {
-    // Note that "CREATE TABLE AS SELECT" does not add any primary key constraints.
+    // Note that "CREATE TABLE AS SELECT" does not add any primary key
+    // constraints.
     std::ostringstream alter_sql;
 
-    alter_sql << "ALTER TABLE " << to_table.to_escaped_string() << " ADD PRIMARY KEY (";
+    alter_sql << "ALTER TABLE " << to_table.to_escaped_string()
+              << " ADD PRIMARY KEY (";
     write_joined(alter_sql, columns_pk, print_column);
     alter_sql << ");";
     run_query(con, "migrate_history_to_live alter", alter_sql.str(),
