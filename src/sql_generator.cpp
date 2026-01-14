@@ -1308,8 +1308,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
     std::ostringstream sql;
     sql << "CREATE TABLE " << temp_absolute_table_name
             << " AS SELECT * EXCLUDE (\"_fivetran_start\", \"_fivetran_end\", "
-               "\"_fivetran_active\"), "
-            << "NOT \"_fivetran_active\" as " << quoted_deleted_col << " FROM "
+               "\"_fivetran_active\") FROM "
             << absolute_table_name;
 
     if (!columns_pk.empty()) {
@@ -1326,13 +1325,6 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
 
   {
     std::ostringstream sql;
-    sql << "ALTER TABLE " << temp_absolute_table_name << " ALTER COLUMN " << quoted_deleted_col <<" SET DEFAULT FALSE";
-    run_query(con, "migrate_history_to_soft_delete alter_soft_deleted_column", sql.str(),
-              "Could not alter soft_deleted_column");
-  }
-
-  {
-    std::ostringstream sql;
     sql << "ALTER TABLE " << temp_absolute_table_name
                 << " ADD COLUMN IF NOT EXISTS \"_fivetran_deleted\" BOOLEAN "
                    "DEFAULT false;";
@@ -1340,7 +1332,16 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
               "Could not add column _fivetran_deleted");
   }
 
+  {
+    std::ostringstream sql;
+    sql << "UPDATE " << temp_absolute_table_name
+                << " SET " << quoted_deleted_col << " = NOT \"_fivetran_active\"";
+    run_query(con, "migrate_history_to_soft_delete update_soft_deleted", sql.str(),
+              "Could not update soft_deleted_column");
+  }
+
   for (const auto &column : columns) {
+    // This also sets the default value of the soft_deleted_column if it was not equal to _fivetran_deleted
     if (column.column_default.empty() || column.column_default == "NULL") {
       continue;
     }
