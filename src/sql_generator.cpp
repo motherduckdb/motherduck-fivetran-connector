@@ -1309,7 +1309,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
     sql << "CREATE TABLE " << temp_absolute_table_name
             << " AS SELECT * EXCLUDE (\"_fivetran_start\", \"_fivetran_end\", "
                "\"_fivetran_active\"), "
-            << "NOT \"_fivetran_active\" as " << soft_deleted_column << " FROM "
+            << "NOT \"_fivetran_active\" as " << quoted_deleted_col << " FROM "
             << absolute_table_name;
 
     if (!columns_pk.empty()) {
@@ -1319,8 +1319,16 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
       write_joined(sql, columns_pk, print_column);
       sql << " ORDER BY \"_fivetran_start\" DESC) = 1";
     }
+
     run_query(con, "migrate_history_to_soft_delete create", sql.str(),
               "Could not add soft_deleted_column");
+  }
+
+  {
+    std::ostringstream sql;
+    sql << "ALTER TABLE " << temp_absolute_table_name << " ALTER COLUMN " << quoted_deleted_col <<" SET DEFAULT FALSE";
+    run_query(con, "migrate_history_to_soft_delete alter_soft_deleted_column", sql.str(),
+              "Could not alter soft_deleted_column");
   }
 
   {
