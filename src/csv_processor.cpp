@@ -131,7 +131,7 @@ CompressionType determine_compression_type(const std::string &file_path) {
 /// Generates a randomized table name which is not used yet in the database
 std::string generate_temp_table_name(duckdb::Connection &con,
                                      std::shared_ptr<mdlog::MdLog> &logger) {
-  constexpr uint_fast8_t MAX_ATTEMPTS = 100; // This should be more than enough
+  constexpr uint_fast8_t MAX_ATTEMPTS = 10; // This should be more than enough
   for (uint_fast8_t i = 0; i < MAX_ATTEMPTS; i++) {
     const std::string table_name = "__fivetran_ingest_staging_tbl" +
                                    duckdb::StringUtil::GenerateRandomName(16);
