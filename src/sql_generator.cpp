@@ -1264,10 +1264,10 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
   update_sql << "UPDATE " << absolute_table_name
              << " SET \"_fivetran_active\" = NOT " << quoted_deleted_col
              << ", \"_fivetran_start\" = CASE WHEN " << quoted_deleted_col
-             << " = TRUE THEN 'epoch'::DATETIME "
+             << " = TRUE THEN 'epoch'::TIMESTAMPTZ "
              << "ELSE (SELECT MAX(\"_fivetran_synced\") FROM "
              << absolute_table_name << ") END, \"_fivetran_end\" = CASE WHEN "
-             << quoted_deleted_col << " = TRUE THEN 'epoch'::DATETIME "
+             << quoted_deleted_col << " = TRUE THEN 'epoch'::TIMESTAMPTZ "
              << "ELSE '9999-12-31 23:59:59'::TIMESTAMPTZ END;";
   run_query(con, "migrate_soft_delete_to_history update", update_sql.str(),
             "Could not set history column values");
