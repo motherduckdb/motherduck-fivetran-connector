@@ -734,6 +734,7 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *context,
         sql_generator->drop_column_in_history_mode(
             *con, table, drop_col.column(), drop_col.operation_timestamp());
       } else {
+        logger->warning("Endpoint <Migrate>: drop operation ");
         response->set_unsupported(true);
         return ::grpc::Status::OK;
       }
@@ -854,6 +855,7 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *context,
         break;
       default:
         response->set_unsupported(true);
+        logger->warning("Endpoint <Migrate>: unsupported sync mode type");
         return ::grpc::Status::OK;
       }
       break;
