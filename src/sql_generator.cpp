@@ -934,6 +934,7 @@ void MdSqlGenerator::drop_column_in_history_mode(
 void MdSqlGenerator::copy_table(duckdb::Connection &con,
                                 const table_def &from_table,
                                 const table_def &to_table) {
+  con.BeginTransaction();
   std::ostringstream sql;
   sql << "CREATE TABLE " << to_table.to_escaped_string() << " AS SELECT * FROM "
       << from_table.to_escaped_string();
@@ -941,6 +942,25 @@ void MdSqlGenerator::copy_table(duckdb::Connection &con,
   run_query(con, "copy_table", sql.str(),
             "Could not copy table <" + from_table.to_escaped_string() +
                 "> to <" + to_table.to_escaped_string() + ">");
+
+  const auto columns = describe_table(con, from_table);
+
+  std::vector<const column_def *> columns_pk;
+  std::vector<const column_def *> columns_regular;
+  find_primary_keys(columns, columns_pk, &columns_regular, "_fivetran_start");
+
+  if (!columns_pk.empty()) {
+    // Note that "CREATE TABLE AS SELECT" does not add any primary key constraints.
+    std::ostringstream alter_sql;
+
+    alter_sql << "ALTER TABLE " << to_table.to_escaped_string() << " ADD PRIMARY KEY (";
+    write_joined(alter_sql, columns_pk, print_column);
+    alter_sql << ");";
+    run_query(con, "migrate_history_to_live alter", alter_sql.str(),
+              "Could not alter soft_delete table");
+  }
+
+  con.Commit();
 }
 
 void MdSqlGenerator::copy_column(duckdb::Connection &con,
