@@ -109,7 +109,7 @@ MdSqlGenerator::generate_temp_table_name(duckdb::Connection &con,
     const std::string table_name =
         prefix + duckdb::StringUtil::GenerateRandomName(16);
     const std::string fqn_name =
-        current_path + "." + KeywordHelper::WriteQuoted(table_name);
+        current_path + "." + KeywordHelper::WriteQuoted(table_name, '"');
     const std::string check_query =
         "FROM (SHOW TABLES FROM " + current_path +
         ") WHERE name = " + KeywordHelper::WriteQuoted(table_name, '\'');
@@ -629,7 +629,20 @@ void MdSqlGenerator::update_values(
   }
 }
 
-// TODO: Remove unused arguments
+std::string MdSqlGenerator::create_latest_active_records_table(
+    duckdb::Connection &con, const table_def &source_table) const {
+  const std::string lar_table_name =
+      generate_temp_table_name(con, "__fivetran_latest_active_records");
+  const auto create_lar_table_res =
+      con.Query("CREATE TABLE " + lar_table_name + " AS FROM " +
+                source_table.to_escaped_string() + " WITH NO DATA");
+  if (create_lar_table_res->HasError()) {
+    create_lar_table_res->ThrowError(
+        "Could not create latest_active_records table: ");
+  }
+  return lar_table_name;
+}
+
 void MdSqlGenerator::add_partial_historical_values(
     duckdb::Connection &con, const table_def &table,
     const std::string &staging_table_name, const std::string &lar_table_name,

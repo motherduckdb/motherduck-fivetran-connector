@@ -574,15 +574,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     a new row on updates, we cannot use UPDATE x SET y = value, as this updates
     in place.
     */
-    const std::string lar_table_name = sql_generator->generate_temp_table_name(
-        *con, "__fivetran_latest_active_records");
-    const auto create_lar_table_res =
-        con->Query("CREATE TABLE " + lar_table_name + " AS FROM " +
-                   table_name.to_escaped_string() + " WITH NO DATA");
-    if (create_lar_table_res->HasError()) {
-      create_lar_table_res->ThrowError(
-          "Could not create latest_active_records table: ");
-    }
+    const std::string lar_table_name = sql_generator->create_latest_active_records_table(*con, table_name);
 
     // delete overlapping records
     for (auto &filename : request->earliest_start_files()) {
@@ -624,7 +616,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     // The following functions do not need the LAR table
     auto drop_lar_table_res = con->Query("DROP TABLE " + lar_table_name);
     if (drop_lar_table_res->HasError()) {
-      // Log errors, but continue processing. In the worst case, this leaves a table stuck around.
+      // Log error, but continue processing. In the worst case, this leaves a table stuck around.
       logger->severe("Could not drop latest_active_records table: " +
                      drop_lar_table_res->GetError());
     }

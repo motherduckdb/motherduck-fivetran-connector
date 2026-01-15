@@ -59,6 +59,13 @@ public:
                      std::vector<const column_def *> &columns_regular,
                      const std::string &unmodified_string);
 
+  /// This creates the latest_active_records (LAR) table, a table with a
+  /// randomized name. The caller is responsible for cleaning it up. The LAR
+  /// table is used in history mode (see DestinationSdkImpl::WriteHistoryBatch).
+  std::string
+  create_latest_active_records_table(duckdb::Connection &con,
+                                     const table_def &source_table) const;
+
   void add_partial_historical_values(
       duckdb::Connection &con, const table_def &table,
       const std::string &staging_table_name, const std::string &lar_table_name,
