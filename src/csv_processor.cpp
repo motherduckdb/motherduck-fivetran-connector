@@ -278,7 +278,6 @@ void ProcessFile(
     duckdb::Connection &con, const IngestProperties &props,
     std::shared_ptr<mdlog::MdLog> &logger,
     const std::function<void(const std::string &)> &process_staging_table) {
-
   validate_file(props.filename);
   logger->info("    validated file " + props.filename);
 
@@ -342,4 +341,5 @@ void ProcessFile(
                    "> after processing CSV file <" + props.filename +
                    ">: " + drop_staging_table_res->GetError());
   }
+}
 } // namespace csv_processor
