@@ -100,7 +100,7 @@ MdSqlGenerator::generate_temp_table_name(duckdb::Connection &con,
   }
   assert(current_db_res->RowCount() == 1);
   assert(current_db_res->ColumnCount() == 1);
-  const std::string current_db = current_db_res->GetValue<std::string>(0, 0);
+  const std::string current_db = current_db_res->GetValue(0, 0).ToString();
   const std::string current_path =
       KeywordHelper::WriteQuoted(current_db, '"') + ".\"main\"";
 
