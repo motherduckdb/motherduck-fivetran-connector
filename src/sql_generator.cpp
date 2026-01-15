@@ -1249,7 +1249,7 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
       KeywordHelper::WriteQuoted(soft_deleted_column, '"');
 
   table_def temp_table{table.db_name, table.schema_name,
-                         table.table_name + "_temp"};
+                       table.table_name + "_temp"};
   const std::string temp_absolute_table_name = temp_table.to_escaped_string();
 
   std::vector<const column_def *> columns_pk;
@@ -1294,12 +1294,15 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
               "Could not drop soft_deleted_column");
   }
 
-  // Rename, copy and drop the original table to be able to replace the primary key
+  // Rename, copy and drop the original table to be able to replace the primary
+  // key
   run_query(con, "migrate_soft_delete_to_history rename",
-            "ALTER TABLE " + absolute_table_name + " RENAME TO " + temp_absolute_table_name,
+            "ALTER TABLE " + absolute_table_name + " RENAME TO " +
+                temp_absolute_table_name,
             "Could not drop original soft_delete table");
   run_query(con, "migrate_soft_delete_to_history copy",
-            "CREATE TABLE " + absolute_table_name + " AS SELECT * FROM " + temp_absolute_table_name,
+            "CREATE TABLE " + absolute_table_name + " AS SELECT * FROM " +
+                temp_absolute_table_name,
             "Could not rename temp table to soft_delete table");
   run_query(con, "migrate_soft_delete_to_history drop",
             "DROP TABLE " + temp_absolute_table_name,
@@ -1323,7 +1326,8 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
               "Could not add default to column " + column.name);
   }
 
-  column_def fivetran_start{.name = "_fivetran_start", .type = duckdb::LogicalTypeId::TIMESTAMP_TZ};
+  column_def fivetran_start{.name = "_fivetran_start",
+                            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ};
   columns_pk.push_back(&fivetran_start);
 
   if (!columns_pk.empty()) {
@@ -1583,12 +1587,15 @@ void MdSqlGenerator::migrate_live_to_history(duckdb::Connection &con,
                 " \"_fivetran_active\" = TRUE",
             "Could not set history column values");
 
-  // Rename, copy and drop the original table to be able to replace the primary key
+  // Rename, copy and drop the original table to be able to replace the primary
+  // key
   run_query(con, "migrate_live_to_history rename",
-            "ALTER TABLE " + absolute_table_name + " RENAME TO " + temp_absolute_table_name,
+            "ALTER TABLE " + absolute_table_name + " RENAME TO " +
+                temp_absolute_table_name,
             "Could not drop original soft_delete table");
   run_query(con, "migrate_live_to_history copy",
-            "CREATE TABLE " + absolute_table_name + " AS SELECT * FROM " + temp_absolute_table_name,
+            "CREATE TABLE " + absolute_table_name + " AS SELECT * FROM " +
+                temp_absolute_table_name,
             "Could not rename temp table to soft_delete table");
   run_query(con, "migrate_live_to_history drop",
             "DROP TABLE " + temp_absolute_table_name,
@@ -1609,7 +1616,8 @@ void MdSqlGenerator::migrate_live_to_history(duckdb::Connection &con,
               "Could not add default to column " + column.name);
   }
 
-  column_def fivetran_start{.name = "_fivetran_start", .type = duckdb::LogicalTypeId::TIMESTAMP_TZ};
+  column_def fivetran_start{.name = "_fivetran_start",
+                            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ};
   columns_pk.push_back(&fivetran_start);
 
   if (!columns_pk.empty()) {
