@@ -1298,15 +1298,15 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
   // key
   run_query(con, "migrate_soft_delete_to_history rename",
             "ALTER TABLE " + absolute_table_name + " RENAME TO " +
-                temp_absolute_table_name,
-            "Could not drop original soft_delete table");
+                KeywordHelper::WriteQuoted(temp_table.table_name, '"'),
+            "Could rename original soft_delete table");
   run_query(con, "migrate_soft_delete_to_history copy",
             "CREATE TABLE " + absolute_table_name + " AS SELECT * FROM " +
                 temp_absolute_table_name,
-            "Could not rename temp table to soft_delete table");
+            "Could not create new table from temp table");
   run_query(con, "migrate_soft_delete_to_history drop",
             "DROP TABLE " + temp_absolute_table_name,
-            "Could not rename temp table to soft_delete table");
+            "Could not drop temp table");
 
   for (const auto &column : columns) {
     // This also sets the default value of the soft_deleted_column if it was not
@@ -1370,8 +1370,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
   {
     std::ostringstream sql;
     sql << "CREATE TABLE " << temp_absolute_table_name
-        << " AS SELECT * EXCLUDE (\"_fivetran_start\", \"_fivetran_end\", "
-           "\"_fivetran_active\") FROM "
+        << " AS SELECT * EXCLUDE (\"_fivetran_start\", \"_fivetran_end\") FROM "
         << absolute_table_name;
 
     if (!columns_pk.empty()) {
@@ -1398,9 +1397,15 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
   {
     std::ostringstream sql;
     sql << "UPDATE " << temp_absolute_table_name << " SET "
-        << quoted_deleted_col << " = NOT \"_fivetran_active\"";
+        << quoted_deleted_col << " = NOT \"_fivetran_active\";";
     run_query(con, "migrate_history_to_soft_delete update_soft_deleted",
               sql.str(), "Could not update soft_deleted_column");
+  }
+  {
+    std::ostringstream sql;
+    sql << "ALTER TABLE " << temp_absolute_table_name << " DROP COLUMN \"_fivetran_active\";";
+    run_query(con, "migrate_history_to_soft_delete drop_active",
+              sql.str(), "Could not drop _fivetran_active column");
   }
 
   for (const auto &column : columns) {
@@ -1591,7 +1596,7 @@ void MdSqlGenerator::migrate_live_to_history(duckdb::Connection &con,
   // key
   run_query(con, "migrate_live_to_history rename",
             "ALTER TABLE " + absolute_table_name + " RENAME TO " +
-                temp_absolute_table_name,
+            KeywordHelper::WriteQuoted(temp_table.table_name, '"'),
             "Could not drop original soft_delete table");
   run_query(con, "migrate_live_to_history copy",
             "CREATE TABLE " + absolute_table_name + " AS SELECT * FROM " +
