@@ -131,7 +131,7 @@ CompressionType determine_compression_type(const std::string &file_path) {
 
 /// Adds a SELECT clause with the specified columns to the query
 void add_projections(std::ostringstream &query,
-                     const std::vector<column_def> &columns) noexcept {
+                     const std::vector<column_def> &columns) {
   query << " SELECT";
 
   if (columns.empty()) {
@@ -150,7 +150,7 @@ void add_projections(std::ostringstream &query,
 void add_type_options(std::ostringstream &query,
                       const std::vector<column_def> &columns,
                       const bool allow_unmodified_string,
-                      const std::shared_ptr<mdlog::MdLog> &logger) noexcept {
+                      const std::shared_ptr<mdlog::MdLog> &logger) {
   // We set all_varchar=true if we have to deal with `unmodified_string`. Those
   // are string values that represent an unchanged value in an UPDATE or UPSERT,
   // and they break type conversion in the CSV reader. DuckDB does an implicit
@@ -212,7 +212,7 @@ std::string
 generate_read_csv_query(const std::string &filepath,
                         const IngestProperties &props,
                         const CompressionType compression,
-                        const std::shared_ptr<mdlog::MdLog> &logger) noexcept {
+                        const std::shared_ptr<mdlog::MdLog> &logger) {
   std::ostringstream query;
   query << "FROM read_csv("
         << duckdb::KeywordHelper::WriteQuoted(filepath, '\'');
