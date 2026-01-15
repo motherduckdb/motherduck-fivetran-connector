@@ -335,11 +335,11 @@ void ProcessFile(
   process_staging_table(staging_table_name);
   logger->info("    CSV file " + props.filename + " processed successfully");
 
-  const auto drop_temp_table_res =
+  const auto drop_staging_table_res =
       con.Query("DROP TABLE " + staging_table_name);
-  if (drop_temp_table_res->HasError()) {
+  if (drop_staging_table_res->HasError()) {
     logger->severe("Failed to drop temporary table <" + staging_table_name +
                    "> after processing CSV file <" + props.filename +
-                   ">: " + drop_temp_table_res->GetError());
+                   ">: " + drop_staging_table_res->GetError());
   }
 } // namespace csv_processor

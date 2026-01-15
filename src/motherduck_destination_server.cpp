@@ -622,7 +622,11 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     }
 
     // The following functions do not need the LAR table
-    con->Query("DROP TABLE " + lar_table_name);
+    auto drop_lar_table_res = con->Query("DROP TABLE " + lar_table_name);
+    if (drop_lar_table_res->HasError()) {
+      logger->severe("Could not drop latest_active_records table: " +
+                     drop_lar_table_res->GetError());
+    }
 
     // upsert files
     for (auto &filename : request->replace_files()) {
