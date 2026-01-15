@@ -1,10 +1,19 @@
-#include <iostream>
-#include <md_logging.hpp>
-#include <string>
+#include "sql_generator.hpp"
 
-#include "../includes/sql_generator.hpp"
-
+#include "duckdb.hpp"
 #include "md_error.hpp"
+#include "md_logging.hpp"
+#include "schema_types.hpp"
+
+#include <functional>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <set>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 using duckdb::KeywordHelper;
 
@@ -65,9 +74,8 @@ make_full_column_list(const std::vector<const column_def *> &columns_pk,
   return full_column_list.str();
 }
 
-std::string
-primary_key_join(std::vector<const column_def *> &columns_pk,
-                 const std::string tbl1, const std::string tbl2) {
+std::string primary_key_join(std::vector<const column_def *> &columns_pk,
+                             const std::string tbl1, const std::string tbl2) {
   std::ostringstream primary_key_join_condition_stream;
   write_joined(
       primary_key_join_condition_stream, columns_pk,
@@ -77,27 +85,52 @@ primary_key_join(std::vector<const column_def *> &columns_pk,
       " AND ");
   return primary_key_join_condition_stream.str();
 }
-
-/// Create an empty table structure in-memory to store latest active records
-/// (LAR). This will not be cleaned up manually just in case further update
-/// files need to refer to the latest values.
-std::string get_or_create_lar_table(duckdb::Connection &con,
-                                    const std::string &source_table_name) {
-  const std::string target_table_name = "latest_active_records";
-  // Temporary table that is connection-scoped. Lives on the client side in
-  // memory.
-  const auto create_res =
-      con.Query("CREATE TEMPORARY TABLE IF NOT EXISTS " + target_table_name +
-                " AS FROM " + source_table_name + " WITH NO DATA");
-  if (create_res->HasError()) {
-    create_res->ThrowError("Could not create latest_active_records table: ");
-  }
-  return target_table_name;
-}
 } // namespace
 
 MdSqlGenerator::MdSqlGenerator(std::shared_ptr<mdlog::MdLog> &logger_)
     : logger(logger_) {}
+
+std::string
+MdSqlGenerator::generate_temp_table_name(duckdb::Connection &con,
+                                         const std::string &prefix) const {
+  const auto current_db_res = con.Query("SELECT current_database()");
+  if (current_db_res->HasError()) {
+    current_db_res->ThrowError(
+        "Could not get current database to generate temporary table name: ");
+  }
+  assert(current_db_res->RowCount() == 1);
+  assert(current_db_res->ColumnCount() == 1);
+  const std::string current_db = current_db_res->GetValue<std::string>(0, 0);
+  const std::string current_path =
+      KeywordHelper::WriteQuoted(current_db, '"') + ".\"main\"";
+
+  constexpr uint_fast8_t MAX_ATTEMPTS = 10; // This should be more than enough
+  for (uint_fast8_t i = 0; i < MAX_ATTEMPTS; i++) {
+    const std::string table_name =
+        prefix + duckdb::StringUtil::GenerateRandomName(16);
+    const std::string fqn_name =
+        current_path + "." + KeywordHelper::WriteQuoted(table_name);
+    const std::string check_query =
+        "FROM (SHOW TABLES FROM " + current_path +
+        ") WHERE name = " + KeywordHelper::WriteQuoted(table_name, '\'');
+    const auto check_res = con.Query(check_query);
+    if (check_res->HasError()) {
+      logger->severe("Could not check for existence of temporary table <" +
+                     table_name + ">: " + check_res->GetError());
+      // Optimistically use this name in case there was an error during checking
+      return fqn_name;
+    }
+
+    // If there is no such table, we can use this name
+    if (check_res->RowCount() == 0) {
+      return fqn_name;
+    }
+  }
+
+  throw std::runtime_error(
+      "Could not generate a unique temporary table name after " +
+      std::to_string(MAX_ATTEMPTS) + " attempts");
+}
 
 void MdSqlGenerator::run_query(duckdb::Connection &con,
                                const std::string &log_prefix,
@@ -599,26 +632,12 @@ void MdSqlGenerator::update_values(
 // TODO: Remove unused arguments
 void MdSqlGenerator::add_partial_historical_values(
     duckdb::Connection &con, const table_def &table,
-    const std::string &staging_table_name,
+    const std::string &staging_table_name, const std::string &lar_table_name,
     std::vector<const column_def *> &columns_pk,
     std::vector<const column_def *> &columns_regular,
-    const std::string &unmodified_string) {
+    const std::string &unmodified_string) const {
   std::ostringstream sql;
   auto absolute_table_name = table.to_escaped_string();
-
-  /*
-  The latest_active_records (lar) table is used to process the update file
-  from fivetran in history mode. We receive a file in which only updated
-  columns are provided, so we need to "manually" fetch the values for the
-  remaining columns to be able to insert a new valid row with all the right
-  columns values. As this uses type 2 slowly changing dimensions, i.e. insert
-  a new row on updates, we cannot use UPDATE x SET y = value, as this updates
-  in place.
-  */
-
-  // create empty table structure just in case there were not any earliest files
-  // that would have created it.
-  const auto lar_table = get_or_create_lar_table(con, absolute_table_name);
 
   auto full_column_list = make_full_column_list(columns_pk, columns_regular);
   sql << "INSERT INTO " << absolute_table_name << " (" << full_column_list
@@ -633,17 +652,18 @@ void MdSqlGenerator::add_partial_historical_values(
       ", ");
   sql << ",  ";
 
-  write_joined(
-      sql, columns_regular,
-      [staging_table_name, absolute_table_name, unmodified_string,
-       lar_table](const std::string quoted_col, std::ostringstream &out) {
-        out << "CASE WHEN " << staging_table_name << "." << quoted_col << " = "
-            << KeywordHelper::WriteQuoted(unmodified_string, '\'')
-            << " THEN lar." << quoted_col << " ELSE " << staging_table_name
-            << "." << quoted_col << " END as " << quoted_col;
-      });
+  write_joined(sql, columns_regular,
+               [staging_table_name, unmodified_string](
+                   const std::string quoted_col, std::ostringstream &out) {
+                 out << "CASE WHEN " << staging_table_name << "." << quoted_col
+                     << " = "
+                     << KeywordHelper::WriteQuoted(unmodified_string, '\'')
+                     << " THEN lar." << quoted_col << " ELSE "
+                     << staging_table_name << "." << quoted_col << " END as "
+                     << quoted_col;
+               });
 
-  sql << " FROM " << staging_table_name << " LEFT JOIN " << lar_table
+  sql << " FROM " << staging_table_name << " LEFT JOIN " << lar_table_name
       << " AS lar ON "
       << primary_key_join(columns_pk, "lar", staging_table_name) << ")";
 
@@ -686,15 +706,15 @@ void MdSqlGenerator::delete_rows(duckdb::Connection &con,
 
 void MdSqlGenerator::deactivate_historical_records(
     duckdb::Connection &con, const table_def &table,
-    const std::string &staging_table_name,
-    std::vector<const column_def *> &columns_pk) {
+    const std::string &staging_table_name, const std::string &lar_table_name,
+    std::vector<const column_def *> &columns_pk) const {
 
   const std::string absolute_table_name = table.to_escaped_string();
 
   // primary keys condition (list of primary keys already excludes
   // _fivetran_start)
-  std::string primary_key_join_condition = primary_key_join(
-      columns_pk, absolute_table_name, staging_table_name);
+  std::string primary_key_join_condition =
+      primary_key_join(columns_pk, absolute_table_name, staging_table_name);
 
   {
     // delete overlapping records
@@ -703,8 +723,7 @@ void MdSqlGenerator::deactivate_historical_records(
         << staging_table_name << " WHERE ";
     sql << primary_key_join_condition;
     sql << " AND " << absolute_table_name
-        << "._fivetran_start >= " << staging_table_name
-        << "._fivetran_start";
+        << "._fivetran_start >= " << staging_table_name << "._fivetran_start";
 
     auto query = sql.str();
     logger->info("delete_overlapping_records: " + query);
@@ -717,7 +736,6 @@ void MdSqlGenerator::deactivate_historical_records(
   }
 
   {
-    const auto lar_table = get_or_create_lar_table(con, absolute_table_name);
     // store latest versions of records before they get deactivated
     // per spec, this should be limited to _fivetran_active = TRUE, but it's
     // safer to get all latest versions even if deactivated to prevent null
@@ -737,7 +755,7 @@ void MdSqlGenerator::deactivate_historical_records(
     sql << " INNER JOIN " << staging_table_name << " ON "
         << primary_key_join_condition << ")\n";
 
-    sql << "INSERT INTO " << lar_table
+    sql << "INSERT INTO " << lar_table_name
         << " SELECT * EXCLUDE (row_num) FROM "
            "ranked_records WHERE row_num = 1";
     auto query = sql.str();

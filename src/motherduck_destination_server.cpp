@@ -456,6 +456,10 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       throw std::invalid_argument("No primary keys found");
     }
 
+    // We start a transaction here to a) ensure data consistency and b) clean up
+    // server-side data staging tables in case of an error
+    con->BeginTransaction();
+
     for (auto &filename : request->replace_files()) {
       logger->info("Processing replace file " + filename);
       const auto decryption_key = get_encryption_key(
@@ -507,6 +511,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(
           });
     }
 
+    con->Commit();
+
   } catch (const md_error::RecoverableError &mde) {
     auto const msg = "WriteBatch endpoint failed for schema <" +
                      request->schema_name() + ">, table <" +
@@ -555,6 +561,29 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       throw std::invalid_argument("No primary keys found");
     }
 
+    // We start a transaction here to a) ensure data consistency and b) clean up
+    // server-side data staging tables in case of an error
+    con->BeginTransaction();
+
+    /*
+    The latest_active_records (lar) table is used to process the update file
+    from Fivetran in history mode. We receive a file in which only updated
+    columns are provided, so we need to "manually" fetch the values for the
+    remaining columns to be able to insert a new valid row with all the right
+    columns values. As this uses type 2 slowly changing dimensions, i.e. insert
+    a new row on updates, we cannot use UPDATE x SET y = value, as this updates
+    in place.
+    */
+    const std::string lar_table_name = sql_generator->generate_temp_table_name(
+        *con, "__fivetran_latest_active_records");
+    const auto create_lar_table_res =
+        con->Query("CREATE TABLE " + lar_table_name + " AS FROM " +
+                   table_name.to_escaped_string() + " WITH NO DATA");
+    if (create_lar_table_res->HasError()) {
+      create_lar_table_res->ThrowError(
+          "Could not create latest_active_records table: ");
+    }
+
     // delete overlapping records
     for (auto &filename : request->earliest_start_files()) {
       logger->info("Processing earliest start file " + filename);
@@ -570,11 +599,12 @@ grpc::Status DestinationSdkImpl::WriteBatch(
            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ});
       IngestProperties props = create_ingest_props(
           filename, request, earliest_start_cols, UnmodifiedMarker::Disallowed);
-      csv_processor::ProcessFile(
-          *con, props, logger, [&](const std::string &staging_table_name) {
-            sql_generator->deactivate_historical_records(
-                *con, table_name, staging_table_name, columns_pk);
-          });
+      csv_processor::ProcessFile(*con, props, logger,
+                                 [&](const std::string &staging_table_name) {
+                                   sql_generator->deactivate_historical_records(
+                                       *con, table_name, staging_table_name,
+                                       lar_table_name, columns_pk);
+                                 });
     }
 
     for (auto &filename : request->update_files()) {
@@ -585,10 +615,14 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       csv_processor::ProcessFile(
           *con, props, logger, [&](const std::string &staging_table_name) {
             sql_generator->add_partial_historical_values(
-                *con, table_name, staging_table_name, columns_pk,
-                columns_regular, request->file_params().unmodified_string());
+                *con, table_name, staging_table_name, lar_table_name,
+                columns_pk, columns_regular,
+                request->file_params().unmodified_string());
           });
     }
+
+    // The following functions do not need the LAR table
+    con->Query("DROP TABLE " + lar_table_name);
 
     // upsert files
     for (auto &filename : request->replace_files()) {
@@ -626,6 +660,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                 *con, table_name, staging_table_name, columns_pk);
           });
     }
+
+    con->Commit();
 
   } catch (const md_error::RecoverableError &mde) {
     auto const msg = "WriteHistoryBatch endpoint failed for schema <" +

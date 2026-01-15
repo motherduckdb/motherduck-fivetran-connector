@@ -6,6 +6,7 @@
 #include "md_logging.hpp"
 #include "memory_backed_file.hpp"
 #include "schema_types.hpp"
+#include "sql_generator.hpp"
 
 #include <fstream>
 #include <functional>
@@ -126,35 +127,6 @@ CompressionType determine_compression_type(const std::string &file_path) {
       magic_bytes[0] == 0x28 && magic_bytes[1] == 0xB5 &&
       magic_bytes[2] == 0x2F && magic_bytes[3] == 0xFD;
   return is_zstd_compressed ? CompressionType::ZSTD : CompressionType::None;
-}
-
-/// Generates a randomized table name which is not used yet in the database
-std::string generate_temp_table_name(duckdb::Connection &con,
-                                     std::shared_ptr<mdlog::MdLog> &logger) {
-  constexpr uint_fast8_t MAX_ATTEMPTS = 10; // This should be more than enough
-  for (uint_fast8_t i = 0; i < MAX_ATTEMPTS; i++) {
-    const std::string table_name = "__fivetran_ingest_staging_tbl" +
-                                   duckdb::StringUtil::GenerateRandomName(16);
-    const std::string check_query =
-        "FROM (SHOW TABLES) WHERE name = " +
-        duckdb::KeywordHelper::WriteQuoted(table_name, '\'');
-    const auto check_res = con.Query(check_query);
-    if (check_res->HasError()) {
-      logger->severe("Could not check for existence of temporary table <" +
-                     table_name + ">: " + check_res->GetError());
-      // Optimistically use this name in case there was an error during checking
-      return table_name;
-    }
-
-    // If there is no such table, we can use this name
-    if (check_res->RowCount() == 0) {
-      return table_name;
-    }
-  }
-
-  throw std::runtime_error(
-      "Could not generate a unique temporary table name after " +
-      std::to_string(MAX_ATTEMPTS) + " attempts");
 }
 
 /// Adds a SELECT clause with the specified columns to the query
@@ -336,10 +308,9 @@ void ProcessFile(
     reset_file_cursor(temp_file.value().fd);
   }
 
-  // Start a transaction to ensure the temporary table is cleaned up
-  con.BeginTransaction();
-  // TODO: Use absolute table name to ensure we are in the same database
-  const std::string staging_table_name = generate_temp_table_name(con, logger);
+  MdSqlGenerator sql_generator(logger);
+  const std::string staging_table_name =
+      sql_generator.generate_temp_table_name(con, "__fivetran_ingest_staging");
 
   // Create staging table in remote database. We upload all data anyway, and
   // this way we make sure that all processing happens remotely.
@@ -347,9 +318,9 @@ void ProcessFile(
       "CREATE TABLE " + staging_table_name + " AS " +
       generate_read_csv_query(decrypted_file_path, props, compression, logger);
   logger->info("    creating staging table: " + final_query);
-  const auto create_temp_table_res = con.Query(final_query);
-  if (create_temp_table_res->HasError()) {
-    create_temp_table_res->ThrowError(
+  const auto create_staging_table_res = con.Query(final_query);
+  if (create_staging_table_res->HasError()) {
+    create_staging_table_res->ThrowError(
         "Failed to create staging table for CSV file <" + props.filename +
         ">: ");
   }
@@ -371,6 +342,4 @@ void ProcessFile(
                    "> after processing CSV file <" + props.filename +
                    ">: " + drop_temp_table_res->GetError());
   }
-  con.Commit();
-}
 } // namespace csv_processor
