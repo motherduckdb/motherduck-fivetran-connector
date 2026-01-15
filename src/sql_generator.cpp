@@ -1033,12 +1033,54 @@ void MdSqlGenerator::copy_table_to_history_mode(
   const std::string from_table_name = from_table.to_escaped_string();
   const std::string to_table_name = to_table.to_escaped_string();
 
-  // Create new table with data and history columns in one statement
-  std::ostringstream sql;
-  sql << "CREATE TABLE " << to_table_name << " AS FROM " << from_table_name;
+  table_def temp_table{to_table.db_name, to_table.schema_name,
+                       to_table.table_name + "_temp"};
+  const std::string temp_absolute_table_name = temp_table.to_escaped_string();
 
-  run_query(con, "copy_table_to_history_mode", sql.str(),
-            "Could not copy table to history mode");
+  std::vector<const column_def *> columns_pk;
+  std::vector<const column_def *> columns_regular;
+  const auto columns = describe_table(con, from_table);
+  find_primary_keys(columns, columns_pk, &columns_regular);
+
+  con.BeginTransaction();
+  // Create new table with data and history columns in one statement
+  {
+    std::ostringstream sql;
+    sql << "CREATE TABLE " << to_table_name << " AS FROM " << from_table_name;
+
+    run_query(con, "copy_table_to_history_mode", sql.str(),
+              "Could not copy table to history mode");
+  }
+
+  for (const auto &column : columns) {
+    if (column.column_default.empty() || column.column_default == "NULL") {
+      continue;
+    }
+
+    if (column.name == "_fivetran_deleted") {
+      continue;
+    }
+
+    std::ostringstream sql;
+    sql << "ALTER TABLE " << to_table_name << " ALTER COLUMN "
+        << KeywordHelper::WriteQuoted(column.name, '"') << " SET DEFAULT "
+        << KeywordHelper::WriteQuoted(column.column_default, '\'') << ";";
+    run_query(con, "copy_table_to_history_mode set_default", sql.str(),
+              "Could not add default to column " + column.name);
+  }
+
+  if (!columns_pk.empty()) {
+    // Add the right primary key. Note that "CREATE TABLE AS SELECT" does not
+    // add any primary key constraints.
+    std::ostringstream sql;
+
+    sql << "ALTER TABLE " << to_table_name << " ADD PRIMARY KEY (";
+    write_joined(sql, columns_pk, print_column);
+    sql << ");";
+    run_query(con, "copy_table_to_history_mode alter", sql.str(),
+              "Could not alter soft_delete table");
+  }
+  con.Commit();
 
   if (!soft_deleted_column.empty()) {
     migrate_soft_delete_to_history(con, to_table, soft_deleted_column);

@@ -358,7 +358,7 @@ TEST_CASE("Migrate - copy table to history mode from soft delete",
   {
     auto res = con->Query("CREATE TABLE " + source_table +
                           " (id INT, name VARCHAR, _fivetran_deleted BOOLEAN, "
-                          "_fivetran_synced TIMESTAMPTZ)");
+                          "_fivetran_synced TIMESTAMPTZ, primary key (id))");
     REQUIRE_NO_FAIL(res);
   }
 
