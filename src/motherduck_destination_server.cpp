@@ -624,6 +624,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     // The following functions do not need the LAR table
     auto drop_lar_table_res = con->Query("DROP TABLE " + lar_table_name);
     if (drop_lar_table_res->HasError()) {
+      // Log errors, but continue processing. In the worst case, this leaves a table stuck around.
       logger->severe("Could not drop latest_active_records table: " +
                      drop_lar_table_res->GetError());
     }
