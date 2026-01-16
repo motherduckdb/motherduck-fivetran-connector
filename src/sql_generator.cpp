@@ -1,10 +1,19 @@
-#include <iostream>
-#include <md_logging.hpp>
-#include <string>
+#include "sql_generator.hpp"
 
-#include "../includes/sql_generator.hpp"
-
+#include "duckdb.hpp"
 #include "md_error.hpp"
+#include "md_logging.hpp"
+#include "schema_types.hpp"
+
+#include <functional>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <set>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 using duckdb::KeywordHelper;
 
@@ -76,29 +85,51 @@ std::string primary_key_join(std::vector<const column_def *> &columns_pk,
       " AND ");
   return primary_key_join_condition_stream.str();
 }
-
-/*
- * create an empty table structure in-memory to store latest active records.
- * this will not be cleaned up manually just in case further update files need
- * to refer to the latest values.
- */
-std::string
-create_latest_active_records_table(duckdb::Connection &con,
-                                   const std::string &absolute_table_name,
-                                   const std::string &temp_db_name) {
-  const std::string table_name =
-      "\"" + temp_db_name + R"("."main"."latest_active_records")";
-  const auto create_res =
-      con.Query("CREATE TABLE IF NOT EXISTS " + table_name + " AS FROM " +
-                absolute_table_name + " WITH NO DATA");
-  if (create_res->HasError()) {
-    create_res->ThrowError("Could not create latest_active_records table: ");
-  }
-  return table_name;
-}
 } // namespace
 
 MdSqlGenerator::MdSqlGenerator(mdlog::Logger &logger_) : logger(logger_) {}
+
+std::string
+MdSqlGenerator::generate_temp_table_name(duckdb::Connection &con,
+                                         const std::string &prefix) const {
+  const auto current_db_res = con.Query("SELECT current_database()");
+  if (current_db_res->HasError()) {
+    current_db_res->ThrowError(
+        "Could not get current database to generate temporary table name: ");
+  }
+  assert(current_db_res->RowCount() == 1);
+  assert(current_db_res->ColumnCount() == 1);
+  const std::string current_db = current_db_res->GetValue(0, 0).ToString();
+  const std::string current_path =
+      KeywordHelper::WriteQuoted(current_db, '"') + ".\"main\"";
+
+  constexpr uint_fast8_t MAX_ATTEMPTS = 10; // This should be more than enough
+  for (uint_fast8_t i = 0; i < MAX_ATTEMPTS; i++) {
+    const std::string table_name =
+        prefix + duckdb::StringUtil::GenerateRandomName(16);
+    const std::string fqn_name =
+        current_path + "." + KeywordHelper::WriteQuoted(table_name, '"');
+    const std::string check_query =
+        "FROM (SHOW TABLES FROM " + current_path +
+        ") WHERE name = " + KeywordHelper::WriteQuoted(table_name, '\'');
+    const auto check_res = con.Query(check_query);
+    if (check_res->HasError()) {
+      logger.severe("Could not check for existence of temporary table <" +
+                    table_name + ">: " + check_res->GetError());
+      // Optimistically use this name in case there was an error during checking
+      return fqn_name;
+    }
+
+    // If there is no such table, we can use this name
+    if (check_res->RowCount() == 0) {
+      return fqn_name;
+    }
+  }
+
+  throw std::runtime_error(
+      "Could not generate a unique temporary table name after " +
+      std::to_string(MAX_ATTEMPTS) + " attempts");
+}
 
 void MdSqlGenerator::run_query(duckdb::Connection &con,
                                const std::string &log_prefix,
@@ -597,30 +628,28 @@ void MdSqlGenerator::update_values(
   }
 }
 
-// TODO: Remove unused arguments
+std::string MdSqlGenerator::create_latest_active_records_table(
+    duckdb::Connection &con, const table_def &source_table) const {
+  const std::string lar_table_name =
+      generate_temp_table_name(con, "__fivetran_latest_active_records");
+  const auto create_lar_table_res =
+      con.Query("CREATE TABLE " + lar_table_name + " AS FROM " +
+                source_table.to_escaped_string() + " WITH NO DATA");
+  if (create_lar_table_res->HasError()) {
+    create_lar_table_res->ThrowError(
+        "Could not create latest_active_records table: ");
+  }
+  return lar_table_name;
+}
+
 void MdSqlGenerator::add_partial_historical_values(
     duckdb::Connection &con, const table_def &table,
-    const std::string &staging_table_name,
+    const std::string &staging_table_name, const std::string &lar_table_name,
     std::vector<const column_def *> &columns_pk,
     std::vector<const column_def *> &columns_regular,
-    const std::string &unmodified_string, const std::string &temp_db_name) {
+    const std::string &unmodified_string) const {
   std::ostringstream sql;
   auto absolute_table_name = table.to_escaped_string();
-
-  /*
-  The latest_active_records (lar) table is used to process the update file
-  from fivetran in history mode. We receive a file in which only updated
-  columns are provided, so we need to "manually" fetch the values for the
-  remaining columns to be able to insert a new valid row with all the right
-  columns values. As this uses type 2 slowly changing dimensions, i.e. insert
-  a new row on updates, we cannot use UPDATE x SET y = value, as this updates
-  in place.
-  */
-
-  // create empty table structure just in case there were not any earliest files
-  // that would have created it.
-  const auto lar_table = create_latest_active_records_table(
-      con, absolute_table_name, temp_db_name);
 
   auto full_column_list = make_full_column_list(columns_pk, columns_regular);
   sql << "INSERT INTO " << absolute_table_name << " (" << full_column_list
@@ -635,17 +664,18 @@ void MdSqlGenerator::add_partial_historical_values(
       ", ");
   sql << ",  ";
 
-  write_joined(
-      sql, columns_regular,
-      [staging_table_name, absolute_table_name, unmodified_string,
-       lar_table](const std::string quoted_col, std::ostringstream &out) {
-        out << "CASE WHEN " << staging_table_name << "." << quoted_col << " = "
-            << KeywordHelper::WriteQuoted(unmodified_string, '\'')
-            << " THEN lar." << quoted_col << " ELSE " << staging_table_name
-            << "." << quoted_col << " END as " << quoted_col;
-      });
+  write_joined(sql, columns_regular,
+               [staging_table_name, unmodified_string](
+                   const std::string quoted_col, std::ostringstream &out) {
+                 out << "CASE WHEN " << staging_table_name << "." << quoted_col
+                     << " = "
+                     << KeywordHelper::WriteQuoted(unmodified_string, '\'')
+                     << " THEN lar." << quoted_col << " ELSE "
+                     << staging_table_name << "." << quoted_col << " END as "
+                     << quoted_col;
+               });
 
-  sql << " FROM " << staging_table_name << " LEFT JOIN " << lar_table
+  sql << " FROM " << staging_table_name << " LEFT JOIN " << lar_table_name
       << " AS lar ON "
       << primary_key_join(columns_pk, "lar", staging_table_name) << ")";
 
@@ -688,31 +718,24 @@ void MdSqlGenerator::delete_rows(duckdb::Connection &con,
 
 void MdSqlGenerator::deactivate_historical_records(
     duckdb::Connection &con, const table_def &table,
-    const std::string &staging_table_name,
-    std::vector<const column_def *> &columns_pk,
-    const std::string &temp_db_name) {
+    const std::string &staging_table_name, const std::string &lar_table_name,
+    std::vector<const column_def *> &columns_pk) const {
 
   const std::string absolute_table_name = table.to_escaped_string();
 
-  // persist the data (it's only 2 columns) to not read CSV file twice
-  const std::string temp_earliest_table_name = "local_earliest_file";
-  con.Query("CREATE TABLE " + temp_earliest_table_name + " AS SELECT * FROM " +
-            staging_table_name);
-
   // primary keys condition (list of primary keys already excludes
   // _fivetran_start)
-  std::string primary_key_join_condition = primary_key_join(
-      columns_pk, absolute_table_name, temp_earliest_table_name);
+  std::string primary_key_join_condition =
+      primary_key_join(columns_pk, absolute_table_name, staging_table_name);
 
   {
     // delete overlapping records
     std::ostringstream sql;
     sql << "DELETE FROM " + absolute_table_name << " USING "
-        << temp_earliest_table_name << " WHERE ";
+        << staging_table_name << " WHERE ";
     sql << primary_key_join_condition;
     sql << " AND " << absolute_table_name
-        << "._fivetran_start >= " << temp_earliest_table_name
-        << "._fivetran_start";
+        << "._fivetran_start >= " << staging_table_name << "._fivetran_start";
 
     auto query = sql.str();
     logger.info("delete_overlapping_records: " + query);
@@ -723,9 +746,6 @@ void MdSqlGenerator::deactivate_historical_records(
           absolute_table_name + ">:" + result->GetError());
     }
   }
-
-  const auto lar_table = create_latest_active_records_table(
-      con, absolute_table_name, temp_db_name);
 
   {
     // store latest versions of records before they get deactivated
@@ -744,10 +764,10 @@ void MdSqlGenerator::deactivate_historical_records(
     sql << " ORDER BY " << absolute_table_name
         << "._fivetran_start DESC) as row_num FROM " << absolute_table_name;
     // inner join to earliest table to only select rows that are in this batch
-    sql << " INNER JOIN " << temp_earliest_table_name << " ON "
+    sql << " INNER JOIN " << staging_table_name << " ON "
         << primary_key_join_condition << ")\n";
 
-    sql << "INSERT INTO " << lar_table
+    sql << "INSERT INTO " << lar_table_name
         << " SELECT * EXCLUDE (row_num) FROM "
            "ranked_records WHERE row_num = 1";
     auto query = sql.str();
@@ -765,9 +785,9 @@ void MdSqlGenerator::deactivate_historical_records(
     sql << "UPDATE " + absolute_table_name << " SET _fivetran_active = FALSE, ";
     // converting to TIMESTAMP with no timezone because otherwise ICU is
     // required to do TIMESTAMPZ math. Need to test this well.
-    sql << "_fivetran_end = (" << temp_earliest_table_name
+    sql << "_fivetran_end = (" << staging_table_name
         << "._fivetran_start::TIMESTAMP - (INTERVAL '1 millisecond'))";
-    sql << " FROM " << temp_earliest_table_name;
+    sql << " FROM " << staging_table_name;
     sql << " WHERE " << absolute_table_name << "._fivetran_active = TRUE AND ";
     sql << primary_key_join_condition;
 
@@ -778,12 +798,6 @@ void MdSqlGenerator::deactivate_historical_records(
       throw std::runtime_error("Error deactivating records <" +
                                absolute_table_name + ">:" + result->GetError());
     }
-  }
-
-  {
-    // clean up the temp in memory table, so it can get recreated by another
-    // earliest file
-    con.Query("DROP TABLE " + temp_earliest_table_name);
   }
 }
 

@@ -11,7 +11,6 @@
 #include "md_logging.hpp"
 #include "request_context.hpp"
 #include "sql_generator.hpp"
-#include "temp_database.hpp"
 
 #include "md_error.hpp"
 #include <exception>
@@ -85,13 +84,12 @@ template <typename T>
 IngestProperties
 create_ingest_props(const std::string &filename, const T &request,
                     const std::vector<column_def> &cols,
-                    const UnmodifiedMarker allow_unmodified_string,
-                    const std::string &temp_db_name) {
+                    const UnmodifiedMarker allow_unmodified_string) {
   const std::string decryption_key = get_encryption_key(
       filename, request->keys(), request->file_params().encryption());
   return IngestProperties(filename, decryption_key, cols,
                           request->file_params().null_string(),
-                          allow_unmodified_string, temp_db_name);
+                          allow_unmodified_string);
 }
 
 grpc::Status DestinationSdkImpl::ConfigurationForm(
@@ -378,7 +376,9 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       throw std::invalid_argument("No primary keys found");
     }
 
-    TempDatabase temp_db(con, logger);
+    // We start a transaction here to a) ensure data consistency and b) clean up
+    // server-side data staging tables in case of an error
+    con.BeginTransaction();
 
     for (auto &filename : request->replace_files()) {
       logger.info("Processing replace file " + filename);
@@ -387,12 +387,12 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
       IngestProperties props(filename, decryption_key, cols,
                              request->file_params().null_string(),
-                             UnmodifiedMarker::Disallowed, temp_db.name);
+                             UnmodifiedMarker::Disallowed);
 
       csv_processor::ProcessFile(
-          con, props, logger, [&](const std::string &view_name) {
-            sql_generator->upsert(con, table_name, view_name, columns_pk,
-                                  columns_regular);
+          con, props, logger, [&](const std::string &staging_table_name) {
+            sql_generator->upsert(con, table_name, staging_table_name,
+                                  columns_pk, columns_regular);
           });
     }
 
@@ -402,13 +402,13 @@ grpc::Status DestinationSdkImpl::WriteBatch(
           filename, request->keys(), request->file_params().encryption());
       IngestProperties props(filename, decryption_key, cols,
                              request->file_params().null_string(),
-                             UnmodifiedMarker::Allowed, temp_db.name);
+                             UnmodifiedMarker::Allowed);
 
       csv_processor::ProcessFile(
-          con, props, logger, [&](const std::string &view_name) {
+          con, props, logger, [&](const std::string &staging_table_name) {
             sql_generator->update_values(
-                con, table_name, view_name, columns_pk, columns_regular,
-                request->file_params().unmodified_string());
+                con, table_name, staging_table_name, columns_pk,
+                columns_regular, request->file_params().unmodified_string());
           });
     }
 
@@ -422,13 +422,17 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       }
       IngestProperties props(filename, decryption_key, cols_to_read,
                              request->file_params().null_string(),
-                             UnmodifiedMarker::Disallowed, temp_db.name);
+                             UnmodifiedMarker::Disallowed);
 
       csv_processor::ProcessFile(
-          con, props, logger, [&](const std::string &view_name) {
-            sql_generator->delete_rows(con, table_name, view_name, columns_pk);
+          con, props, logger, [&](const std::string &staging_table_name) {
+            sql_generator->delete_rows(con, table_name, staging_table_name,
+                                       columns_pk);
           });
     }
+
+    con.Commit();
+
   } catch (const md_error::RecoverableError &mde) {
     auto const msg = "WriteBatch endpoint failed for schema <" +
                      request->schema_name() + ">, table <" +
@@ -480,7 +484,21 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       throw std::invalid_argument("No primary keys found");
     }
 
-    TempDatabase temp_db(con, logger);
+    // We start a transaction here to a) ensure data consistency and b) clean up
+    // server-side data staging tables in case of an error
+    con.BeginTransaction();
+
+    /*
+    The latest_active_records (lar) table is used to process the update file
+    from Fivetran in history mode. We receive a file in which only updated
+    columns are provided, so we need to "manually" fetch the values for the
+    remaining columns to be able to insert a new valid row with all the right
+    columns values. As this uses type 2 slowly changing dimensions, i.e. insert
+    a new row on updates, we cannot use UPDATE x SET y = value, as this updates
+    in place.
+    */
+    const std::string lar_table_name =
+        sql_generator->create_latest_active_records_table(con, table_name);
 
     // delete overlapping records
     for (auto &filename : request->earliest_start_files()) {
@@ -495,38 +513,47 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       earliest_start_cols.push_back(
           {.name = "_fivetran_start",
            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ});
-      IngestProperties props =
-          create_ingest_props(filename, request, earliest_start_cols,
-                              UnmodifiedMarker::Disallowed, temp_db.name);
-      csv_processor::ProcessFile(
-          con, props, logger, [&](const std::string &view_name) {
-            sql_generator->deactivate_historical_records(
-                con, table_name, view_name, columns_pk, temp_db.name);
-          });
+      IngestProperties props = create_ingest_props(
+          filename, request, earliest_start_cols, UnmodifiedMarker::Disallowed);
+      csv_processor::ProcessFile(con, props, logger,
+                                 [&](const std::string &staging_table_name) {
+                                   sql_generator->deactivate_historical_records(
+                                       con, table_name, staging_table_name,
+                                       lar_table_name, columns_pk);
+                                 });
     }
 
     for (auto &filename : request->update_files()) {
       logger.info("update file " + filename);
-      IngestProperties props = create_ingest_props(
-          filename, request, cols, UnmodifiedMarker::Allowed, temp_db.name);
+      IngestProperties props = create_ingest_props(filename, request, cols,
+                                                   UnmodifiedMarker::Allowed);
 
       csv_processor::ProcessFile(
-          con, props, logger, [&](const std::string &view_name) {
+          con, props, logger, [&](const std::string &staging_table_name) {
             sql_generator->add_partial_historical_values(
-                con, table_name, view_name, columns_pk, columns_regular,
-                request->file_params().unmodified_string(), temp_db.name);
+                con, table_name, staging_table_name, lar_table_name, columns_pk,
+                columns_regular, request->file_params().unmodified_string());
           });
+    }
+
+    // The following functions do not need the LAR table
+    auto drop_lar_table_res = con.Query("DROP TABLE " + lar_table_name);
+    if (drop_lar_table_res->HasError()) {
+      // Log error, but continue processing. In the worst case, this leaves a
+      // table lingering.
+      logger.severe("Could not drop latest_active_records table: " +
+                    drop_lar_table_res->GetError());
     }
 
     // upsert files
     for (auto &filename : request->replace_files()) {
       logger.info("replace/upsert file " + filename);
       IngestProperties props = create_ingest_props(
-          filename, request, cols, UnmodifiedMarker::Disallowed, temp_db.name);
+          filename, request, cols, UnmodifiedMarker::Disallowed);
       csv_processor::ProcessFile(
-          con, props, logger, [&](const std::string &view_name) {
-            sql_generator->insert(con, table_name, view_name, columns_pk,
-                                  columns_regular);
+          con, props, logger, [&](const std::string &staging_table_name) {
+            sql_generator->insert(con, table_name, staging_table_name,
+                                  columns_pk, columns_regular);
           });
     }
 
@@ -545,16 +572,17 @@ grpc::Status DestinationSdkImpl::WriteBatch(
         }
       }
 
-      IngestProperties props =
-          create_ingest_props(filename, request, cols_to_read,
-                              UnmodifiedMarker::Disallowed, temp_db.name);
+      IngestProperties props = create_ingest_props(
+          filename, request, cols_to_read, UnmodifiedMarker::Disallowed);
 
-      csv_processor::ProcessFile(con, props, logger,
-                                 [&](const std::string &view_name) {
-                                   sql_generator->delete_historical_rows(
-                                       con, table_name, view_name, columns_pk);
-                                 });
+      csv_processor::ProcessFile(
+          con, props, logger, [&](const std::string &staging_table_name) {
+            sql_generator->delete_historical_rows(
+                con, table_name, staging_table_name, columns_pk);
+          });
     }
+
+    con.Commit();
 
   } catch (const md_error::RecoverableError &mde) {
     auto const msg = "WriteHistoryBatch endpoint failed for schema <" +

@@ -146,7 +146,6 @@ add_library(motherduck_destination_sources STATIC
         src/schema_types.cpp
         src/sql_generator.cpp
         src/stacktrace.cpp
-        src/temp_database.cpp
 )
 
 target_include_directories(motherduck_destination_sources PUBLIC
