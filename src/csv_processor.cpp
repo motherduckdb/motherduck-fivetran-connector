@@ -6,6 +6,7 @@
 #include "md_logging.hpp"
 #include "memory_backed_file.hpp"
 #include "schema_types.hpp"
+#include "sql_generator.hpp"
 
 #include <fstream>
 #include <functional>
@@ -276,8 +277,7 @@ namespace csv_processor {
 void ProcessFile(
     duckdb::Connection &con, const IngestProperties &props,
     std::shared_ptr<mdlog::MdLog> &logger,
-    const std::function<void(const std::string &view_name)> &process_view) {
-
+    const std::function<void(const std::string &)> &process_staging_table) {
   validate_file(props.filename);
   logger->info("    validated file " + props.filename);
 
@@ -307,21 +307,23 @@ void ProcessFile(
     reset_file_cursor(temp_file.value().fd);
   }
 
-  const std::string view_name =
-      "\"" + props.temp_db_name + R"("."main"."csv_view")";
+  MdSqlGenerator sql_generator(logger);
+  const std::string staging_table_name =
+      sql_generator.generate_temp_table_name(con, "__fivetran_ingest_staging");
 
-  // The temporary in-memory database is reused for multiple calls of
-  // ProcessFile, hence we need `CREATE OR REPLACE` here.
+  // Create staging table in remote database. We upload all data anyway, and
+  // this way we make sure that all processing happens remotely.
   const auto final_query =
-      "CREATE OR REPLACE VIEW " + view_name + " AS " +
+      "CREATE TABLE " + staging_table_name + " AS " +
       generate_read_csv_query(decrypted_file_path, props, compression, logger);
-  logger->info("    creating view: " + final_query);
-  const auto create_view_res = con.Query(final_query);
-  if (create_view_res->HasError()) {
-    create_view_res->ThrowError("Failed to create view for CSV file <" +
-                                props.filename + ">: ");
+  logger->info("    creating staging table: " + final_query);
+  const auto create_staging_table_res = con.Query(final_query);
+  if (create_staging_table_res->HasError()) {
+    create_staging_table_res->ThrowError(
+        "Failed to create staging table for CSV file <" + props.filename +
+        ">: ");
   }
-  logger->info("    view created for file " + props.filename);
+  logger->info("    staging table created for file " + props.filename);
 
   // `read_csv` opened and read the file for binding. Reset the file cursor
   // again for execution.
@@ -329,7 +331,15 @@ void ProcessFile(
     reset_file_cursor(temp_file.value().fd);
   }
 
-  process_view(view_name);
-  logger->info("    view processed for file " + props.filename);
+  process_staging_table(staging_table_name);
+  logger->info("    CSV file " + props.filename + " processed successfully");
+
+  const auto drop_staging_table_res =
+      con.Query("DROP TABLE " + staging_table_name);
+  if (drop_staging_table_res->HasError()) {
+    logger->severe("Failed to drop temporary table <" + staging_table_name +
+                   "> after processing CSV file <" + props.filename +
+                   ">: " + drop_staging_table_res->GetError());
+  }
 }
 } // namespace csv_processor
