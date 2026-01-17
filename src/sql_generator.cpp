@@ -1322,7 +1322,7 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
              << "ELSE (SELECT MAX(\"_fivetran_synced\") FROM "
              << absolute_table_name << ") END, \"_fivetran_end\" = CASE WHEN "
              << quoted_deleted_col << " = TRUE THEN 'epoch'::TIMESTAMPTZ "
-             << "ELSE '9999-12-31 23:59:59'::TIMESTAMPTZ END;";
+             << "ELSE '9999-12-31T23:59:59.999Z'::TIMESTAMPTZ END;";
   run_query(con, "migrate_soft_delete_to_history update", update_sql.str(),
             "Could not set history column values");
 
@@ -1369,11 +1369,11 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
               "Could not add default to column " + column.name);
   }
 
-  column_def fivetran_start{.name = "_fivetran_start",
-                            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ};
-  columns_pk.push_back(&fivetran_start);
-
   if (!columns_pk.empty()) {
+    column_def fivetran_start{.name = "_fivetran_start",
+                              .type = duckdb::LogicalTypeId::TIMESTAMP_TZ};
+    columns_pk.push_back(&fivetran_start);
+
     // Add the right primary key. Note that "CREATE TABLE AS SELECT" does not
     // add any primary key constraints.
     std::ostringstream sql;
@@ -1664,11 +1664,10 @@ void MdSqlGenerator::migrate_live_to_history(duckdb::Connection &con,
               "Could not add default to column " + column.name);
   }
 
-  column_def fivetran_start{.name = "_fivetran_start",
-                            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ};
-  columns_pk.push_back(&fivetran_start);
-
   if (!columns_pk.empty()) {
+    column_def fivetran_start{.name = "_fivetran_start",
+                              .type = duckdb::LogicalTypeId::TIMESTAMP_TZ};
+    columns_pk.push_back(&fivetran_start);
     // Add the right primary key. Note that "CREATE TABLE AS SELECT" does not
     // add any primary key constraints.
     std::ostringstream sql;

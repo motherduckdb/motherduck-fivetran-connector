@@ -439,7 +439,7 @@ TEST_CASE("Migrate - copy table to history mode from live",
   con->Query("DROP TABLE IF EXISTS " + dest_table);
   {
     auto res =
-        con->Query("CREATE TABLE " + source_table + " (id INT, name VARCHAR)");
+        con->Query("CREATE TABLE " + source_table + " (id INT, name VARCHAR, primary key (id))");
     REQUIRE_NO_FAIL(res);
   }
 
@@ -485,7 +485,7 @@ TEST_CASE("Migrate - copy table to history mode from live",
   {
     auto res =
         con->Query("SELECT _fivetran_end FROM " + dest_table +
-                   " WHERE _fivetran_end = '9999-12-31 23:59:59'::TIMESTAMPTZ");
+                   " WHERE _fivetran_end = '9999-12-31T23:59:59.999Z'::TIMESTAMPTZ");
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 2);
   }
@@ -634,7 +634,7 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
   {
     auto res = con->Query("INSERT INTO " + table_name +
                           " VALUES (1, 'Alice', '2024-01-01'::TIMESTAMPTZ, "
-                          "'9999-12-31 23:59:59'::TIMESTAMPTZ, true)");
+                          "'9999-12-31T23:59:59.999Z'::TIMESTAMPTZ, true)");
     REQUIRE_NO_FAIL(res);
   }
 
@@ -739,7 +739,7 @@ TEST_CASE("Migrate - drop column in history mode", "[integration][migrate]") {
     auto res = con->Query(
         "INSERT INTO " + table_name +
         " VALUES (1, 'Alice', 'alice@example.com', '2024-01-01'::TIMESTAMPTZ, "
-        "'9999-12-31 23:59:59'::TIMESTAMPTZ, true)");
+        "'9999-12-31T23:59:59.999Z'::TIMESTAMPTZ, true)");
     REQUIRE_NO_FAIL(res);
   }
 
@@ -1071,7 +1071,7 @@ TEST_CASE("Migrate - history to soft delete", "[integration][migrate]") {
         " VALUES (1, 1, 'active_row', NOW(), '9999-12-31 "
         "23:59:59'::TIMESTAMPTZ, true),"
         "(1, 1, 'inactive_row', '2020-01-01'::TIMESTAMPTZ, NOW(), false), "
-        "(2, 1, 'active_row', NOW(), '9999-12-31 23:59:59'::TIMESTAMPTZ, "
+        "(2, 1, 'active_row', NOW(), '9999-12-31T23:59:59.999Z'::TIMESTAMPTZ, "
         "false)");
     REQUIRE_NO_FAIL(res);
   }
