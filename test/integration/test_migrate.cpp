@@ -1123,21 +1123,14 @@ TEST_CASE("Migrate - soft delete to history", "[integration][migrate]") {
   auto con = get_test_connection(MD_TOKEN);
 
   // Create a table with soft delete column
-  {
-    auto res =
-        con->Query("CREATE TABLE " + table_name +
-                   " (id INT PRIMARY KEY, name VARCHAR, "
-                   "_fivetran_deleted BOOLEAN, _fivetran_synced TIMESTAMPTZ)");
-    REQUIRE_NO_FAIL(res);
-  }
-
-  // Insert data
-  {
-    auto res = con->Query("INSERT INTO " + table_name +
-                          " VALUES (1, 'active', false, NOW()), "
-                          "(2, 'deleted', true, NOW())");
-    REQUIRE_NO_FAIL(res);
-  }
+  con->BeginTransaction();
+  con->Query("CREATE TABLE " + table_name +
+                 " (id INT PRIMARY KEY, name VARCHAR, "
+                 "_fivetran_deleted BOOLEAN, _fivetran_synced TIMESTAMPTZ);");
+  con->Query("INSERT INTO " + table_name +
+                        " VALUES (1, 'active', false, NOW()), "
+                        "(2, 'deleted', true, NOW());");
+  con->Commit();
 
   // Migrate to history mode
   {

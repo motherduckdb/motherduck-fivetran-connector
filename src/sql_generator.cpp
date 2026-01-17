@@ -1299,18 +1299,17 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
   const auto columns = describe_table(con, table);
   find_primary_keys(columns, columns_pk, &columns_regular);
 
-  con.BeginTransaction();
   run_query(con, "migrate_soft_delete_to_history add_start",
             "ALTER TABLE " + absolute_table_name +
-                " ADD COLUMN \"_fivetran_start\" TIMESTAMPTZ",
+                " ADD COLUMN \"_fivetran_start\" TIMESTAMPTZ;",
             "Could not add _fivetran_start column");
   run_query(con, "migrate_soft_delete_to_history add_end",
             "ALTER TABLE " + absolute_table_name +
-                " ADD COLUMN \"_fivetran_end\" TIMESTAMPTZ",
+                " ADD COLUMN \"_fivetran_end\" TIMESTAMPTZ;",
             "Could not add _fivetran_end column");
   run_query(con, "migrate_soft_delete_to_history add_active",
             "ALTER TABLE " + absolute_table_name +
-                " ADD COLUMN \"_fivetran_active\" BOOLEAN DEFAULT TRUE",
+                " ADD COLUMN \"_fivetran_active\" BOOLEAN DEFAULT TRUE;",
             "Could not add _fivetran_active column");
 
   // Set values based on soft_deleted_column
@@ -1327,11 +1326,13 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
   run_query(con, "migrate_soft_delete_to_history update", update_sql.str(),
             "Could not set history column values");
 
+  con.BeginTransaction();  // See duckdb issue #20570: we can only start the transaction here at this point.
+
   // Drop the soft_deleted_column if it's _fivetran_deleted
   if (soft_deleted_column == "_fivetran_deleted") {
     std::ostringstream drop_sql;
     drop_sql << "ALTER TABLE " << absolute_table_name << " DROP COLUMN "
-             << quoted_deleted_col;
+             << quoted_deleted_col << ";";
     run_query(con, "migrate_soft_delete_to_history drop", drop_sql.str(),
               "Could not drop soft_deleted_column");
   }
@@ -1340,14 +1341,14 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
   // key
   run_query(con, "migrate_soft_delete_to_history rename",
             "ALTER TABLE " + absolute_table_name + " RENAME TO " +
-                KeywordHelper::WriteQuoted(temp_table.table_name, '"'),
+            KeywordHelper::WriteQuoted(temp_table.table_name, '"') + ";",
             "Could rename original soft_delete table");
   run_query(con, "migrate_soft_delete_to_history copy",
             "CREATE TABLE " + absolute_table_name + " AS SELECT * FROM " +
-                temp_absolute_table_name,
+            temp_absolute_table_name + ";",
             "Could not create new table from temp table");
   run_query(con, "migrate_soft_delete_to_history drop",
-            "DROP TABLE " + temp_absolute_table_name,
+            "DROP TABLE " + temp_absolute_table_name + ";",
             "Could not drop temp table");
 
   for (const auto &column : columns) {
@@ -1383,7 +1384,7 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
     run_query(con, "migrate_soft_delete_to_history alter", sql.str(),
               "Could not alter soft_delete table");
   }
-
+  con.HasActiveTransaction();
   con.Commit();
 }
 
@@ -1488,7 +1489,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
             "Could not drop original soft_delete table");
   run_query(con, "migrate_history_to_soft_delete rename",
             "ALTER TABLE " + temp_absolute_table_name + " RENAME TO " +
-                KeywordHelper::WriteQuoted(table.table_name, '"'),
+            KeywordHelper::WriteQuoted(table.table_name, '"'),
             "Could not rename temp table to soft_delete table");
 
   con.Commit();
@@ -1505,7 +1506,7 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection &con,
   if (!keep_deleted_rows) {
     run_query(con, "migrate_history_to_live delete",
               "DELETE FROM " + absolute_table_name +
-                  " WHERE \"_fivetran_active\" = FALSE",
+              " WHERE \"_fivetran_active\" = FALSE",
               "Could not delete inactive rows");
   }
 
@@ -1570,7 +1571,7 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection &con,
             "Could not drop original soft_delete table");
   run_query(con, "migrate_history_to_live rename",
             "ALTER TABLE " + temp_absolute_table_name + " RENAME TO " +
-                KeywordHelper::WriteQuoted(table.table_name, '"'),
+            KeywordHelper::WriteQuoted(table.table_name, '"'),
             "Could not rename temp table to soft_delete table");
 
   con.Commit();
@@ -1615,23 +1616,23 @@ void MdSqlGenerator::migrate_live_to_history(duckdb::Connection &con,
 
   run_query(con, "migrate_live_to_history add_start",
             "ALTER TABLE " + absolute_table_name +
-                " ADD COLUMN \"_fivetran_start\" TIMESTAMPTZ",
+            " ADD COLUMN \"_fivetran_start\" TIMESTAMPTZ",
             "Could not add _fivetran_start column");
   run_query(con, "migrate_live_to_history add_end",
             "ALTER TABLE " + absolute_table_name +
-                " ADD COLUMN \"_fivetran_end\" TIMESTAMPTZ",
+            " ADD COLUMN \"_fivetran_end\" TIMESTAMPTZ",
             "Could not add _fivetran_end column");
   run_query(con, "migrate_live_to_history add_active",
             "ALTER TABLE " + absolute_table_name +
-                " ADD COLUMN \"_fivetran_active\" BOOLEAN DEFAULT TRUE",
+            " ADD COLUMN \"_fivetran_active\" BOOLEAN DEFAULT TRUE",
             "Could not add _fivetran_active column");
 
   // Set all records as active
   run_query(con, "migrate_live_to_history update",
             "UPDATE " + absolute_table_name +
-                " SET \"_fivetran_start\" = NOW(),"
-                " \"_fivetran_end\" = '9999-12-31T23:59:59.999Z'::TIMESTAMPTZ,"
-                " \"_fivetran_active\" = TRUE",
+            " SET \"_fivetran_start\" = NOW(),"
+            " \"_fivetran_end\" = '9999-12-31T23:59:59.999Z'::TIMESTAMPTZ,"
+            " \"_fivetran_active\" = TRUE",
             "Could not set history column values");
 
   // Rename, copy and drop the original table to be able to replace the primary
@@ -1642,7 +1643,7 @@ void MdSqlGenerator::migrate_live_to_history(duckdb::Connection &con,
             "Could not drop original soft_delete table");
   run_query(con, "migrate_live_to_history copy",
             "CREATE TABLE " + absolute_table_name + " AS SELECT * FROM " +
-                temp_absolute_table_name,
+            temp_absolute_table_name,
             "Could not rename temp table to soft_delete table");
   run_query(con, "migrate_live_to_history drop",
             "DROP TABLE " + temp_absolute_table_name,
