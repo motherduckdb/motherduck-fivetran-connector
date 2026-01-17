@@ -1316,7 +1316,7 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
   std::ostringstream update_sql;
 
   update_sql << "UPDATE " << absolute_table_name
-             << " SET \"_fivetran_active\" = NOT " << quoted_deleted_col
+             << " SET \"_fivetran_active\" = COALESCE(NOT " << quoted_deleted_col << ", TRUE)"
              << ", \"_fivetran_start\" = CASE WHEN " << quoted_deleted_col
              << " = TRUE THEN 'epoch'::TIMESTAMPTZ "
              << "ELSE (SELECT MAX(\"_fivetran_synced\") FROM "
