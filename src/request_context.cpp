@@ -18,5 +18,4 @@ RequestContext::RequestContext(
 
 RequestContext::~RequestContext() {
   logger.info("Endpoint <" + endpoint_name + "> completed");
-  // TODO: Look for uncaught exceptions and log them
 }
