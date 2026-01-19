@@ -69,6 +69,23 @@ TEST_CASE("Migrate - drop table", "[integration][migrate]") {
     REQUIRE_NO_FAIL(status);
     REQUIRE(response.not_found());
   }
+
+  // Drop nonexisting table using Migrate
+  {
+    ::fivetran_sdk::v2::MigrateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_details()->set_table("fake_table_name");
+    request.mutable_details()->mutable_drop()->set_drop_table(true);
+
+    ::fivetran_sdk::v2::MigrateResponse response;
+    auto status = service.Migrate(nullptr, &request, &response);
+    REQUIRE_FAIL(status, "Could not drop table <\"" +
+      TEST_DATABASE_NAME+ "\".\"main\".\"fake_table_name\">: "
+    "Catalog Error: Table with name fake_table_name does not exist!\n"
+    "Did you mean \"information_schema.key_column_usage\"?");
+  }
 }
 
 TEST_CASE("Migrate - rename table", "[integration][migrate]") {
@@ -77,6 +94,8 @@ TEST_CASE("Migrate - rename table", "[integration][migrate]") {
       "migrate_rename_from_" + std::to_string(Catch::rngSeed());
   const std::string to_table =
       "migrate_rename_to_" + std::to_string(Catch::rngSeed());
+  const std::string second_from_table =
+      "second_migrate_rename_from_" + std::to_string(Catch::rngSeed());
 
   auto con = get_test_connection(MD_TOKEN);
 
@@ -140,6 +159,64 @@ TEST_CASE("Migrate - rename table", "[integration][migrate]") {
     REQUIRE(res->RowCount() == 1);
     REQUIRE(res->GetValue(0, 0).ToString() == "test_data");
   }
+
+  // Rename nonexisting table should fail
+  {
+    ::fivetran_sdk::v2::MigrateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_details()->set_table(from_table);
+    request.mutable_details()
+        ->mutable_rename()
+        ->mutable_rename_table()
+        ->set_from_table("fake_table_name");
+    request.mutable_details()
+        ->mutable_rename()
+        ->mutable_rename_table()
+        ->set_to_table(to_table);
+
+    ::fivetran_sdk::v2::MigrateResponse response;
+    auto status = service.Migrate(nullptr, &request, &response);
+    REQUIRE_FAIL(status, "Could not rename table <\"" +
+      TEST_DATABASE_NAME + "\".\"main\".\"fake_table_name\">: " +
+      "Catalog Error: Table with name fake_table_name does not exist!\n"
+      "Did you mean \"" + to_table + "\"?");
+  }
+
+  // Create another source table
+  {
+    ::fivetran_sdk::v2::CreateTableRequest request;
+    add_config(request, MD_TOKEN, TEST_DATABASE_NAME, second_from_table);
+    add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
+
+    ::fivetran_sdk::v2::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  // Rename to existing table should fail
+  {
+    ::fivetran_sdk::v2::MigrateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_details()->set_table(from_table);
+    request.mutable_details()
+        ->mutable_rename()
+        ->mutable_rename_table()
+        ->set_from_table(second_from_table);
+    request.mutable_details()
+        ->mutable_rename()
+        ->mutable_rename_table()
+        ->set_to_table(to_table);
+
+    ::fivetran_sdk::v2::MigrateResponse response;
+    auto status = service.Migrate(nullptr, &request, &response);
+    REQUIRE_FAIL(status, "Could not rename table <\""
+      + TEST_DATABASE_NAME + "\".\"main\".\"" + second_from_table + "\">: Catalog Error: Could not rename \""
+      + second_from_table + "\" to \"" + to_table + "\": another entry with this name already exists!");  }
+
 
   // Clean up
   con->Query("DROP TABLE IF EXISTS " + to_table);
