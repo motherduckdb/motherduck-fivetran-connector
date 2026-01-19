@@ -203,8 +203,8 @@ public:
 private:
   std::shared_ptr<mdlog::MdLog> logger;
 
-  void run_query(duckdb::Connection& con, const std::string& log_prefix,
-                 const std::string& query, const std::string& error_message);
+  void run_query(duckdb::Connection &con, const std::string &log_prefix,
+                 const std::string &query, const std::string &error_message);
   void alter_table_recreate(duckdb::Connection &con, const table_def &table,
                             const std::vector<column_def> &all_columns,
                             const std::set<std::string> &common_columns);

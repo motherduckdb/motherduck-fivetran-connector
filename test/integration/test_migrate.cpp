@@ -438,8 +438,8 @@ TEST_CASE("Migrate - copy table to history mode from live",
   con->Query("DROP TABLE IF EXISTS " + source_table);
   con->Query("DROP TABLE IF EXISTS " + dest_table);
   {
-    auto res =
-        con->Query("CREATE TABLE " + source_table + " (id INT, name VARCHAR, primary key (id))");
+    auto res = con->Query("CREATE TABLE " + source_table +
+                          " (id INT, name VARCHAR, primary key (id))");
     REQUIRE_NO_FAIL(res);
   }
 
@@ -483,9 +483,9 @@ TEST_CASE("Migrate - copy table to history mode from live",
 
   // Verify history columns exist with proper values
   {
-    auto res =
-        con->Query("SELECT _fivetran_end FROM " + dest_table +
-                   " WHERE _fivetran_end = '9999-12-31T23:59:59.999Z'::TIMESTAMPTZ");
+    auto res = con->Query(
+        "SELECT _fivetran_end FROM " + dest_table +
+        " WHERE _fivetran_end = '9999-12-31T23:59:59.999Z'::TIMESTAMPTZ");
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 2);
   }
@@ -1125,11 +1125,11 @@ TEST_CASE("Migrate - soft delete to history", "[integration][migrate]") {
   // Create a table with soft delete column
   con->BeginTransaction();
   con->Query("CREATE TABLE " + table_name +
-                 " (id INT PRIMARY KEY, name VARCHAR, "
-                 "_fivetran_deleted BOOLEAN, _fivetran_synced TIMESTAMPTZ);");
+             " (id INT PRIMARY KEY, name VARCHAR, "
+             "_fivetran_deleted BOOLEAN, _fivetran_synced TIMESTAMPTZ);");
   con->Query("INSERT INTO " + table_name +
-                        " VALUES (1, 'active', false, NOW()), "
-                        "(2, 'deleted', true, NOW());");
+             " VALUES (1, 'active', false, NOW()), "
+             "(2, 'deleted', true, NOW());");
   con->Commit();
 
   // Migrate to history mode
