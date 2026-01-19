@@ -288,6 +288,53 @@ TEST_CASE("Migrate - rename column", "[integration][migrate]") {
       ));
   }
 
+  // Rename column nonexisting column fails
+  {
+    ::fivetran_sdk::v2::MigrateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_details()->set_table(table_name);
+    request.mutable_details()
+        ->mutable_rename()
+        ->mutable_rename_column()
+        ->set_from_column("fake_column_name");
+    request.mutable_details()
+        ->mutable_rename()
+        ->mutable_rename_column()
+        ->set_to_column("another_new_name");
+
+    ::fivetran_sdk::v2::MigrateResponse response;
+    auto status = service.Migrate(nullptr, &request, &response);
+    REQUIRE_FAIL(status, "Could not rename column <fake_column_name> to <another_new_name> in table <\""
+      + TEST_DATABASE_NAME + "\".\"main\".\"" +
+      table_name + "\">: Binder Error: Table \"" + table_name +
+      "\" does not have a column with name \"fake_column_name\"\n\nDid you mean: \"new_name\"");
+  }
+
+  // Rename column to existing fails
+  {
+    ::fivetran_sdk::v2::MigrateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_details()->set_table(table_name);
+    request.mutable_details()
+        ->mutable_rename()
+        ->mutable_rename_column()
+        ->set_from_column("id");
+    request.mutable_details()
+        ->mutable_rename()
+        ->mutable_rename_column()
+        ->set_to_column("new_name");
+
+    ::fivetran_sdk::v2::MigrateResponse response;
+    auto status = service.Migrate(nullptr, &request, &response);
+    REQUIRE_FAIL(status, "Could not rename column <id> to <new_name> in table <\""
+      + TEST_DATABASE_NAME + "\".\"main\".\"" +
+      table_name + "\">: Catalog Error: Column with name new_name already exists!");
+  }
+
   // Clean up
   con->Query("DROP TABLE IF EXISTS " + table_name);
 }
@@ -307,18 +354,6 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
       " (id INT, data VARCHAR, value DECIMAL(17,4) default 42, amount DECIMAL(31,6), primary key (id))");
     REQUIRE_NO_FAIL(res);
   }
-  // {
-  //   ::fivetran_sdk::v2::CreateTableRequest request;
-  //   add_config(request, MD_TOKEN, TEST_DATABASE_NAME, from_table);
-  //   add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
-  //   add_col(request, "data", ::fivetran_sdk::v2::DataType::STRING, false);
-  //   add_decimal_col(request, "value", false, 17, 4);
-  //   add_decimal_col(request, "amount", false, 31, 6);
-  //
-  //   ::fivetran_sdk::v2::CreateTableResponse response;
-  //   auto status = service.CreateTable(nullptr, &request, &response);
-  //   REQUIRE_NO_FAIL(status);
-  // }
 
   // Insert data
   {
@@ -451,6 +486,49 @@ TEST_CASE("Migrate - copy column", "[integration][migrate]") {
     REQUIRE(res->RowCount() == 1);
     REQUIRE(res->GetValue(0, 0).ToString() == "original");
     REQUIRE(res->GetValue(1, 0).ToString() == "original");
+  }
+
+  // Copy nonexisting column fails
+  {
+    ::fivetran_sdk::v2::MigrateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_details()->set_table(table_name);
+    request.mutable_details()
+        ->mutable_copy()
+        ->mutable_copy_column()
+        ->set_from_column("fake_column_name");
+    request.mutable_details()
+        ->mutable_copy()
+        ->mutable_copy_column()
+        ->set_to_column("new_dest_col");
+
+    ::fivetran_sdk::v2::MigrateResponse response;
+    auto status = service.Migrate(nullptr, &request, &response);
+    REQUIRE_FAIL(status, "Source column <fake_column_name> not found");
+  }
+
+  // Copy copy to existing column fails
+  {
+    ::fivetran_sdk::v2::MigrateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_details()->set_table(table_name);
+    request.mutable_details()
+        ->mutable_copy()
+        ->mutable_copy_column()
+        ->set_from_column("source_col");
+    request.mutable_details()
+        ->mutable_copy()
+        ->mutable_copy_column()
+        ->set_to_column("dest_col");
+
+    ::fivetran_sdk::v2::MigrateResponse response;
+    auto status = service.Migrate(nullptr, &request, &response);
+    REQUIRE_FAIL(status, "Could not add column for copy_column: Catalog Error: "
+      "Column with name dest_col already exists!");
   }
 
   // Clean up
