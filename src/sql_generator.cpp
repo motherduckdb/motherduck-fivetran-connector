@@ -923,7 +923,7 @@ void MdSqlGenerator::drop_column_in_history_mode(
     sql << "UPDATE " << absolute_table_name
         << " SET \"_fivetran_active\" = FALSE,"
         << " \"_fivetran_end\" = (" << quoted_timestamp
-        << "::TIMESTAMP - (INTERVAL '1 millisecond'))"
+        << "::TIMESTAMPTZ - (INTERVAL '1 millisecond'))"
         << " WHERE \"_fivetran_active\" = TRUE"
         << " AND " << quoted_column << " IS NOT NULL"
         << " AND \"_fivetran_start\" < " << quoted_timestamp;
@@ -1233,7 +1233,7 @@ void MdSqlGenerator::add_column_in_history_mode(
   update_prev_sql << "UPDATE " << absolute_table_name
                   << " SET \"_fivetran_active\" = FALSE,"
                   << " \"_fivetran_end\" = (" << quoted_timestamp
-                  << "::TIMESTAMP - (INTERVAL '1 millisecond'))"
+                  << "::TIMESTAMPTZ - (INTERVAL '1 millisecond'))"
                   << " WHERE \"_fivetran_active\" = TRUE"
                   << " AND \"_fivetran_start\" < " << quoted_timestamp;
 

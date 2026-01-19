@@ -720,6 +720,13 @@ TEST_CASE("Migrate - copy table to history mode from live",
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 2);
   }
+  {
+    auto res = con->Query(
+        "SELECT _fivetran_start FROM " + dest_table +
+        " WHERE _fivetran_start BETWEEN 'epoch'::TIMESTAMPTZ AND NOW();");
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 2);
+  }
 
   // Clean up
   con->Query("DROP TABLE IF EXISTS " + source_table);
