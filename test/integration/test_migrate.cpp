@@ -283,6 +283,9 @@ TEST_CASE("Migrate - rename column", "[integration][migrate]") {
   {
     auto res = con->Query("SELECT old_name FROM " + table_name);
     REQUIRE(res->HasError());
+    REQUIRE_THAT(res->GetError(), Catch::Matchers::ContainsSubstring(
+      "Binder Error: Referenced column \"old_name\" not found in FROM clause!"
+      ));
   }
 
   // Clean up
@@ -300,20 +303,27 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
 
   // Create the source table
   {
-    ::fivetran_sdk::v2::CreateTableRequest request;
-    add_config(request, MD_TOKEN, TEST_DATABASE_NAME, from_table);
-    add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
-    add_col(request, "data", ::fivetran_sdk::v2::DataType::STRING, false);
-
-    ::fivetran_sdk::v2::CreateTableResponse response;
-    auto status = service.CreateTable(nullptr, &request, &response);
-    REQUIRE_NO_FAIL(status);
+    auto res = con->Query("CREATE TABLE " + from_table +
+      " (id INT, data VARCHAR, value DECIMAL(17,4) default 42, amount DECIMAL(31,6), primary key (id))");
+    REQUIRE_NO_FAIL(res);
   }
+  // {
+  //   ::fivetran_sdk::v2::CreateTableRequest request;
+  //   add_config(request, MD_TOKEN, TEST_DATABASE_NAME, from_table);
+  //   add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
+  //   add_col(request, "data", ::fivetran_sdk::v2::DataType::STRING, false);
+  //   add_decimal_col(request, "value", false, 17, 4);
+  //   add_decimal_col(request, "amount", false, 31, 6);
+  //
+  //   ::fivetran_sdk::v2::CreateTableResponse response;
+  //   auto status = service.CreateTable(nullptr, &request, &response);
+  //   REQUIRE_NO_FAIL(status);
+  // }
 
   // Insert data
   {
     auto res = con->Query("INSERT INTO " + from_table +
-                          " VALUES (1, 'data1'), (2, 'data2')");
+                          " VALUES (1, 'data1', 3.1415, 3), (2, 'data2', 10.0, 49)");
     REQUIRE_NO_FAIL(res);
   }
 
@@ -349,6 +359,35 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
     auto res = con->Query("SELECT COUNT(*) FROM " + to_table);
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->GetValue(0, 0) == 2);
+  }
+
+  // Check decimal precision
+
+  {
+    auto res = con->Query("SELECT \"default\", key, column_type FROM (describe " +
+      duckdb::KeywordHelper::WriteQuoted(to_table, '\'') + ")");
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 4); // The order is: id, data, value, amount
+
+    // id
+    REQUIRE(res->GetValue(0, 0).IsNull());
+    REQUIRE(res->GetValue(1, 0) == "PRI");
+    REQUIRE(res->GetValue(2, 0) == "INTEGER");
+
+    // data
+    REQUIRE(res->GetValue(0, 1).IsNull());
+    REQUIRE(res->GetValue(1, 1).IsNull());
+    REQUIRE(res->GetValue(2, 1) == "VARCHAR");
+
+    // value
+    REQUIRE(res->GetValue(0, 2) == "\'42\'");
+    REQUIRE(res->GetValue(1, 2).IsNull());
+    REQUIRE(res->GetValue(2, 2) == "DECIMAL(17,4)");
+
+    // amount
+    REQUIRE(res->GetValue(0, 3).IsNull());
+    REQUIRE(res->GetValue(1, 3).IsNull());
+    REQUIRE(res->GetValue(2, 3) == "DECIMAL(31,6)");
   }
 
   // Clean up
