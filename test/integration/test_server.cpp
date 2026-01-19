@@ -1284,7 +1284,7 @@ TEST_CASE("Test that error is thrown for invalid DECIMAL width and scale") {
 
   SECTION("Test precision/width > 38") {
     auto decimal_col = request.mutable_table()->add_columns();
-    decimal_col->set_name("col_string");
+    decimal_col->set_name("col_decimal");
     decimal_col->set_type(::fivetran_sdk::v2::DataType::DECIMAL);
     decimal_col->mutable_params()->mutable_decimal()->set_precision(39);
     decimal_col->mutable_params()->mutable_decimal()->set_scale(5);
@@ -1299,7 +1299,7 @@ TEST_CASE("Test that error is thrown for invalid DECIMAL width and scale") {
 
   SECTION("Test scale > precision/width") {
     auto decimal_col = request.mutable_table()->add_columns();
-    decimal_col->set_name("col_string");
+    decimal_col->set_name("col_decimal");
     decimal_col->set_type(::fivetran_sdk::v2::DataType::DECIMAL);
     decimal_col->mutable_params()->mutable_decimal()->set_precision(10);
     decimal_col->mutable_params()->mutable_decimal()->set_scale(15);

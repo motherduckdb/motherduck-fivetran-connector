@@ -138,17 +138,17 @@ void add_projections(std::ostringstream &query,
     query << " *";
   } else {
     for (const auto &column : columns) {
-      // DuckDB can handle trailing commas
       if (column.type == duckdb::LogicalTypeId::BLOB) {
         // The CSV reader reads BLOBs as VARCHARs. We have to convert them with
         // from_base64.
         query << " from_base64("
               << duckdb::KeywordHelper::WriteQuoted(column.name, '"') << ") AS "
-              << duckdb::KeywordHelper::WriteQuoted(column.name, '"') << ",";
+              << duckdb::KeywordHelper::WriteQuoted(column.name, '"');
       } else {
-        query << " " << duckdb::KeywordHelper::WriteQuoted(column.name, '"')
-              << ",";
+        query << " " << duckdb::KeywordHelper::WriteQuoted(column.name, '"');
       }
+      // DuckDB can handle trailing commas
+      query << ",";
     }
   }
 }
@@ -294,7 +294,7 @@ void ProcessFile(
 
   const auto is_file_encrypted = !props.decryption_key.empty();
 
-#ifdef ENABLE_LEAK_DECRYPTION_KEY
+#if !defined(NDEBUG) && defined(ENABLE_LEAK_DECRYPTION_KEY)
   if (is_file_encrypted) {
     const std::string key_file_path = props.filename + ".key";
     std::ofstream key_ofs(key_file_path, std::ios::binary);

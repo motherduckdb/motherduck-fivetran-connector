@@ -54,26 +54,26 @@ LogicalTypeId get_duckdb_type(const fivetran_sdk::v2::DataType &fivetranType) {
   // Format: %Y-%m-%d, e.g. 2025-05-23
   case fivetran_sdk::v2::NAIVE_DATE:
     return LogicalTypeId::DATE;
-  // Format: %H-%M-%S, e.g. 20:57:02
+  // Format: %H:%M:%S, e.g. 20:57:02
   case fivetran_sdk::v2::NAIVE_TIME:
     return LogicalTypeId::TIME;
-  // Format: %Y-%m-%dT%H-%M-%S.%n%, e.g. 2025-05-23T20:57:02.123456789
+  // Format: %Y-%m-%dT%H:%M:%S.%n%, e.g. 2025-05-23T20:57:02.123456789
   case fivetran_sdk::v2::NAIVE_DATETIME:
     return LogicalTypeId::TIMESTAMP;
-  // Format: %Y-%m-%dT%H-%M-%S.%n%Z, e.g. 2025-05-23T20:57:02.123456789Z
+  // Format: %Y-%m-%dT%H:%M:%S.%n%Z, e.g. 2025-05-23T20:57:02.123456789Z
   case fivetran_sdk::v2::UTC_DATETIME:
     return LogicalTypeId::TIMESTAMP_TZ;
   // Is Base64 encoded in CSV
   case fivetran_sdk::v2::BINARY:
     return LogicalTypeId::BLOB;
   case fivetran_sdk::v2::XML:
-    // Note that we are loosing information here. DescribeTable will report this
+    // Note that we are losing information here. DescribeTable will report this
     // as a STRING column.
     return LogicalTypeId::VARCHAR;
   case fivetran_sdk::v2::STRING:
     return LogicalTypeId::VARCHAR;
   case fivetran_sdk::v2::JSON:
-    // Note that we are loosing information here. DescribeTable will report this
+    // Note that we are losing information here. DescribeTable will report this
     // as a STRING column.
     return LogicalTypeId::
         VARCHAR; // https://github.com/MotherDuck-Open-Source/motherduck-fivetran-connector/issues/22
