@@ -98,6 +98,8 @@ void Logger::log(const std::string &level, const std::string &message) const {
   }
 
   if (HasFlag(enabled_sinks, SinkType::DUCKDB)) {
+    // enable_logging is a global setting, so it only needs to be called once
+    // per DuckDB instance. And the DuckDB instance is a singleton.
     std::call_once(
         initialize_duckdb_logging_flag,
         [](duckdb::Connection &con) { initialize_duckdb_logging(con); }, *con);
