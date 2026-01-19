@@ -150,7 +150,7 @@ void add_projections(std::ostringstream &query,
 void add_type_options(std::ostringstream &query,
                       const std::vector<column_def> &columns,
                       const bool allow_unmodified_string,
-                      const std::shared_ptr<mdlog::MdLog> &logger) {
+                      const mdlog::Logger &logger) {
   // We set all_varchar=true if we have to deal with `unmodified_string`. Those
   // are string values that represent an unchanged value in an UPDATE or UPSERT,
   // and they break type conversion in the CSV reader. DuckDB does an implicit
@@ -188,8 +188,8 @@ void add_type_options(std::ostringstream &query,
     // Even if we do not specify the type for this column, DuckDB will figure it
     // out itself because of auto_detect=true
     if (column.type == duckdb::LogicalTypeId::INVALID) {
-      logger->warning("Column \"" + column.name +
-                      "\" has no type specified, will be auto-detected");
+      logger.warning("Column \"" + column.name +
+                     "\" has no type specified, will be auto-detected");
       continue;
     }
 
@@ -208,11 +208,10 @@ void add_type_options(std::ostringstream &query,
 
 /// Generates a DuckDB SQL query string to read a CSV file with the specified
 /// properties
-std::string
-generate_read_csv_query(const std::string &filepath,
-                        const IngestProperties &props,
-                        const CompressionType compression,
-                        const std::shared_ptr<mdlog::MdLog> &logger) {
+std::string generate_read_csv_query(const std::string &filepath,
+                                    const IngestProperties &props,
+                                    const CompressionType compression,
+                                    const mdlog::Logger &logger) {
   std::ostringstream query;
   query << "FROM read_csv("
         << duckdb::KeywordHelper::WriteQuoted(filepath, '\'');
@@ -276,10 +275,10 @@ generate_read_csv_query(const std::string &filepath,
 namespace csv_processor {
 void ProcessFile(
     duckdb::Connection &con, const IngestProperties &props,
-    std::shared_ptr<mdlog::MdLog> &logger,
+    mdlog::Logger &logger,
     const std::function<void(const std::string &)> &process_staging_table) {
   validate_file(props.filename);
-  logger->info("    validated file " + props.filename);
+  logger.info("    validated file " + props.filename);
 
   const auto is_file_encrypted = !props.decryption_key.empty();
   std::string decrypted_file_path;
@@ -288,12 +287,11 @@ void ProcessFile(
   if (is_file_encrypted) {
     temp_file = decrypt_file_into_memory(props.filename, props.decryption_key);
     decrypted_file_path = temp_file.value().path;
-    logger->info(
-        "    wrote decrypted data to ephemeral memory-backed storage " +
-        decrypted_file_path);
+    logger.info("    wrote decrypted data to ephemeral memory-backed storage " +
+                decrypted_file_path);
   } else {
     decrypted_file_path = props.filename;
-    logger->info("    file is not encrypted");
+    logger.info("    file is not encrypted");
   }
 
   if (temp_file.has_value()) {
@@ -316,14 +314,14 @@ void ProcessFile(
   const auto final_query =
       "CREATE TABLE " + staging_table_name + " AS " +
       generate_read_csv_query(decrypted_file_path, props, compression, logger);
-  logger->info("    creating staging table: " + final_query);
+  logger.info("    creating staging table: " + final_query);
   const auto create_staging_table_res = con.Query(final_query);
   if (create_staging_table_res->HasError()) {
     create_staging_table_res->ThrowError(
         "Failed to create staging table for CSV file <" + props.filename +
         ">: ");
   }
-  logger->info("    staging table created for file " + props.filename);
+  logger.info("    staging table created for file " + props.filename);
 
   // `read_csv` opened and read the file for binding. Reset the file cursor
   // again for execution.
@@ -332,14 +330,14 @@ void ProcessFile(
   }
 
   process_staging_table(staging_table_name);
-  logger->info("    CSV file " + props.filename + " processed successfully");
+  logger.info("    CSV file " + props.filename + " processed successfully");
 
   const auto drop_staging_table_res =
       con.Query("DROP TABLE " + staging_table_name);
   if (drop_staging_table_res->HasError()) {
-    logger->severe("Failed to drop temporary table <" + staging_table_name +
-                   "> after processing CSV file <" + props.filename +
-                   ">: " + drop_staging_table_res->GetError());
+    logger.severe("Failed to drop temporary table <" + staging_table_name +
+                  "> after processing CSV file <" + props.filename +
+                  ">: " + drop_staging_table_res->GetError());
   }
 }
 } // namespace csv_processor

@@ -32,7 +32,7 @@ TEST_CASE("Test can read simple CSV file", "[csv_processor]") {
       column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT}};
   IngestProperties props(test_file.string(), "", columns, "",
                          UnmodifiedMarker::Disallowed);
-  auto logger = std::make_shared<mdlog::MdLog>();
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &staging_table_name) {
         const auto res = con.Query("FROM " + staging_table_name);
@@ -78,7 +78,7 @@ TEST_CASE("Test reading CSV file with auto-detection of column types",
       column_def{.name = "age", .type = duckdb::LogicalType::INVALID}};
   IngestProperties props(test_file.string(), "", columns, "",
                          UnmodifiedMarker::Disallowed);
-  auto logger = std::make_shared<mdlog::MdLog>();
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &staging_table_name) {
         const auto res = con.Query("FROM " + staging_table_name);
@@ -114,7 +114,7 @@ TEST_CASE("Test reading CSV file when not all column types specified",
   };
   IngestProperties props(test_file.string(), "", columns, "",
                          UnmodifiedMarker::Disallowed);
-  auto logger = std::make_shared<mdlog::MdLog>();
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &staging_table_name) {
         const auto res = con.Query("FROM " + staging_table_name);
@@ -147,7 +147,7 @@ TEST_CASE("Test reading CSV file with columns out of order",
   };
   IngestProperties props(test_file.string(), "", columns, "",
                          UnmodifiedMarker::Disallowed);
-  auto logger = std::make_shared<mdlog::MdLog>();
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &staging_table_name) {
         const std::string query =
@@ -176,7 +176,7 @@ TEST_CASE("Test reading CSV file with quotes in filename", "[csv_processor]") {
       column_def{.name = "a", .type = duckdb::LogicalType::SMALLINT}};
   IngestProperties props(test_file.string(), "", columns, "",
                          UnmodifiedMarker::Disallowed);
-  auto logger = std::make_shared<mdlog::MdLog>();
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &staging_table_name) {
         const auto res = con.Query("FROM " + staging_table_name);
@@ -320,7 +320,7 @@ TEST_CASE("Test reading various CSV files", "[csv_processor]") {
 
   IngestProperties props(test_file.string(), "", columns, "",
                          UnmodifiedMarker::Disallowed);
-  auto logger = std::make_shared<mdlog::MdLog>();
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger,
       [&con,
@@ -349,7 +349,7 @@ TEST_CASE("Test reading CSV file with special null string", "[csv_processor]") {
   const std::string null_string = "special-null";
   IngestProperties props(test_file.string(), "", columns, null_string,
                          UnmodifiedMarker::Disallowed);
-  auto logger = std::make_shared<mdlog::MdLog>();
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &staging_table_name) {
         const auto res = con.Query("FROM " + staging_table_name);
@@ -386,7 +386,7 @@ TEST_CASE("Test reading CSV file with escaped string", "[csv_processor]") {
 
   IngestProperties props(test_file.string(), "", columns, "",
                          UnmodifiedMarker::Disallowed);
-  auto logger = std::make_shared<mdlog::MdLog>();
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &staging_table_name) {
         const auto res = con.Query("FROM " + staging_table_name);
@@ -414,7 +414,7 @@ TEST_CASE("Test reading CSV file with unmodified string setting",
 
   IngestProperties props(test_file.string(), "", columns, "",
                          UnmodifiedMarker::Allowed);
-  auto logger = std::make_shared<mdlog::MdLog>();
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &staging_table_name) {
         const auto res = con.Query("FROM " + staging_table_name);
@@ -474,7 +474,7 @@ TEST_CASE("Test reading zstd-compressed CSV files", "[csv_processor]") {
 
   IngestProperties props(test_file.string(), "", columns, "",
                          UnmodifiedMarker::Disallowed);
-  auto logger = std::make_shared<mdlog::MdLog>();
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(con, props, logger,
                              [&con, expected_row_count = row_count](
                                  const std::string &staging_table_name) {
@@ -771,7 +771,7 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
   IngestProperties props(test_file.string(), decryption_key, columns,
                          null_string, can_contain_unmodified);
 
-  auto logger = std::make_shared<mdlog::MdLog>();
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger,
       [&con,
@@ -801,7 +801,7 @@ TEST_CASE("Test reading a CSV file with a huge VARCHAR column",
 
     IngestProperties props(test_file.string(), "", columns, "",
                            UnmodifiedMarker::Disallowed);
-    auto logger = std::make_shared<mdlog::MdLog>();
+    auto logger = mdlog::Logger::CreateNopLogger();
     REQUIRE_THROWS_WITH(csv_processor::ProcessFile(con, props, logger,
                                                    [](const std::string &) {
                                                      // Do nothing
@@ -824,7 +824,7 @@ TEST_CASE("Test reading a CSV file with a huge VARCHAR column",
 
     IngestProperties props(test_file.string(), "", columns, "",
                            UnmodifiedMarker::Disallowed);
-    auto logger = std::make_shared<mdlog::MdLog>();
+    auto logger = mdlog::Logger::CreateNopLogger();
     csv_processor::ProcessFile(
         con, props, logger, [&con](const std::string &staging_table_name) {
           const auto res = con.Query("FROM " + staging_table_name);

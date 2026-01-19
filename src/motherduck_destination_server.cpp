@@ -9,6 +9,7 @@
 #include "fivetran_duckdb_interop.hpp"
 #include "ingest_properties.hpp"
 #include "md_logging.hpp"
+#include "request_context.hpp"
 #include "sql_generator.hpp"
 
 #include "md_error.hpp"
@@ -16,7 +17,7 @@
 #include <filesystem>
 #include <grpcpp/grpcpp.h>
 #include <memory>
-#include <mutex>
+#include <optional>
 #include <string>
 
 template <typename T> std::string get_schema_name(const T *request) {
@@ -61,103 +62,6 @@ std::vector<column_def> get_duckdb_columns(
         column_def{col.name(), ddbtype, col.primary_key(), precision, scale});
   }
   return duckdb_columns;
-}
-
-duckdb::DuckDB &
-DestinationSdkImpl::get_duckdb(const std::string &md_token,
-                               const std::string &db_name,
-                               const std::shared_ptr<mdlog::MdLog> &logger) {
-  auto initialize_db = [this, &md_token, &db_name, &logger]() {
-    duckdb::DBConfig config;
-    config.SetOptionByName(config::PROP_TOKEN, md_token);
-    config.SetOptionByName("custom_user_agent",
-                           std::string("fivetran/") + GIT_COMMIT_SHA);
-    config.SetOptionByName("old_implicit_casting", true);
-    config.SetOptionByName("motherduck_attach_mode", "single");
-    logger->info("    initialize_db: created configuration");
-
-    try {
-      db = duckdb::DuckDB("md:" + db_name, &config);
-    } catch (std::exception &e) {
-      const std::string msg(e.what());
-
-      if (msg.find("Jwt is expired") != std::string::npos) {
-        throw md_error::RecoverableError(
-            "Failed to connect to MotherDuck database \"" + db_name +
-            "\" because your MotherDuck token has expired. Please configure a "
-            "new MotherDuck token." +
-            " \nOriginal error: " + msg);
-      }
-      if (msg.find("Your request is not authenticated") !=
-              std::string::npos || // Random JWT token
-          msg.find("Invalid MotherDuck token") !=
-              std::string::npos) { // Revoked token
-        throw md_error::RecoverableError(
-            "Failed to connect to MotherDuck database \"" + db_name +
-            "\" because your MotherDuck token is invalid. Please configure a "
-            "new MotherDuck token." +
-            " \nOriginal error: " + msg);
-      }
-
-      throw;
-    }
-
-    logger->info("    initialize_db: created database instance");
-
-    duckdb::Connection con(db);
-
-    initial_md_token = md_token;
-  };
-
-  std::call_once(db_init_flag, initialize_db);
-
-  if (md_token != initial_md_token) {
-    throw std::runtime_error("Trying to connect to MotherDuck with a different "
-                             "token than initially provided");
-  }
-
-  return db;
-}
-
-std::unique_ptr<duckdb::Connection> DestinationSdkImpl::get_connection(
-    const google::protobuf::Map<std::string, std::string> &request_config,
-    const std::string &db_name, const std::shared_ptr<mdlog::MdLog> &logger) {
-  logger->info("    get_connection: start");
-  const std::string md_token =
-      config::find_property(request_config, config::PROP_TOKEN);
-  logger->info("    get_connection: got token");
-
-  duckdb::DuckDB &db = get_duckdb(md_token, db_name, logger);
-  auto con = std::make_unique<duckdb::Connection>(db);
-  logger->info("    get_connection: created connection");
-
-  // This query triggers a welcome pack fetch
-  const auto client_ids_res =
-      con->Query("SELECT md_current_client_duckdb_id(), "
-                 "md_current_client_connection_id()");
-  if (client_ids_res->HasError()) {
-    logger->warning(
-        "Could not retrieve the current DuckDB and connection ID: " +
-        client_ids_res->GetError());
-  } else {
-    logger->info("    get_connection: about to set duckdb_id in logger");
-    logger->set_duckdb_id(client_ids_res->GetValue(0, 0).ToString());
-    logger->info("    get_connection: about to set connection_id in logger");
-    logger->set_connection_id(client_ids_res->GetValue(1, 0).ToString());
-  }
-
-  // Set default_collation to a connection-specific default value which
-  // overwrites any global setting and ensures that client-side planning and
-  // server-side execution use the same collation.
-  const auto set_collation_res = con->Query("SET default_collation=''");
-  if (set_collation_res->HasError()) {
-    throw std::runtime_error(
-        "    get_connection: Could not SET default_collation: " +
-        set_collation_res->GetError());
-  }
-
-  logger->info("    get_connection: all done, returning connection");
-  return con;
 }
 
 std::string
@@ -234,42 +138,46 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     ::grpc::ServerContext *,
     const ::fivetran_sdk::v2::DescribeTableRequest *request,
     ::fivetran_sdk::v2::DescribeTableResponse *response) {
-  auto logger = std::make_shared<mdlog::MdLog>();
+  std::optional<RequestContext> ctx;
   try {
-    logger->info("Endpoint <DescribeTable>: started");
-    const std::string db_name =
+    ctx.emplace("DescribeTable", connection_factory, request->configuration());
+  } catch (const std::exception &e) {
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  }
+  auto &con = ctx->GetConnection();
+  auto &logger = ctx->GetLogger();
+
+  try {
+    std::string db_name =
         config::find_property(request->configuration(), config::PROP_DATABASE);
-    std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
-    logger->info("Endpoint <DescribeTable>: got connection");
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
     table_def table_name{db_name, get_schema_name(request),
                          get_table_name(request)};
-    logger->info("Endpoint <DescribeTable>: schema name <" +
-                 table_name.schema_name + ">");
-    logger->info("Endpoint <DescribeTable>: table name <" +
-                 table_name.table_name + ">");
-    if (!sql_generator->table_exists(*con, table_name)) {
-      logger->info("Endpoint <DescribeTable>: table not found");
+    logger.info("Endpoint <DescribeTable>: schema name <" +
+                table_name.schema_name + ">");
+    logger.info("Endpoint <DescribeTable>: table name <" +
+                table_name.table_name + ">");
+    if (!sql_generator->table_exists(con, table_name)) {
+      logger.info("Endpoint <DescribeTable>: table not found");
       response->set_not_found(true);
       return ::grpc::Status(::grpc::StatusCode::OK, "");
     }
 
-    logger->info("Endpoint <DescribeTable>: table exists; getting columns");
-    auto duckdb_columns = sql_generator->describe_table(*con, table_name);
-    logger->info("Endpoint <DescribeTable>: got " +
-                 std::to_string(duckdb_columns.size()) + " columns");
+    logger.info("Endpoint <DescribeTable>: table exists; getting columns");
+    auto duckdb_columns = sql_generator->describe_table(con, table_name);
+    logger.info("Endpoint <DescribeTable>: got " +
+                std::to_string(duckdb_columns.size()) + " columns");
 
     fivetran_sdk::v2::Table *table = response->mutable_table();
     table->set_name(get_table_name(request));
 
     for (auto &col : duckdb_columns) {
-      logger->info("Endpoint <DescribeTable>:   processing column " + col.name);
+      logger.info("Endpoint <DescribeTable>:   processing column " + col.name);
       fivetran_sdk::v2::Column *ft_col = table->mutable_columns()->Add();
       ft_col->set_name(col.name);
       const auto fivetran_type = get_fivetran_type(col.type);
-      logger->info("Endpoint <DescribeTable>:   column type = " +
-                   std::to_string(fivetran_type));
+      logger.info("Endpoint <DescribeTable>:   column type = " +
+                  std::to_string(fivetran_type));
       ft_col->set_type(fivetran_type);
       ft_col->set_primary_key(col.primary_key);
       if (fivetran_type == fivetran_sdk::v2::DECIMAL) {
@@ -279,20 +187,19 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     }
 
   } catch (const md_error::RecoverableError &mde) {
-    logger->warning("DescribeTable endpoint failed for schema <" +
-                    request->schema_name() + ">, table <" +
-                    request->table_name() + ">:" + std::string(mde.what()));
+    logger.warning("DescribeTable endpoint failed for schema <" +
+                   request->schema_name() + ">, table <" +
+                   request->table_name() + ">:" + std::string(mde.what()));
     response->mutable_task()->set_message(mde.what());
     return ::grpc::Status(::grpc::StatusCode::OK, "");
   } catch (const std::exception &e) {
-    logger->severe("DescribeTable endpoint failed for schema <" +
-                   request->schema_name() + ">, table <" +
-                   request->table_name() + ">:" + std::string(e.what()));
+    logger.severe("DescribeTable endpoint failed for schema <" +
+                  request->schema_name() + ">, table <" +
+                  request->table_name() + ">:" + std::string(e.what()));
     response->mutable_task()->set_message(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
 
-  logger->info("Endpoint <DescribeTable>: ended");
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
@@ -300,41 +207,44 @@ grpc::Status DestinationSdkImpl::CreateTable(
     ::grpc::ServerContext *,
     const ::fivetran_sdk::v2::CreateTableRequest *request,
     ::fivetran_sdk::v2::CreateTableResponse *response) {
-
-  auto logger = std::make_shared<mdlog::MdLog>();
+  std::optional<RequestContext> ctx;
   try {
-    logger->info("Endpoint <CreateTable>: started");
+    ctx.emplace("CreateTable", connection_factory, request->configuration());
+  } catch (const std::exception &e) {
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  }
+  auto &con = ctx->GetConnection();
+  auto &logger = ctx->GetLogger();
+
+  try {
     auto schema_name = get_schema_name(request);
 
-    const std::string db_name =
+    std::string db_name =
         config::find_property(request->configuration(), config::PROP_DATABASE);
-    std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
     const table_def table{db_name, schema_name, request->table().name()};
 
-    if (!sql_generator->schema_exists(*con, db_name, schema_name)) {
-      sql_generator->create_schema(*con, db_name, schema_name);
+    if (!sql_generator->schema_exists(con, db_name, schema_name)) {
+      sql_generator->create_schema(con, db_name, schema_name);
     }
 
     const auto cols = get_duckdb_columns(request->table().columns());
-    sql_generator->create_table(*con, table, cols, {});
+    sql_generator->create_table(con, table, cols, {});
     response->set_success(true);
   } catch (const md_error::RecoverableError &mde) {
-    logger->warning("CreateTable endpoint failed for schema <" +
-                    request->schema_name() + ">, table <" +
-                    request->table().name() + ">:" + std::string(mde.what()));
+    logger.warning("CreateTable endpoint failed for schema <" +
+                   request->schema_name() + ">, table <" +
+                   request->table().name() + ">:" + std::string(mde.what()));
     response->mutable_task()->set_message(mde.what());
     return ::grpc::Status(::grpc::StatusCode::OK, "");
   } catch (const std::exception &e) {
-    logger->severe("CreateTable endpoint failed for schema <" +
-                   request->schema_name() + ">, table <" +
-                   request->table().name() + ">:" + std::string(e.what()));
+    logger.severe("CreateTable endpoint failed for schema <" +
+                  request->schema_name() + ">, table <" +
+                  request->table().name() + ">:" + std::string(e.what()));
     response->mutable_task()->set_message(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
 
-  logger->info("Endpoint <CreateTable>: ended");
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
@@ -342,37 +252,40 @@ grpc::Status DestinationSdkImpl::AlterTable(
     ::grpc::ServerContext *,
     const ::fivetran_sdk::v2::AlterTableRequest *request,
     ::fivetran_sdk::v2::AlterTableResponse *response) {
-  auto logger = std::make_shared<mdlog::MdLog>();
+  std::optional<RequestContext> ctx;
   try {
-    logger->info("Endpoint <AlterTable>: started");
-    const std::string db_name =
+    ctx.emplace("AlterTable", connection_factory, request->configuration());
+  } catch (const std::exception &e) {
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  }
+  auto &con = ctx->GetConnection();
+  auto &logger = ctx->GetLogger();
+
+  try {
+    std::string db_name =
         config::find_property(request->configuration(), config::PROP_DATABASE);
     table_def table_name{db_name, get_schema_name(request),
                          request->table().name()};
 
-    std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
-
-    sql_generator->alter_table(*con, table_name,
+    sql_generator->alter_table(con, table_name,
                                get_duckdb_columns(request->table().columns()),
                                request->drop_columns());
     response->set_success(true);
   } catch (const md_error::RecoverableError &mde) {
-    logger->severe("AlterTable endpoint failed for schema <" +
-                   request->schema_name() + ">, table <" +
-                   request->table().name() + ">:" + std::string(mde.what()));
+    logger.severe("AlterTable endpoint failed for schema <" +
+                  request->schema_name() + ">, table <" +
+                  request->table().name() + ">:" + std::string(mde.what()));
     response->mutable_task()->set_message(mde.what());
     return ::grpc::Status(::grpc::StatusCode::OK, "");
   } catch (const std::exception &e) {
-    logger->severe("AlterTable endpoint failed for schema <" +
-                   request->schema_name() + ">, table <" +
-                   request->table().name() + ">:" + std::string(e.what()));
+    logger.severe("AlterTable endpoint failed for schema <" +
+                  request->schema_name() + ">, table <" +
+                  request->table().name() + ">:" + std::string(e.what()));
     response->mutable_task()->set_message(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
 
-  logger->info("Endpoint <AlterTable>: ended");
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
@@ -380,11 +293,17 @@ grpc::Status
 DestinationSdkImpl::Truncate(::grpc::ServerContext *,
                              const ::fivetran_sdk::v2::TruncateRequest *request,
                              ::fivetran_sdk::v2::TruncateResponse *response) {
-
-  auto logger = std::make_shared<mdlog::MdLog>();
+  std::optional<RequestContext> ctx;
   try {
-    logger->info("Endpoint <Truncate>: started");
-    const std::string db_name =
+    ctx.emplace("Truncate", connection_factory, request->configuration());
+  } catch (const std::exception &e) {
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  }
+  auto &con = ctx->GetConnection();
+  auto &logger = ctx->GetLogger();
+
+  try {
+    std::string db_name =
         config::find_property(request->configuration(), config::PROP_DATABASE);
     table_def table_name{db_name, get_schema_name(request),
                          get_table_name(request)};
@@ -392,39 +311,36 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *,
       throw std::invalid_argument("Synced column is required");
     }
 
-    std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
-    if (sql_generator->table_exists(*con, table_name)) {
+    if (sql_generator->table_exists(con, table_name)) {
       std::chrono::nanoseconds delete_before_ts =
           std::chrono::seconds(request->utc_delete_before().seconds()) +
           std::chrono::nanoseconds(request->utc_delete_before().nanos());
       const std::string deleted_column =
           request->has_soft() ? request->soft().deleted_column() : "";
-      sql_generator->truncate_table(*con, table_name, request->synced_column(),
+      sql_generator->truncate_table(con, table_name, request->synced_column(),
                                     delete_before_ts, deleted_column);
     } else {
-      logger->warning("Table <" + request->table_name() +
-                      "> not found in schema <" + request->schema_name() +
-                      ">; not truncated");
+      logger.warning("Table <" + request->table_name() +
+                     "> not found in schema <" + request->schema_name() +
+                     ">; not truncated");
     }
 
   } catch (const md_error::RecoverableError &mde) {
-    logger->warning("Truncate endpoint failed for schema <" +
-                    request->schema_name() + ">, table <" +
-                    request->table_name() + ">:" + std::string(mde.what()));
+    logger.warning("Truncate endpoint failed for schema <" +
+                   request->schema_name() + ">, table <" +
+                   request->table_name() + ">:" + std::string(mde.what()));
     response->mutable_task()->set_message(mde.what());
     return ::grpc::Status(::grpc::StatusCode::OK, "");
   } catch (const std::exception &e) {
-    logger->severe("Truncate endpoint failed for schema <" +
-                   request->schema_name() + ">, table <" +
-                   request->table_name() + ">:" + std::string(e.what()));
+    logger.severe("Truncate endpoint failed for schema <" +
+                  request->schema_name() + ">, table <" +
+                  request->table_name() + ">:" + std::string(e.what()));
     response->mutable_task()->set_message(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
 
-  logger->info("Endpoint <Truncate>: ended");
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
@@ -432,10 +348,16 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     ::grpc::ServerContext *,
     const ::fivetran_sdk::v2::WriteBatchRequest *request,
     ::fivetran_sdk::v2::WriteBatchResponse *response) {
-
-  auto logger = std::make_shared<mdlog::MdLog>();
+  std::optional<RequestContext> ctx;
   try {
-    logger->info("Endpoint <WriteBatch>: started");
+    ctx.emplace("WriteBatch", connection_factory, request->configuration());
+  } catch (const std::exception &e) {
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  }
+  auto &con = ctx->GetConnection();
+  auto &logger = ctx->GetLogger();
+
+  try {
     auto schema_name = get_schema_name(request);
 
     const std::string db_name =
@@ -443,8 +365,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     table_def table_name{db_name, get_schema_name(request),
                          request->table().name()};
-    std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
     const auto cols = get_duckdb_columns(request->table().columns());
@@ -458,10 +378,10 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     // We start a transaction here to a) ensure data consistency and b) clean up
     // server-side data staging tables in case of an error
-    con->BeginTransaction();
+    con.BeginTransaction();
 
     for (auto &filename : request->replace_files()) {
-      logger->info("Processing replace file " + filename);
+      logger.info("Processing replace file " + filename);
       const auto decryption_key = get_encryption_key(
           filename, request->keys(), request->file_params().encryption());
 
@@ -470,14 +390,14 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                              UnmodifiedMarker::Disallowed);
 
       csv_processor::ProcessFile(
-          *con, props, logger, [&](const std::string &staging_table_name) {
-            sql_generator->upsert(*con, table_name, staging_table_name,
+          con, props, logger, [&](const std::string &staging_table_name) {
+            sql_generator->upsert(con, table_name, staging_table_name,
                                   columns_pk, columns_regular);
           });
     }
 
     for (auto &filename : request->update_files()) {
-      logger->info("Processing update file " + filename);
+      logger.info("Processing update file " + filename);
       auto decryption_key = get_encryption_key(
           filename, request->keys(), request->file_params().encryption());
       IngestProperties props(filename, decryption_key, cols,
@@ -485,15 +405,15 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                              UnmodifiedMarker::Allowed);
 
       csv_processor::ProcessFile(
-          *con, props, logger, [&](const std::string &staging_table_name) {
+          con, props, logger, [&](const std::string &staging_table_name) {
             sql_generator->update_values(
-                *con, table_name, staging_table_name, columns_pk,
+                con, table_name, staging_table_name, columns_pk,
                 columns_regular, request->file_params().unmodified_string());
           });
     }
 
     for (auto &filename : request->delete_files()) {
-      logger->info("Processing delete file " + filename);
+      logger.info("Processing delete file " + filename);
       auto decryption_key = get_encryption_key(
           filename, request->keys(), request->file_params().encryption());
       std::vector<column_def> cols_to_read;
@@ -505,31 +425,30 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                              UnmodifiedMarker::Disallowed);
 
       csv_processor::ProcessFile(
-          *con, props, logger, [&](const std::string &staging_table_name) {
-            sql_generator->delete_rows(*con, table_name, staging_table_name,
+          con, props, logger, [&](const std::string &staging_table_name) {
+            sql_generator->delete_rows(con, table_name, staging_table_name,
                                        columns_pk);
           });
     }
 
-    con->Commit();
+    con.Commit();
 
   } catch (const md_error::RecoverableError &mde) {
     auto const msg = "WriteBatch endpoint failed for schema <" +
                      request->schema_name() + ">, table <" +
                      request->table().name() + ">:" + std::string(mde.what());
-    logger->warning(msg);
+    logger.warning(msg);
     response->mutable_task()->set_message(msg);
     return ::grpc::Status(::grpc::StatusCode::OK, "");
   } catch (const std::exception &e) {
     auto const msg = "WriteBatch endpoint failed for schema <" +
                      request->schema_name() + ">, table <" +
                      request->table().name() + ">:" + std::string(e.what());
-    logger->severe(msg);
+    logger.severe(msg);
     response->mutable_task()->set_message(msg);
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, msg);
   }
 
-  logger->info("Endpoint <WriteBatch>: ended");
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
@@ -537,11 +456,17 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     ::grpc::ServerContext *,
     const ::fivetran_sdk::v2::WriteHistoryBatchRequest *request,
     ::fivetran_sdk::v2::WriteBatchResponse *response) {
-
-  auto logger = std::make_shared<mdlog::MdLog>();
+  std::optional<RequestContext> ctx;
+  try {
+    ctx.emplace("WriteHistoryBatch", connection_factory,
+                request->configuration());
+  } catch (const std::exception &e) {
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  }
+  auto &con = ctx->GetConnection();
+  auto &logger = ctx->GetLogger();
 
   try {
-    logger->info("Endpoint <WriteHistoryBatch>: started");
     auto schema_name = get_schema_name(request);
 
     const std::string db_name =
@@ -549,8 +474,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     table_def table_name{db_name, get_schema_name(request),
                          request->table().name()};
-    std::unique_ptr<duckdb::Connection> con =
-        get_connection(request->configuration(), db_name, logger);
     auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
     const auto cols = get_duckdb_columns(request->table().columns());
@@ -563,7 +486,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     // We start a transaction here to a) ensure data consistency and b) clean up
     // server-side data staging tables in case of an error
-    con->BeginTransaction();
+    con.BeginTransaction();
 
     /*
     The latest_active_records (lar) table is used to process the update file
@@ -575,11 +498,11 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     in place.
     */
     const std::string lar_table_name =
-        sql_generator->create_latest_active_records_table(*con, table_name);
+        sql_generator->create_latest_active_records_table(con, table_name);
 
     // delete overlapping records
     for (auto &filename : request->earliest_start_files()) {
-      logger->info("Processing earliest start file " + filename);
+      logger.info("Processing earliest start file " + filename);
       // "This file contains a single record for each primary key in the
       // incoming batch, with the earliest _fivetran_start"
       std::vector<column_def> earliest_start_cols;
@@ -592,51 +515,50 @@ grpc::Status DestinationSdkImpl::WriteBatch(
            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ});
       IngestProperties props = create_ingest_props(
           filename, request, earliest_start_cols, UnmodifiedMarker::Disallowed);
-      csv_processor::ProcessFile(*con, props, logger,
+      csv_processor::ProcessFile(con, props, logger,
                                  [&](const std::string &staging_table_name) {
                                    sql_generator->deactivate_historical_records(
-                                       *con, table_name, staging_table_name,
+                                       con, table_name, staging_table_name,
                                        lar_table_name, columns_pk);
                                  });
     }
 
     for (auto &filename : request->update_files()) {
-      logger->info("update file " + filename);
+      logger.info("update file " + filename);
       IngestProperties props = create_ingest_props(filename, request, cols,
                                                    UnmodifiedMarker::Allowed);
 
       csv_processor::ProcessFile(
-          *con, props, logger, [&](const std::string &staging_table_name) {
+          con, props, logger, [&](const std::string &staging_table_name) {
             sql_generator->add_partial_historical_values(
-                *con, table_name, staging_table_name, lar_table_name,
-                columns_pk, columns_regular,
-                request->file_params().unmodified_string());
+                con, table_name, staging_table_name, lar_table_name, columns_pk,
+                columns_regular, request->file_params().unmodified_string());
           });
     }
 
     // The following functions do not need the LAR table
-    auto drop_lar_table_res = con->Query("DROP TABLE " + lar_table_name);
+    auto drop_lar_table_res = con.Query("DROP TABLE " + lar_table_name);
     if (drop_lar_table_res->HasError()) {
       // Log error, but continue processing. In the worst case, this leaves a
       // table lingering.
-      logger->severe("Could not drop latest_active_records table: " +
-                     drop_lar_table_res->GetError());
+      logger.severe("Could not drop latest_active_records table: " +
+                    drop_lar_table_res->GetError());
     }
 
     // upsert files
     for (auto &filename : request->replace_files()) {
-      logger->info("replace/upsert file " + filename);
+      logger.info("replace/upsert file " + filename);
       IngestProperties props = create_ingest_props(
           filename, request, cols, UnmodifiedMarker::Disallowed);
       csv_processor::ProcessFile(
-          *con, props, logger, [&](const std::string &staging_table_name) {
-            sql_generator->insert(*con, table_name, staging_table_name,
+          con, props, logger, [&](const std::string &staging_table_name) {
+            sql_generator->insert(con, table_name, staging_table_name,
                                   columns_pk, columns_regular);
           });
     }
 
     for (auto &filename : request->delete_files()) {
-      logger->info("delete file " + filename);
+      logger.info("delete file " + filename);
       // Fivetran delete files won't contain all the columns in the request
       // proto. Only primary keys and _fivetran_end are useful for the soft
       // delete. _fivetran_start is not present in delete files despite being a
@@ -654,13 +576,13 @@ grpc::Status DestinationSdkImpl::WriteBatch(
           filename, request, cols_to_read, UnmodifiedMarker::Disallowed);
 
       csv_processor::ProcessFile(
-          *con, props, logger, [&](const std::string &staging_table_name) {
+          con, props, logger, [&](const std::string &staging_table_name) {
             sql_generator->delete_historical_rows(
-                *con, table_name, staging_table_name, columns_pk);
+                con, table_name, staging_table_name, columns_pk);
           });
     }
 
-    con->Commit();
+    con.Commit();
 
   } catch (const md_error::RecoverableError &mde) {
     auto const msg = "WriteHistoryBatch endpoint failed for schema <" +
@@ -672,12 +594,11 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     auto const msg = "WriteHistoryBatch endpoint failed for schema <" +
                      request->schema_name() + ">, table <" +
                      request->table().name() + ">:" + std::string(e.what());
-    logger->severe(msg);
+    logger.severe(msg);
     response->mutable_task()->set_message(msg);
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, msg);
   }
 
-  logger->info("Endpoint <WriteHistoryBatch>: ended");
   return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
@@ -722,24 +643,13 @@ DestinationSdkImpl::Test(::grpc::ServerContext *,
   const std::string error_prefix = "Test <" + test_name + "> failed: ";
   const auto user_config = request->configuration();
 
-  std::unique_ptr<duckdb::Connection> con;
-  // This function already loads the extension and connects to MotherDuck.
-  // If this fails, we catch the exception and rewrite it a bit to make
-  // it more actionable.
   try {
-    const std::string db_name =
-        config::find_property(user_config, config::PROP_DATABASE);
-    const auto logger = std::make_shared<mdlog::MdLog>();
-    con = get_connection(user_config, db_name, logger);
-  } catch (const std::exception &ex) {
-    const auto error_message = extract_readable_error(ex);
-    response->set_failure(error_prefix + error_message);
-    return ::grpc::Status::OK;
-  }
+    // This constructor already loads the extension and connects to MotherDuck.
+    // If this fails, we catch the exception and rewrite it a bit to make
+    // it more actionable.
+    RequestContext ctx("Test", connection_factory, request->configuration());
 
-  // Run actual tests
-  try {
-    auto test_result = config_tester::run_test(test_name, *con);
+    auto test_result = config_tester::run_test(test_name, ctx.GetConnection());
     if (test_result.success) {
       response->set_success(true);
     } else {

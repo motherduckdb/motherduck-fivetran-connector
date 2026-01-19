@@ -15,7 +15,7 @@ namespace csv_processor {
 /// again.
 void ProcessFile(
     duckdb::Connection &con, const IngestProperties &props,
-    std::shared_ptr<mdlog::MdLog> &logger,
+    mdlog::Logger &logger,
     const std::function<void(const std::string &staging_table_name)>
         &process_staging_table);
 

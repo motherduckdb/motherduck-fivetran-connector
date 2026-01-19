@@ -133,6 +133,7 @@ link_dependencies(fivetran_sdk)
 ### MotherDuck destination connector ###
 add_library(motherduck_destination_sources STATIC
         src/config_tester.cpp
+        src/connection_factory.cpp
         src/csv_processor.cpp
         src/decryption.cpp
         src/extension_helper.cpp
@@ -141,6 +142,7 @@ add_library(motherduck_destination_sources STATIC
         src/md_logging.cpp
         src/motherduck_destination_server.cpp
         src/openssl_helper.cpp
+        src/request_context.cpp
         src/schema_types.cpp
         src/sql_generator.cpp
         src/stacktrace.cpp

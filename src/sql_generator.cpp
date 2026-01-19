@@ -87,8 +87,7 @@ std::string primary_key_join(std::vector<const column_def *> &columns_pk,
 }
 } // namespace
 
-MdSqlGenerator::MdSqlGenerator(std::shared_ptr<mdlog::MdLog> &logger_)
-    : logger(logger_) {}
+MdSqlGenerator::MdSqlGenerator(mdlog::Logger &logger_) : logger(logger_) {}
 
 std::string
 MdSqlGenerator::generate_temp_table_name(duckdb::Connection &con,
@@ -115,8 +114,8 @@ MdSqlGenerator::generate_temp_table_name(duckdb::Connection &con,
         ") WHERE name = " + KeywordHelper::WriteQuoted(table_name, '\'');
     const auto check_res = con.Query(check_query);
     if (check_res->HasError()) {
-      logger->severe("Could not check for existence of temporary table <" +
-                     table_name + ">: " + check_res->GetError());
+      logger.severe("Could not check for existence of temporary table <" +
+                    table_name + ">: " + check_res->GetError());
       // Optimistically use this name in case there was an error during checking
       return fqn_name;
     }
@@ -135,9 +134,9 @@ MdSqlGenerator::generate_temp_table_name(duckdb::Connection &con,
 void MdSqlGenerator::run_query(duckdb::Connection &con,
                                const std::string &log_prefix,
                                const std::string &query,
-                               const std::string &error_message) {
-  logger->info(log_prefix + ": " + query);
-  auto result = con.Query(query);
+                               const std::string &error_message) const {
+  logger.info(log_prefix + ": " + query);
+  const auto result = con.Query(query);
   if (result->HasError()) {
     throw std::runtime_error(error_message + ": " + result->GetError());
   }
@@ -177,7 +176,7 @@ bool MdSqlGenerator::table_exists(duckdb::Connection &con,
   const std::string err =
       "Could not find whether table <" + table.to_escaped_string() + "> exists";
   auto statement = con.Prepare(query);
-  logger->info("    prepared table_exists query for table " + table.table_name);
+  logger.info("    prepared table_exists query for table " + table.table_name);
   if (statement->HasError()) {
     throw std::runtime_error(err + " (at bind step): " + statement->GetError());
   }
@@ -185,15 +184,15 @@ bool MdSqlGenerator::table_exists(duckdb::Connection &con,
                                           duckdb::Value(table.schema_name),
                                           duckdb::Value(table.table_name)};
   auto result = statement->Execute(params, false);
-  logger->info("    executed table_exists query for table " + table.table_name);
+  logger.info("    executed table_exists query for table " + table.table_name);
 
   if (result->HasError()) {
     throw std::runtime_error(err + ": " + result->GetError());
   }
   auto materialized_result = duckdb::unique_ptr_cast<
       duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
-  logger->info("    materialized table_exists results for table " +
-               table.table_name);
+  logger.info("    materialized table_exists results for table " +
+              table.table_name);
   return materialized_result->RowCount() > 0;
 }
 
@@ -205,7 +204,7 @@ void MdSqlGenerator::create_schema(duckdb::Connection &con,
       << KeywordHelper::WriteQuoted(schema_name, '"');
   const std::string query = ddl.str();
 
-  logger->info("create_schema: " + query);
+  logger.info("create_schema: " + query);
   const auto result = con.Query(query);
   if (result->HasError()) {
     throw std::runtime_error("Could not create schema <" + schema_name +
@@ -258,7 +257,7 @@ void MdSqlGenerator::create_table(
   ddl << ")";
 
   const auto query = ddl.str();
-  logger->info("create_table: " + query);
+  logger.info("create_table: " + query);
 
   const auto result = con.Query(query);
   if (result->HasError()) {
@@ -295,7 +294,7 @@ std::vector<column_def> MdSqlGenerator::describe_table(duckdb::Connection &con,
                "AND table_name=?";
   const std::string err =
       "Could not describe table <" + table.to_escaped_string() + ">";
-  logger->info("describe_table: " + std::string(query));
+  logger.info("describe_table: " + std::string(query));
   auto statement = con.Prepare(query);
   if (statement->HasError()) {
     throw std::runtime_error(err + " (at bind step): " + statement->GetError());
@@ -432,7 +431,7 @@ void MdSqlGenerator::alter_table(
   std::set<std::string> deleted_columns;
   std::set<std::string> common_columns;
 
-  logger->info("    in MdSqlGenerator::alter_table for " + absolute_table_name);
+  logger.info("    in MdSqlGenerator::alter_table for " + absolute_table_name);
   const auto &existing_columns = describe_table(con, table);
   std::map<std::string, column_def> new_column_map;
 
@@ -459,14 +458,14 @@ void MdSqlGenerator::alter_table(
           recreate_table = true;
         }
       } else {
-        logger->info("Source connector requested that table " +
-                     absolute_table_name + " column " + col.name +
-                     " be dropped, but dropping columns is not allowed when "
-                     "drop_columns is false");
+        logger.info("Source connector requested that table " +
+                    absolute_table_name + " column " + col.name +
+                    " be dropped, but dropping columns is not allowed when "
+                    "drop_columns is false");
       }
     } else if (new_col_it->second.primary_key != col.primary_key) {
-      logger->info("Altering primary key requested for column <" +
-                   new_col_it->second.name + ">");
+      logger.info("Altering primary key requested for column <" +
+                  new_col_it->second.name + ">");
       recreate_table = true;
     } else if (new_col_it->second.type != col.type ||
                (new_col_it->second.type == duckdb::LogicalTypeId::DECIMAL &&
@@ -475,9 +474,9 @@ void MdSqlGenerator::alter_table(
       alter_types.emplace(col.name);
     }
   }
-  logger->info("    inventoried columns; recreate_table = " +
-               std::to_string(recreate_table) +
-               "; num alter_types = " + std::to_string(alter_types.size()));
+  logger.info("    inventoried columns; recreate_table = " +
+              std::to_string(recreate_table) +
+              "; num alter_types = " + std::to_string(alter_types.size()));
 
   auto primary_key_added_it =
       std::find_if(added_columns.begin(), added_columns.end(),
@@ -485,8 +484,8 @@ void MdSqlGenerator::alter_table(
                      return new_column_map[column_name].primary_key;
                    });
   if (primary_key_added_it != added_columns.end()) {
-    logger->info("Adding primary key requested for column <" +
-                 *primary_key_added_it + ">");
+    logger.info("Adding primary key requested for column <" +
+                *primary_key_added_it + ">");
     recreate_table = true;
   }
 
@@ -496,7 +495,7 @@ void MdSqlGenerator::alter_table(
     const auto &new_col_it = added_columns.find(col.name);
     if (new_col_it != added_columns.end()) {
       added_columns_ordered.push_back(new_column_map[col.name]);
-      logger->info("    adding column " + col.name);
+      logger.info("    adding column " + col.name);
     }
   }
 
@@ -505,7 +504,7 @@ void MdSqlGenerator::alter_table(
                 absolute_table_name + ">");
 
   if (recreate_table) {
-    logger->info("    recreating table");
+    logger.info("    recreating table");
     // preserve the order of the original columns
     auto all_columns = existing_columns;
 
@@ -524,7 +523,7 @@ void MdSqlGenerator::alter_table(
     }
     alter_table_recreate(con, table, all_columns, common_columns);
   } else {
-    logger->info("    altering table in place");
+    logger.info("    altering table in place");
     alter_table_in_place(con, absolute_table_name, added_columns_ordered,
                          deleted_columns, alter_types, new_column_map);
   }
@@ -558,7 +557,7 @@ void MdSqlGenerator::upsert(
   }
 
   auto query = sql.str();
-  logger->info("upsert: " + query);
+  logger.info("upsert: " + query);
   auto result = con.Query(query);
   if (result->HasError()) {
     throw std::runtime_error("Could not upsert table <" + absolute_table_name +
@@ -579,7 +578,7 @@ void MdSqlGenerator::insert(
       << ") SELECT " << full_column_list << " FROM " << staging_table_name;
 
   auto query = sql.str();
-  logger->info("insert: " + query);
+  logger.info("insert: " + query);
   auto result = con.Query(query);
   if (result->HasError()) {
     throw std::runtime_error("Could not insert into table <" +
@@ -594,7 +593,7 @@ void MdSqlGenerator::update_values(
     std::vector<const column_def *> &columns_regular,
     const std::string &unmodified_string) {
 
-  logger->info("MdSqlGenerator::update_values requested");
+  logger.info("MdSqlGenerator::update_values requested");
   std::ostringstream sql;
   auto absolute_table_name = table.to_escaped_string();
 
@@ -621,7 +620,7 @@ void MdSqlGenerator::update_values(
       " AND ");
 
   auto query = sql.str();
-  logger->info("update: " + query);
+  logger.info("update: " + query);
   auto result = con.Query(query);
   if (result->HasError()) {
     throw std::runtime_error("Could not update table <" + absolute_table_name +
@@ -681,7 +680,7 @@ void MdSqlGenerator::add_partial_historical_values(
       << primary_key_join(columns_pk, "lar", staging_table_name) << ")";
 
   auto query = sql.str();
-  logger->info("update (add partial historical values): " + query);
+  logger.info("update (add partial historical values): " + query);
   auto result = con.Query(query);
   if (result->HasError()) {
     throw std::runtime_error(
@@ -709,7 +708,7 @@ void MdSqlGenerator::delete_rows(duckdb::Connection &con,
       " AND ");
 
   auto query = sql.str();
-  logger->info("delete_rows: " + query);
+  logger.info("delete_rows: " + query);
   auto result = con.Query(query);
   if (result->HasError()) {
     throw std::runtime_error("Error deleting rows from table <" +
@@ -739,7 +738,7 @@ void MdSqlGenerator::deactivate_historical_records(
         << "._fivetran_start >= " << staging_table_name << "._fivetran_start";
 
     auto query = sql.str();
-    logger->info("delete_overlapping_records: " + query);
+    logger.info("delete_overlapping_records: " + query);
     auto result = con.Query(query);
     if (result->HasError()) {
       throw std::runtime_error(
@@ -772,7 +771,7 @@ void MdSqlGenerator::deactivate_historical_records(
         << " SELECT * EXCLUDE (row_num) FROM "
            "ranked_records WHERE row_num = 1";
     auto query = sql.str();
-    logger->info("stash latest records: " + query);
+    logger.info("stash latest records: " + query);
     auto result = con.Query(query);
     if (result->HasError()) {
       throw std::runtime_error("Error stashing latest records from table <" +
@@ -793,7 +792,7 @@ void MdSqlGenerator::deactivate_historical_records(
     sql << primary_key_join_condition;
 
     auto query = sql.str();
-    logger->info("deactivate records: " + query);
+    logger.info("deactivate records: " + query);
     auto result = con.Query(query);
     if (result->HasError()) {
       throw std::runtime_error("Error deactivating records <" +
@@ -821,7 +820,7 @@ void MdSqlGenerator::delete_historical_rows(
   sql << primary_key_join_condition;
 
   auto query = sql.str();
-  logger->info("delete historical records: " + query);
+  logger.info("delete historical records: " + query);
   auto result = con.Query(query);
   if (result->HasError()) {
     throw std::runtime_error("Error deleting historical records <" +
@@ -837,7 +836,7 @@ void MdSqlGenerator::truncate_table(duckdb::Connection &con,
   const std::string absolute_table_name = table.to_escaped_string();
   std::ostringstream sql;
 
-  logger->info("truncate_table request: deleted column = " + deleted_column);
+  logger.info("truncate_table request: deleted column = " + deleted_column);
   if (deleted_column.empty()) {
     // hard delete
     sql << "DELETE FROM " << absolute_table_name;
@@ -846,13 +845,13 @@ void MdSqlGenerator::truncate_table(duckdb::Connection &con,
     sql << "UPDATE " << absolute_table_name << " SET "
         << KeywordHelper::WriteQuoted(deleted_column, '"') << " = true";
   }
-  logger->info("truncate_table request: synced column = " + synced_column);
+  logger.info("truncate_table request: synced column = " + synced_column);
   sql << " WHERE " << KeywordHelper::WriteQuoted(synced_column, '"')
       << " < make_timestamp(?)";
   auto query = sql.str();
   const std::string err =
       "Error truncating table at bind step <" + absolute_table_name + ">";
-  logger->info("truncate_table: " + query);
+  logger.info("truncate_table: " + query);
   auto statement = con.Prepare(query);
   if (statement->HasError()) {
     throw std::runtime_error(err + " (at bind step):" + statement->GetError());
@@ -863,8 +862,8 @@ void MdSqlGenerator::truncate_table(duckdb::Connection &con,
   int64_t cutoff_microseconds = cutoff_ns.count() / 1000;
   duckdb::vector<duckdb::Value> params = {duckdb::Value(cutoff_microseconds)};
 
-  logger->info("truncate_table: cutoff_microseconds = <" +
-               std::to_string(cutoff_microseconds) + ">");
+  logger.info("truncate_table: cutoff_microseconds = <" +
+              std::to_string(cutoff_microseconds) + ">");
   auto result = statement->Execute(params, false);
   if (result->HasError()) {
     throw std::runtime_error(err + ": " + result->GetError());
