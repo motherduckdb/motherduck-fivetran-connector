@@ -542,6 +542,7 @@ TEST_CASE("Migrate - copy table to history mode from soft delete",
       "migrate_copy_hist_src_" + std::to_string(Catch::rngSeed());
   const std::string dest_table =
       "migrate_copy_hist_dst_" + std::to_string(Catch::rngSeed());
+  const std::string soft_deleted_column = GENERATE("_fivetran_deleted", "custom_soft_deleted");
 
   auto con = get_test_connection(MD_TOKEN);
 
@@ -550,7 +551,7 @@ TEST_CASE("Migrate - copy table to history mode from soft delete",
   con->Query("DROP TABLE IF EXISTS " + dest_table);
   {
     auto res = con->Query("CREATE TABLE " + source_table +
-                          " (id INT, name VARCHAR, _fivetran_deleted BOOLEAN, "
+                          " (id INT, name VARCHAR, " + soft_deleted_column + " BOOLEAN, "
                           "_fivetran_synced TIMESTAMPTZ, primary key (id))");
     REQUIRE_NO_FAIL(res);
   }
@@ -576,7 +577,7 @@ TEST_CASE("Migrate - copy table to history mode from soft delete",
                           ->mutable_copy_table_to_history_mode();
     copy_hist->set_from_table(source_table);
     copy_hist->set_to_table(dest_table);
-    copy_hist->set_soft_deleted_column("_fivetran_deleted");
+    copy_hist->set_soft_deleted_column(soft_deleted_column);
 
     ::fivetran_sdk::v2::MigrateResponse response;
     auto status = service.Migrate(nullptr, &request, &response);
@@ -598,10 +599,20 @@ TEST_CASE("Migrate - copy table to history mode from soft delete",
     REQUIRE(res->GetValue(2, 2) == true);
   }
 
-  // Verify soft_deleted_column is NOT in destination
-  {
-    auto res = con->Query("SELECT _fivetran_deleted FROM " + dest_table);
+  // Verify soft_deleted_column is NOT in destination when it's the "_fivetran_deleted" column
+  if (soft_deleted_column == "_fivetran_deleted") {
+    auto res = con->Query("SELECT " + soft_deleted_column + " FROM " + dest_table);
     REQUIRE(res->HasError());
+  } else
+  {
+    // We want check here that soft_deleted_column is not a PK, so we can ignore this column in the verify the whole PK
+    auto res = con->Query("SELECT key FROM (describe " +
+        duckdb::KeywordHelper::WriteQuoted(dest_table, '\'') + ") WHERE column_name = \'" +
+        soft_deleted_column + "\'");
+    REQUIRE_NO_FAIL(res);
+
+    // soft_deleted_column is not a pk
+    REQUIRE(res->GetValue(0, 0).IsNull());
   }
 
   // Verify history columns exist
@@ -615,7 +626,8 @@ TEST_CASE("Migrate - copy table to history mode from soft delete",
   // Verify id is part of primary key
   {
     auto res = con->Query("SELECT key FROM (describe " +
-      duckdb::KeywordHelper::WriteQuoted(dest_table, '\'') + ") order by column_name");
+      duckdb::KeywordHelper::WriteQuoted(dest_table, '\'') + ") WHERE column_name != \'" +
+      soft_deleted_column + "\' ORDER BY column_name");
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 6); // The order is: _fivetran_active, _fivetran_end, _fivetran_start, _fivetran_synced, id, name
 
