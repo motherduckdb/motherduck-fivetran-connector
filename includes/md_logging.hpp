@@ -43,8 +43,9 @@ private:
   std::string connection_id = "none";
   mutable std::once_flag initialize_duckdb_logging_flag;
 
-  static void log_to_stdout(const std::string &message);
-  static void log_to_duckdb(duckdb::Connection &con, const std::string &level,
-                            const std::string &message);
+  void log_to_stdout(const std::string &level,
+                     const std::string &message) const;
+  void log_to_duckdb(const std::string &level,
+                     const std::string &message) const;
 };
 } // namespace mdlog

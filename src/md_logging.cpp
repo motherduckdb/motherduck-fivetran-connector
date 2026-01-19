@@ -23,24 +23,7 @@ bool HasFlag(const Logger::SinkType value, const Logger::SinkType flag) {
 void initialize_duckdb_logging(duckdb::Connection &con) {
   con.Query("CALL enable_logging()");
   con.Query("SET logging_storage='motherduck_log_storage'");
-  con.Query("SET logging_level='WARN'");
-  con.Query("SET motherduck_log_level='WARN'");
-}
-
-std::string create_json_log_message(const std::string &level,
-                                    const std::string &message,
-                                    const std::string &duckdb_id,
-                                    const std::string &connection_id) {
-  std::ostringstream full_message_stream;
-  full_message_stream << "{\"level\":\""
-                      << duckdb::KeywordHelper::EscapeQuotes(level, '"')
-                      << "\","
-                      << "\"message\":\""
-                      << duckdb::KeywordHelper::EscapeQuotes(message, '"')
-                      << ", duckdb_id=<" << duckdb_id << ">, connection_id=<"
-                      << connection_id << ">\","
-                      << "\"message-origin\":\"sdk_destination\"}";
-  return full_message_stream.str();
+  con.Query("SET logging_level='INFO'");
 }
 
 } // namespace
@@ -57,24 +40,28 @@ Logger::Logger(duckdb::Connection *con_)
       con->Query("SELECT md_current_client_duckdb_id(), "
                  "md_current_client_connection_id()");
   if (client_ids_res->HasError()) {
-    const auto error_msg = create_json_log_message(
-        "WARNING",
-        "Could not retrieve the current DuckDB and connection ID: " +
-            client_ids_res->GetError(),
-        "none", "none");
-    log_to_stdout(error_msg);
+    log_to_stdout("WARNING",
+                  "Could not retrieve the current DuckDB and connection ID: " +
+                      client_ids_res->GetError());
   } else {
     duckdb_id = client_ids_res->GetValue(0, 0).ToString();
     connection_id = client_ids_res->GetValue(1, 0).ToString();
   }
 }
 
-void Logger::log_to_stdout(const std::string &message) {
-  std::cout << message << std::endl;
+void Logger::log_to_stdout(const std::string &level,
+                           const std::string &message) const {
+  std::cout << "{\"level\":\""
+            << duckdb::KeywordHelper::EscapeQuotes(level, '"')
+            << "\",\"message\":\""
+            << duckdb::KeywordHelper::EscapeQuotes(message, '"')
+            << ", duckdb_id=<" << duckdb_id << ">, connection_id=<"
+            << connection_id << ">\",\"message-origin\":\"sdk_destination\"}"
+            << std::endl;
 }
 
-void Logger::log_to_duckdb(duckdb::Connection &con, const std::string &level,
-                           const std::string &message) {
+void Logger::log_to_duckdb(const std::string &level,
+                           const std::string &message) const {
   std::string ddb_log_level;
   if (level == "INFO") {
     ddb_log_level = "INFO";
@@ -86,26 +73,35 @@ void Logger::log_to_duckdb(duckdb::Connection &con, const std::string &level,
     ddb_log_level = "INFO";
   }
 
+  std::string full_message = message;
+  duckdb::StringUtil::Trim(full_message);
+  full_message += ". Source: Fivetran";
+
   const std::string query =
-      "SELECT write_log(" + duckdb::KeywordHelper::WriteQuoted(message, '\'') +
+      "SELECT write_log(" +
+      duckdb::KeywordHelper::WriteQuoted(full_message, '\'') +
       ", log_type:='Fivetran', level:=" +
       duckdb::KeywordHelper::WriteQuoted(ddb_log_level) + ")";
-  // Ignore errors from the query
-  con.Query(query);
+
+  const auto log_res = con->Query(query);
+
+  // Only log errors from the query, but continue execution
+  if (log_res->HasError()) {
+    log_to_stdout("WARNING",
+                  "Failed to write log to DuckDB: " + log_res->GetError());
+  }
 }
 
 void Logger::log(const std::string &level, const std::string &message) const {
-  const auto json_message =
-      create_json_log_message(level, message, duckdb_id, connection_id);
   if (HasFlag(enabled_sinks, SinkType::STDOUT)) {
-    log_to_stdout(json_message);
+    log_to_stdout(level, message);
   }
 
   if (HasFlag(enabled_sinks, SinkType::DUCKDB)) {
     std::call_once(
         initialize_duckdb_logging_flag,
         [](duckdb::Connection &con) { initialize_duckdb_logging(con); }, *con);
-    log_to_duckdb(*con, level, json_message);
+    log_to_duckdb(level, message);
   }
 }
 
