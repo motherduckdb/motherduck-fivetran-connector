@@ -41,25 +41,49 @@ std::vector<column_def> get_duckdb_columns(
         &fivetran_columns) {
   std::vector<column_def> duckdb_columns;
   for (auto &col : fivetran_columns) {
-    // todo: if not decimal? (hasDecimal())
-    const auto ddbtype = get_duckdb_type(col.type());
-    if (ddbtype == duckdb::LogicalTypeId::INVALID) {
+    const duckdb::LogicalTypeId duckdb_type = get_duckdb_type(col.type());
+    if (duckdb_type == duckdb::LogicalTypeId::INVALID) {
       throw std::invalid_argument("Cannot convert Fivetran type <" +
                                   DataType_Name(col.type()) + "> for column <" +
                                   col.name() + "> to a DuckDB type");
     }
 
-    constexpr std::uint32_t DUCKDB_DEFAULT_PRECISION = 18;
-    constexpr std::uint32_t DUCKDB_DEFAULT_SCALE = 3;
+    std::uint8_t decimal_width = 0;
+    std::uint8_t decimal_scale = 0;
+    if (duckdb_type == duckdb::LogicalTypeId::DECIMAL) {
+      if (col.has_params() && col.params().has_decimal()) {
+        const std::uint32_t fivetran_precision =
+            col.params().decimal().precision();
+        const std::uint32_t fivetran_scale = col.params().decimal().scale();
 
-    const auto precision = col.has_params() && col.params().has_decimal()
-                               ? col.params().decimal().precision()
-                               : DUCKDB_DEFAULT_PRECISION;
-    const auto scale = col.has_params() && col.params().has_decimal()
-                           ? col.params().decimal().scale()
-                           : DUCKDB_DEFAULT_SCALE;
-    duckdb_columns.push_back(
-        column_def{col.name(), ddbtype, col.primary_key(), precision, scale});
+        // Maximum width supported by DuckDB is 38
+        if (fivetran_precision > 38) {
+          throw std::invalid_argument(
+              "Decimal width " + std::to_string(fivetran_precision) +
+              " for column <" + col.name() +
+              "> exceeds maximum supported width of 38 in DuckDB");
+        }
+
+        if (fivetran_scale > fivetran_precision) {
+          throw std::invalid_argument("Decimal scale " +
+                                      std::to_string(fivetran_scale) +
+                                      " for column <" + col.name() +
+                                      "> cannot be greater than precision " +
+                                      std::to_string(fivetran_precision));
+        }
+
+        decimal_width = static_cast<std::uint8_t>(fivetran_precision);
+        decimal_scale = static_cast<std::uint8_t>(fivetran_scale);
+      } else {
+        // DuckDB default is DECIMAL(18, 3)
+        decimal_width = 18;
+        decimal_scale = 3;
+      }
+    }
+
+    duckdb_columns.push_back(column_def{col.name(), duckdb_type,
+                                        col.primary_key(), decimal_width,
+                                        decimal_scale});
   }
   return duckdb_columns;
 }
@@ -172,12 +196,9 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     table->set_name(get_table_name(request));
 
     for (auto &col : duckdb_columns) {
-      logger.info("Endpoint <DescribeTable>:   processing column " + col.name);
       fivetran_sdk::v2::Column *ft_col = table->mutable_columns()->Add();
       ft_col->set_name(col.name);
       const auto fivetran_type = get_fivetran_type(col.type);
-      logger.info("Endpoint <DescribeTable>:   column type = " +
-                  std::to_string(fivetran_type));
       ft_col->set_type(fivetran_type);
       ft_col->set_primary_key(col.primary_key);
       if (fivetran_type == fivetran_sdk::v2::DECIMAL) {

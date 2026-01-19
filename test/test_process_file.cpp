@@ -440,6 +440,46 @@ TEST_CASE("Test reading CSV file with unmodified string setting",
       });
 }
 
+TEST_CASE("Test reading CSV file with BINARY column", "[csv_processor]") {
+  const auto [base64_data, expected_varchar] =
+      GENERATE(table<std::string, std::string>(
+          {std::make_tuple<std::string, std::string>("3q2+7w==",
+                                                     R"(\xDE\xAD\xBE\xEF)"),
+           std::make_tuple<std::string, std::string>(
+               "AAECAwQFBgc=", R"(\x00\x01\x02\x03\x04\x05\x06\x07)"),
+           std::make_tuple<std::string, std::string>("SGVsbG8gV29ybGQh",
+                                                     "Hello World!"),
+           std::make_tuple<std::string, std::string>("", "NULL")}));
+
+  const fs::path temp_csv_file = fs::temp_directory_path() / "temp_binary.csv";
+  {
+    std::ofstream ofs(temp_csv_file, std::ios::trunc);
+    ofs << "binary_val\n";
+    ofs << "\"" << base64_data << "\"\n";
+    ofs.close();
+  }
+
+  duckdb::DuckDB db(nullptr);
+  duckdb::Connection con(db);
+  const std::vector<column_def> columns{
+      column_def{.name = "binary_val", .type = duckdb::LogicalType::BLOB}};
+
+  IngestProperties props(temp_csv_file.string(), "", columns, "",
+                         UnmodifiedMarker::Disallowed);
+  auto logger = mdlog::Logger::CreateNopLogger();
+  csv_processor::ProcessFile(
+      con, props, logger,
+      [&con, expected_varchar](const std::string &staging_table_name) {
+        const auto res =
+            con.Query("SELECT binary_val FROM " + staging_table_name);
+        REQUIRE_FALSE(res->HasError());
+        REQUIRE(res->RowCount() == 1);
+        const auto blob_value = res->GetValue(0, 0);
+        REQUIRE(blob_value.type().id() == duckdb::LogicalTypeId::BLOB);
+        REQUIRE(blob_value.ToString() == expected_varchar);
+      });
+}
+
 TEST_CASE("Test reading zstd-compressed CSV files", "[csv_processor]") {
   auto [filename, row_count, columns] = GENERATE(table<std::string, size_t,
                                                        std::vector<column_def>>(

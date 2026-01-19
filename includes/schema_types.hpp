@@ -8,8 +8,8 @@ struct column_def {
   std::string name;
   duckdb::LogicalTypeId type;
   bool primary_key;
-  std::uint32_t width;
-  std::uint32_t scale;
+  std::uint8_t width;
+  std::uint8_t scale;
 };
 
 struct table_def {

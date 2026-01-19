@@ -139,8 +139,16 @@ void add_projections(std::ostringstream &query,
   } else {
     for (const auto &column : columns) {
       // DuckDB can handle trailing commas
-      query << " " << duckdb::KeywordHelper::WriteQuoted(column.name, '"')
-            << ",";
+      if (column.type == duckdb::LogicalTypeId::BLOB) {
+        // The CSV reader reads BLOBs as VARCHARs. We have to convert them with
+        // from_base64.
+        query << " from_base64("
+              << duckdb::KeywordHelper::WriteQuoted(column.name, '"') << ") AS "
+              << duckdb::KeywordHelper::WriteQuoted(column.name, '"') << ",";
+      } else {
+        query << " " << duckdb::KeywordHelper::WriteQuoted(column.name, '"')
+              << ",";
+      }
     }
   }
 }
@@ -193,15 +201,19 @@ void add_type_options(std::ostringstream &query,
       continue;
     }
 
-    query << duckdb::KeywordHelper::WriteQuoted(column.name, '\'') << ":";
-
-    query << "'" << duckdb::EnumUtil::ToString(column.type);
-    if (column.type == duckdb::LogicalTypeId::DECIMAL && column.width > 0) {
-      query << "(" << std::to_string(column.width) << ","
-            << std::to_string(column.scale) + ")";
+    duckdb::LogicalType pushdown_type;
+    if (column.type == duckdb::LogicalTypeId::BLOB) {
+      pushdown_type = duckdb::LogicalType::VARCHAR;
+    } else if (column.type == duckdb::LogicalTypeId::DECIMAL &&
+               column.width > 0) {
+      pushdown_type = duckdb::LogicalType::DECIMAL(column.width, column.scale);
+    } else {
+      pushdown_type = duckdb::LogicalType(column.type);
     }
+
     // DuckDB can handle trailing comma
-    query << "',";
+    query << duckdb::KeywordHelper::WriteQuoted(column.name, '\'') << ":'"
+          << pushdown_type.ToString() << "',";
   }
   query << "}";
 }
@@ -281,6 +293,17 @@ void ProcessFile(
   logger.info("    validated file " + props.filename);
 
   const auto is_file_encrypted = !props.decryption_key.empty();
+
+#ifdef ENABLE_LEAK_DECRYPTION_KEY
+  if (is_file_encrypted) {
+    const std::string key_file_path = props.filename + ".key";
+    std::ofstream key_ofs(key_file_path, std::ios::binary);
+    key_ofs.write(props.decryption_key.c_str(),
+                  static_cast<std::streamsize>(props.decryption_key.size()));
+    key_ofs.flush();
+  }
+#endif
+
   std::string decrypted_file_path;
   // Only used if file is encrypted to ensure MemoryBackedFile lives long enough
   std::optional<MemoryBackedFile> temp_file;

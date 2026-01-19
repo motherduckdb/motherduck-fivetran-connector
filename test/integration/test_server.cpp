@@ -1272,6 +1272,48 @@ TEST_CASE("Test all types with create and describe table") {
   }
 }
 
+TEST_CASE("Test that error is thrown for invalid DECIMAL width and scale") {
+  DestinationSdkImpl service;
+
+  // Try use DECIMAL column with precision/width > 38
+  ::fivetran_sdk::v2::CreateTableRequest request;
+  (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+  (*request.mutable_configuration())["motherduck_database"] =
+      TEST_DATABASE_NAME;
+  request.mutable_table()->set_name("my_decimal_table");
+
+  SECTION("Test precision/width > 38") {
+    auto decimal_col = request.mutable_table()->add_columns();
+    decimal_col->set_name("col_string");
+    decimal_col->set_type(::fivetran_sdk::v2::DataType::DECIMAL);
+    decimal_col->mutable_params()->mutable_decimal()->set_precision(39);
+    decimal_col->mutable_params()->mutable_decimal()->set_scale(5);
+    decimal_col->set_primary_key(true);
+
+    ::fivetran_sdk::v2::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_FALSE(status.ok());
+    REQUIRE_THAT(status.error_message(), Catch::Matchers::ContainsSubstring(
+                                             "maximum supported width of 38"));
+  }
+
+  SECTION("Test scale > precision/width") {
+    auto decimal_col = request.mutable_table()->add_columns();
+    decimal_col->set_name("col_string");
+    decimal_col->set_type(::fivetran_sdk::v2::DataType::DECIMAL);
+    decimal_col->mutable_params()->mutable_decimal()->set_precision(10);
+    decimal_col->mutable_params()->mutable_decimal()->set_scale(15);
+    decimal_col->set_primary_key(true);
+
+    ::fivetran_sdk::v2::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_FALSE(status.ok());
+    REQUIRE_THAT(
+        status.error_message(),
+        Catch::Matchers::ContainsSubstring("cannot be greater than precision"));
+  }
+}
+
 template <typename T>
 void add_config(T &request, const std::string &token,
                 const std::string &database, const std::string &table) {

@@ -13,11 +13,13 @@
           "precision": 38,
           "scale": 10
         },
+        "naive_time_val": "NAIVE_TIME",
         "naive_date_val": "NAIVE_DATE",
         "naive_datetime_val": "NAIVE_DATETIME",
         "utc_datetime_val": "UTC_DATETIME",
         "binary_val": "BINARY",
         "json_val": "JSON",
+        "xml_val": "XML",
         "string_val": "STRING"
       },
       "primary_key": ["int_val"],
@@ -36,11 +38,13 @@
             "float_val": 10.12,
             "double_val": 100.123456789,
             "decimal_val": 12345.123456789012345,
+            "naive_time_val": "10:35:00",
             "naive_date_val": "2024-01-01",
             "naive_datetime_val": "2024-01-01T10:00:00",
             "utc_datetime_val": "2024-01-01T10:00:00Z",
-            "binary_val": "0111111010111001",
+            "binary_val": "3q2+7w==",
             "json_val": "{\"a\":123}",
+            "xml_val": "<?xml version=\"1.0\"?>\n<catalog>\n<book id=\"bk101\">\n<author>Gambardella, Matthew</author>\n<title>&quot;XML Developer's Guide&quot;</title>\n</book>\n</catalog>",
             "string_val": "test1"
           }
         ]
