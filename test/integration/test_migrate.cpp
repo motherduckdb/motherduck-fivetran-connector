@@ -612,6 +612,32 @@ TEST_CASE("Migrate - copy table to history mode from soft delete",
     REQUIRE(res->RowCount() == 3);
   }
 
+  // Verify id is part of primary key
+  {
+    auto res = con->Query("SELECT key FROM (describe " +
+      duckdb::KeywordHelper::WriteQuoted(dest_table, '\'') + ") order by column_name");
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 6); // The order is: _fivetran_active, _fivetran_end, _fivetran_start, _fivetran_synced, id, name
+
+    // _fivetran_active is not a pk
+    REQUIRE(res->GetValue(0, 0).IsNull());
+
+    // _fivetran_end is not a pk
+    REQUIRE(res->GetValue(0, 1).IsNull());
+
+    // _fivetran_start is a pk
+    REQUIRE(res->GetValue(0, 2) == "PRI");
+
+    // _fivetran_synced is not a pk
+    REQUIRE(res->GetValue(0, 3) .IsNull());
+
+    // id is a pk
+    REQUIRE(res->GetValue(0, 4) == "PRI");
+
+    // name is not a pk
+    REQUIRE(res->GetValue(0, 5).IsNull());
+  }
+
   // Clean up
   con->Query("DROP TABLE IF EXISTS " + source_table);
   con->Query("DROP TABLE IF EXISTS " + dest_table);
