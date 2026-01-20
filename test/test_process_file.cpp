@@ -441,7 +441,7 @@ TEST_CASE("Test reading CSV file with unmodified string setting",
 }
 
 TEST_CASE("Test reading CSV file with BINARY column", "[csv_processor]") {
-  const auto [base64_data, expected_varchar] =
+  const auto [base64_data, decoded_string] =
       GENERATE(table<std::string, std::string>(
           {std::make_tuple<std::string, std::string>("3q2+7w==",
                                                      R"(\xDE\xAD\xBE\xEF)"),
@@ -469,7 +469,8 @@ TEST_CASE("Test reading CSV file with BINARY column", "[csv_processor]") {
   auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger,
-      [&con, expected_varchar](const std::string &staging_table_name) {
+      [&con, expected_varchar =
+                 decoded_string](const std::string &staging_table_name) {
         const auto res =
             con.Query("SELECT binary_val FROM " + staging_table_name);
         REQUIRE_FALSE(res->HasError());
