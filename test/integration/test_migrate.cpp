@@ -1016,22 +1016,63 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
     REQUIRE_NO_FAIL(status);
     REQUIRE(response.success());
   }
+  // Add another column in history mode with a younger operation timestamp - should fail
+  {
+    ::fivetran_sdk::v2::MigrateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_details()->set_table(table_name);
+    auto *add_col = request.mutable_details()
+                        ->mutable_add()
+                        ->mutable_add_column_in_history_mode();
+    add_col->set_column("last");
+    add_col->set_column_type(::fivetran_sdk::v2::DataType::BOOLEAN);
+    add_col->set_default_value("NULL");
+    add_col->set_operation_timestamp("2024-04-01T00:00:00Z");
 
-  // Verify: should have 2 rows now (old inactive + new active)
+    ::fivetran_sdk::v2::MigrateResponse response;
+    auto status = service.Migrate(nullptr, &request, &response);
+    REQUIRE_FAIL(status, "The _fivetran_start column contains values larger than the "
+      "operation timestamp. Please contact Fivetran support.");
+  }
+  // Add another column in history mode with a later operation timestamp
+  {
+    ::fivetran_sdk::v2::MigrateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_details()->set_table(table_name);
+    auto *add_col = request.mutable_details()
+                        ->mutable_add()
+                        ->mutable_add_column_in_history_mode();
+    add_col->set_column("final");
+    add_col->set_column_type(::fivetran_sdk::v2::DataType::BOOLEAN);
+    add_col->set_default_value("NULL");
+    add_col->set_operation_timestamp("2024-08-01T00:00:00Z");
+
+    ::fivetran_sdk::v2::MigrateResponse response;
+    auto status = service.Migrate(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(response.success());
+  }
+
+  // Verify: should have 3 rows now (old inactive + new active)
   {
     auto res = con->Query("SELECT COUNT(*) FROM " + table_name);
     REQUIRE_NO_FAIL(res);
-    REQUIRE(res->GetValue(0, 0) == 2);
+    REQUIRE(res->GetValue(0, 0) == 3);
   }
 
   // Verify: new active row has the new columns with default values
   {
-    auto res = con->Query("SELECT age, switch FROM " + table_name +
+    auto res = con->Query("SELECT age, switch, final FROM " + table_name +
                           " WHERE _fivetran_active = TRUE");
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 1);
     REQUIRE(res->GetValue(0, 0) == 25);
     REQUIRE(res->GetValue(1, 0) == false);
+    REQUIRE(res->GetValue(2, 0).IsNull());
   }
 
   // Verify: old row is now inactive
