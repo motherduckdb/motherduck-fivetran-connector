@@ -523,7 +523,7 @@ TEST_CASE("Migrate - copy column", "[integration][migrate]") {
 
     ::fivetran_sdk::v2::MigrateResponse response;
     auto status = service.Migrate(nullptr, &request, &response);
-    REQUIRE_FAIL(status, "Source column <fake_column_name> not found");
+    REQUIRE_FAIL(status, "No column with the name \"fake_column_name\" found");
   }
 
   // Copy copy to existing column fails

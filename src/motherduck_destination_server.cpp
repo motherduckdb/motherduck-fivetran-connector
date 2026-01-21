@@ -816,18 +816,27 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *context,
           kAddColumnWithDefaultValue: {
         logger->info("Endpoint <Migrate>: ADD_COLUMN_WITH_DEFAULT_VALUE");
         const auto &add_col = add.add_column_with_default_value();
-        sql_generator->add_column_with_default(*con, table, add_col.column(),
-                                               add_col.column_type(),
-                                               add_col.default_value());
+
+        column_def col{
+          .name = add_col.column(),
+          .type = get_duckdb_type(add_col.column_type()),
+          .column_default = add_col.default_value(),
+          .primary_key = false,
+        };
+        sql_generator->add_column_with_default(*con, table, col);
         break;
       }
       case fivetran_sdk::v2::AddOperation::EntityCase::
           kAddColumnInHistoryMode: {
         logger->info("Endpoint <Migrate>: ADD_COLUMN_IN_HISTORY_MODE");
         const auto &add_col = add.add_column_in_history_mode();
-        sql_generator->add_column_in_history_mode(
-            *con, table, add_col.column(), add_col.column_type(),
-            add_col.default_value(), add_col.operation_timestamp());
+        column_def col{
+          .name = add_col.column(),
+          .type = get_duckdb_type(add_col.column_type()),
+          .column_default = add_col.default_value(),
+          .primary_key = false,
+        };
+        sql_generator->add_column_in_history_mode(*con, table, col, add_col.operation_timestamp());
         break;
       }
       default: {

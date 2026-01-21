@@ -995,35 +995,44 @@ void MdSqlGenerator::copy_column(duckdb::Connection &con,
   const std::string quoted_to = KeywordHelper::WriteQuoted(to_column, '"');
 
   // Get the column type from the source column
-  auto columns = describe_table(con, table);
-  column_def *source_col = nullptr;
-  for (auto &col : columns) {
-    if (col.name == from_column) {
-      source_col = &col;
-      break;
-    }
+  auto query = "SELECT data_type_id, numeric_precision, numeric_scale from duckdb_columns() WHERE "
+    "database_name = " + KeywordHelper::WriteQuoted(table.db_name) +
+      " AND schema_name = " + KeywordHelper::WriteQuoted(table.schema_name) +
+        " AND table_name = " + KeywordHelper::WriteQuoted(table.table_name) +
+          " AND column_name = " + KeywordHelper::WriteQuoted(from_column);
+  auto result = con.Query(query);
+
+  if (result->HasError()) {
+    throw std::runtime_error("copy_column get_type: " + result->GetError());
   }
-  if (!source_col) {
-    throw std::runtime_error("Source column <" + from_column + "> not found");
+  if (result->RowCount() < 1) {
+    throw std::runtime_error("No column with the name " + quoted_from + " found");
   }
 
-  // Add the new column
-  std::ostringstream add_sql;
-  add_sql << "ALTER TABLE " << absolute_table_name << " ADD COLUMN "
-          << quoted_to << " " << format_type(*source_col);
+  auto column_type =
+    static_cast<duckdb::LogicalTypeId>(result->GetValue(0, 0).GetValue<int8_t>());
+  column_def source_col{.name = from_column, .type = column_type};
+
+  if (column_type == duckdb::LogicalTypeId::DECIMAL) {
+    source_col.width = result->GetValue(1 ,0).GetValue<int32_t>();
+    source_col.scale = result->GetValue(2 ,0).GetValue<int32_t>();
+  }
 
   con.BeginTransaction();
-
-  run_query(con, "copy_column add", add_sql.str(),
-            "Could not add column for copy_column");
+  {
+    std::ostringstream sql;
+    sql << "ALTER TABLE " << absolute_table_name << " ADD COLUMN " << quoted_to << " " << format_type(source_col);
+    run_query(con, "copy_column add", sql.str(),
+              "Could not add column for copy_column");
+  }
 
   // Copy values
-  std::ostringstream update_sql;
-  update_sql << "UPDATE " << absolute_table_name << " SET " << quoted_to
-             << " = " << quoted_from;
-  run_query(con, "copy_column update", update_sql.str(),
-            "Could not copy column values");
-
+  {
+    std::ostringstream sql;
+    sql << "UPDATE " << absolute_table_name << " SET " << quoted_to << " = " << quoted_from;
+    run_query(con, "copy_column update", sql.str(),
+              "Could not copy column values");
+  }
   con.Commit();
 }
 
@@ -1117,32 +1126,30 @@ void MdSqlGenerator::rename_column(duckdb::Connection &con,
 
 void MdSqlGenerator::add_column_with_default(duckdb::Connection &con,
                                              const table_def &table,
-                                             const std::string &column,
-                                             fivetran_sdk::v2::DataType type,
-                                             const std::string &default_value) {
+                                             const column_def &column) {
   const std::string absolute_table_name = table.to_escaped_string();
-  const std::string quoted_column = KeywordHelper::WriteQuoted(column, '"');
-  const std::string type_str = fivetran_type_to_duckdb_type_string(type);
-  const std::string casted_default_value =
-      "CAST(" + KeywordHelper::WriteQuoted(default_value, '\'') + " AS " +
-      type_str + ")";
+  const std::string quoted_column = KeywordHelper::WriteQuoted(column.name, '"');
 
   std::ostringstream sql;
   sql << "ALTER TABLE " << absolute_table_name << " ADD COLUMN "
-      << quoted_column << " " << type_str;
+      << quoted_column << " " << format_type(column);
 
-  if (!default_value.empty()) {
+  if (!column.column_default.empty()) {
+    const std::string casted_default_value =
+    "CAST(" + KeywordHelper::WriteQuoted(column.column_default, '\'') + " AS " +
+    format_type(column) + ")";
+
     sql << " DEFAULT " << casted_default_value;
   }
 
   run_query(con, "add_column_with_default", sql.str(),
-            "Could not add column <" + column + "> to table <" +
+            "Could not add column <" + column.name + "> to table <" +
                 absolute_table_name + ">");
 }
 
 bool MdSqlGenerator::validate_history_table(
-    duckdb::Connection &con, const std::string absolute_table_name,
-    const std::string quoted_timestamp) {
+    duckdb::Connection &con, const std::string& absolute_table_name,
+    const std::string& quoted_timestamp) {
   // This performs the "Validation before starting the migration" part of
   // add/drop column in history mode as specified in the docs:
   // https://github.com/fivetran/fivetran_partner_sdk/blob/bdaea1a/schema-migration-helper-service.md
@@ -1173,16 +1180,15 @@ bool MdSqlGenerator::validate_history_table(
   return false;
 }
 
-void MdSqlGenerator::add_column_in_history_mode(
-    duckdb::Connection &con, const table_def &table, const std::string &column,
-    fivetran_sdk::v2::DataType type, const std::string &default_value,
-    const std::string &operation_timestamp) {
+void MdSqlGenerator::add_column_in_history_mode(duckdb::Connection &con,
+                                  const table_def &table,
+                                  const column_def &column,
+                                  const std::string &operation_timestamp) {
   const std::string absolute_table_name = table.to_escaped_string();
-  const std::string quoted_column = KeywordHelper::WriteQuoted(column, '"');
-  const std::string type_str = fivetran_type_to_duckdb_type_string(type);
+  const std::string quoted_column = KeywordHelper::WriteQuoted(column.name, '"');
   const std::string casted_default_value =
-      "CAST(" + KeywordHelper::WriteQuoted(default_value, '\'') + " AS " +
-      type_str + ")";
+      "CAST(" + KeywordHelper::WriteQuoted(column.column_default, '\'') + " AS " +
+      format_type(column) + ")";
   const std::string quoted_timestamp =
       "'" + operation_timestamp + "'::TIMESTAMPTZ";
 
@@ -1193,7 +1199,7 @@ void MdSqlGenerator::add_column_in_history_mode(
   // Add the column
   std::ostringstream add_sql;
   add_sql << "ALTER TABLE " << absolute_table_name << " ADD COLUMN "
-          << quoted_column << " " << type_str;
+          << quoted_column << " " << format_type(column);
 
   con.BeginTransaction();
 

@@ -126,24 +126,21 @@ public:
                      const std::string &to_column);
 
   // Add a column in the destination with a default value
-  void add_column_with_default(duckdb::Connection &con, const table_def &table,
-                               const std::string &column,
-                               fivetran_sdk::v2::DataType type,
-                               const std::string &default_value);
+  void add_column_with_default(duckdb::Connection &con,
+                                             const table_def &table,
+                                             const column_def &column);
 
   // Verify the state of the history table before performing schema migrations
-  bool validate_history_table(duckdb::Connection &con,
-                              std::string absolute_table_name,
-                              std::string quoted_timestamp);
+  static bool validate_history_table(duckdb::Connection &con,
+                                     const std::string& absolute_table_name,
+                                     const std::string& quoted_timestamp);
 
   // Add a column in history mode, which means we copy all active tables over to
   // new historic entries with the new column set to the default value, and
   // invalidate old historic entries (where we set the value to NULL).
   void add_column_in_history_mode(duckdb::Connection &con,
                                   const table_def &table,
-                                  const std::string &column,
-                                  fivetran_sdk::v2::DataType type,
-                                  const std::string &default_value,
+                                  const column_def &column,
                                   const std::string &operation_timestamp);
 
   // Update the value of a column of every row
