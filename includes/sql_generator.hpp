@@ -131,7 +131,7 @@ public:
                                              const column_def &column);
 
   // Verify the state of the history table before performing schema migrations
-  static bool validate_history_table(duckdb::Connection &con,
+  static bool history_table_is_valid(duckdb::Connection &con,
                                      const std::string& absolute_table_name,
                                      const std::string& quoted_timestamp);
 

@@ -872,7 +872,7 @@ void MdSqlGenerator::drop_column_in_history_mode(
   const std::string quoted_timestamp =
       "'" + operation_timestamp + "'::TIMESTAMPTZ";
 
-  if (validate_history_table(con, absolute_table_name, quoted_timestamp)) {
+  if (!history_table_is_valid(con, absolute_table_name, quoted_timestamp)) {
     return;
   }
 
@@ -1147,7 +1147,7 @@ void MdSqlGenerator::add_column_with_default(duckdb::Connection &con,
                 absolute_table_name + ">");
 }
 
-bool MdSqlGenerator::validate_history_table(
+bool MdSqlGenerator::history_table_is_valid(
     duckdb::Connection &con, const std::string& absolute_table_name,
     const std::string& quoted_timestamp) {
   // This performs the "Validation before starting the migration" part of
@@ -1161,7 +1161,7 @@ bool MdSqlGenerator::validate_history_table(
 
   if (result->GetValue(0, 0).GetValue<int64_t>() == 0) {
     // The table is empty
-    return true;
+    return false;
   }
 
   auto max_result = con.Query(
@@ -1177,7 +1177,7 @@ bool MdSqlGenerator::validate_history_table(
                              "than the operation timestamp");
   }
 
-  return false;
+  return true;
 }
 
 void MdSqlGenerator::add_column_in_history_mode(duckdb::Connection &con,
@@ -1192,7 +1192,7 @@ void MdSqlGenerator::add_column_in_history_mode(duckdb::Connection &con,
   const std::string quoted_timestamp =
       "'" + operation_timestamp + "'::TIMESTAMPTZ";
 
-  if (validate_history_table(con, absolute_table_name, quoted_timestamp)) {
+  if (!history_table_is_valid(con, absolute_table_name, quoted_timestamp)) {
     return;
   }
 
