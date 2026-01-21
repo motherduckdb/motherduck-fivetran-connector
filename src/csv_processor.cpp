@@ -140,9 +140,17 @@ void add_projections(std::ostringstream &query,
     query << " *";
   } else {
     for (const auto &column : columns) {
+      if (column.type == duckdb::LogicalTypeId::BLOB) {
+        // The CSV reader reads BLOBs as VARCHARs. We have to convert them with
+        // from_base64.
+        query << " from_base64("
+              << duckdb::KeywordHelper::WriteQuoted(column.name, '"') << ") AS "
+              << duckdb::KeywordHelper::WriteQuoted(column.name, '"');
+      } else {
+        query << " " << duckdb::KeywordHelper::WriteQuoted(column.name, '"');
+      }
       // DuckDB can handle trailing commas
-      query << " " << duckdb::KeywordHelper::WriteQuoted(column.name, '"')
-            << ",";
+      query << ",";
     }
   }
 }
@@ -195,15 +203,19 @@ void add_type_options(std::ostringstream &query,
       continue;
     }
 
-    query << duckdb::KeywordHelper::WriteQuoted(column.name, '\'') << ":";
-
-    query << "'" << duckdb::EnumUtil::ToString(column.type);
-    if (column.type == duckdb::LogicalTypeId::DECIMAL && column.width > 0) {
-      query << "(" << std::to_string(column.width) << ","
-            << std::to_string(column.scale) + ")";
+    duckdb::LogicalType pushdown_type;
+    if (column.type == duckdb::LogicalTypeId::BLOB) {
+      pushdown_type = duckdb::LogicalType::VARCHAR;
+    } else if (column.type == duckdb::LogicalTypeId::DECIMAL &&
+               column.width > 0) {
+      pushdown_type = duckdb::LogicalType::DECIMAL(column.width, column.scale);
+    } else {
+      pushdown_type = duckdb::LogicalType(column.type);
     }
+
     // DuckDB can handle trailing comma
-    query << "',";
+    query << duckdb::KeywordHelper::WriteQuoted(column.name, '\'') << ":'"
+          << pushdown_type.ToString() << "',";
   }
   query << "}";
 }

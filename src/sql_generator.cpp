@@ -36,7 +36,8 @@ namespace {
 std::ostream &operator<<(std::ostream &os, const column_def &col) {
   os << duckdb::EnumUtil::ToChars(col.type);
   if (col.type == duckdb::LogicalTypeId::DECIMAL) {
-    os << " (" << col.width << "," << col.scale << ")";
+    os << " (" << std::to_string(col.width) << "," << std::to_string(col.scale)
+       << ")";
   }
   return os;
 }
@@ -316,8 +317,8 @@ std::vector<column_def> MdSqlGenerator::describe_table(duckdb::Connection &con,
     column_def col{row.GetValue(0).GetValue<duckdb::string>(), column_type,
                    row.GetValue(2).GetValue<bool>(), 0, 0};
     if (column_type == duckdb::LogicalTypeId::DECIMAL) {
-      col.width = row.GetValue(3).GetValue<uint32_t>();
-      col.scale = row.GetValue(4).GetValue<uint32_t>();
+      col.width = row.GetValue(3).GetValue<uint8_t>();
+      col.scale = row.GetValue(4).GetValue<uint8_t>();
     }
     columns.push_back(col);
   }
