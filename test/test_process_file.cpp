@@ -457,8 +457,8 @@ TEST_CASE("Test reading CSV file with BINARY column", "[csv_processor]") {
   const std::vector<column_def> columns{
       column_def{.name = "binary_val", .type = duckdb::LogicalType::BLOB}};
 
-  IngestProperties props(temp_csv_file.string(), "", columns, "",
-                         UnmodifiedMarker::Disallowed);
+  IngestProperties props{.filename = temp_csv_file.string(),
+                         .columns = columns};
   auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger,
