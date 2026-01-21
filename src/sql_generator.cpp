@@ -995,7 +995,7 @@ void MdSqlGenerator::copy_column(duckdb::Connection &con,
   const std::string quoted_to = KeywordHelper::WriteQuoted(to_column, '"');
 
   // Get the column type from the source column
-  auto query = "SELECT data_type_id, numeric_precision, numeric_scale from duckdb_columns() WHERE "
+  auto query = "SELECT data_type_id, column_default, numeric_precision, numeric_scale from duckdb_columns() WHERE "
     "database_name = " + KeywordHelper::WriteQuoted(table.db_name) +
       " AND schema_name = " + KeywordHelper::WriteQuoted(table.schema_name) +
         " AND table_name = " + KeywordHelper::WriteQuoted(table.table_name) +
@@ -1011,17 +1011,23 @@ void MdSqlGenerator::copy_column(duckdb::Connection &con,
 
   auto column_type =
     static_cast<duckdb::LogicalTypeId>(result->GetValue(0, 0).GetValue<int8_t>());
-  column_def source_col{.name = from_column, .type = column_type};
+
+  column_def source_col{
+    .name = from_column,
+    .type = column_type,
+    .column_default = result->GetValue(1, 0).GetValue<duckdb::string>(),
+  };
 
   if (column_type == duckdb::LogicalTypeId::DECIMAL) {
-    source_col.width = result->GetValue(1 ,0).GetValue<int32_t>();
-    source_col.scale = result->GetValue(2 ,0).GetValue<int32_t>();
+    source_col.width = result->GetValue(2 ,0).GetValue<int32_t>();
+    source_col.scale = result->GetValue(3 ,0).GetValue<int32_t>();
   }
 
   con.BeginTransaction();
   {
     std::ostringstream sql;
-    sql << "ALTER TABLE " << absolute_table_name << " ADD COLUMN " << quoted_to << " " << format_type(source_col);
+    sql << "ALTER TABLE " << absolute_table_name << " ADD COLUMN " << quoted_to << " "
+      << format_type(source_col) << " DEFAULT " << KeywordHelper::WriteQuoted(source_col.column_default, '\'');
     run_query(con, "copy_column add", sql.str(),
               "Could not add column for copy_column");
   }
