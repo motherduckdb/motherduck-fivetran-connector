@@ -81,10 +81,12 @@ TEST_CASE("Migrate - drop table", "[integration][migrate]") {
 
     ::fivetran_sdk::v2::MigrateResponse response;
     auto status = service.Migrate(nullptr, &request, &response);
-    REQUIRE_FAIL(status, "Could not drop table <\"" +
-      TEST_DATABASE_NAME+ "\".\"main\".\"fake_table_name\">: "
-    "Catalog Error: Table with name fake_table_name does not exist!\n"
-    "Did you mean \"information_schema.key_column_usage\"?");
+    REQUIRE_FAIL(
+        status,
+        "Could not drop table <\"" + TEST_DATABASE_NAME +
+            "\".\"main\".\"fake_table_name\">: "
+            "Catalog Error: Table with name fake_table_name does not exist!\n"
+            "Did you mean \"information_schema.key_column_usage\"?");
   }
 }
 
@@ -178,10 +180,13 @@ TEST_CASE("Migrate - rename table", "[integration][migrate]") {
 
     ::fivetran_sdk::v2::MigrateResponse response;
     auto status = service.Migrate(nullptr, &request, &response);
-    REQUIRE_FAIL(status, "Could not rename table <\"" +
-      TEST_DATABASE_NAME + "\".\"main\".\"fake_table_name\">: " +
-      "Catalog Error: Table with name fake_table_name does not exist!\n"
-      "Did you mean \"" + to_table + "\"?");
+    REQUIRE_FAIL(
+        status,
+        "Could not rename table <\"" + TEST_DATABASE_NAME +
+            "\".\"main\".\"fake_table_name\">: " +
+            "Catalog Error: Table with name fake_table_name does not exist!\n"
+            "Did you mean \"" +
+            to_table + "\"?");
   }
 
   // Create another source table
@@ -213,10 +218,13 @@ TEST_CASE("Migrate - rename table", "[integration][migrate]") {
 
     ::fivetran_sdk::v2::MigrateResponse response;
     auto status = service.Migrate(nullptr, &request, &response);
-    REQUIRE_FAIL(status, "Could not rename table <\""
-      + TEST_DATABASE_NAME + "\".\"main\".\"" + second_from_table + "\">: Catalog Error: Could not rename \""
-      + second_from_table + "\" to \"" + to_table + "\": another entry with this name already exists!");  }
-
+    REQUIRE_FAIL(status,
+                 "Could not rename table <\"" + TEST_DATABASE_NAME +
+                     "\".\"main\".\"" + second_from_table +
+                     "\">: Catalog Error: Could not rename \"" +
+                     second_from_table + "\" to \"" + to_table +
+                     "\": another entry with this name already exists!");
+  }
 
   // Clean up
   con->Query("DROP TABLE IF EXISTS " + to_table);
@@ -283,9 +291,10 @@ TEST_CASE("Migrate - rename column", "[integration][migrate]") {
   {
     auto res = con->Query("SELECT old_name FROM " + table_name);
     REQUIRE(res->HasError());
-    REQUIRE_THAT(res->GetError(), Catch::Matchers::ContainsSubstring(
-      "Binder Error: Referenced column \"old_name\" not found in FROM clause!"
-      ));
+    REQUIRE_THAT(res->GetError(),
+                 Catch::Matchers::ContainsSubstring(
+                     "Binder Error: Referenced column \"old_name\" not found "
+                     "in FROM clause!"));
   }
 
   // Rename column nonexisting column fails
@@ -306,10 +315,13 @@ TEST_CASE("Migrate - rename column", "[integration][migrate]") {
 
     ::fivetran_sdk::v2::MigrateResponse response;
     auto status = service.Migrate(nullptr, &request, &response);
-    REQUIRE_FAIL(status, "Could not rename column <fake_column_name> to <another_new_name> in table <\""
-      + TEST_DATABASE_NAME + "\".\"main\".\"" +
-      table_name + "\">: Binder Error: Table \"" + table_name +
-      "\" does not have a column with name \"fake_column_name\"\n\nDid you mean: \"new_name\"");
+    REQUIRE_FAIL(status,
+                 "Could not rename column <fake_column_name> to "
+                 "<another_new_name> in table <\"" +
+                     TEST_DATABASE_NAME + "\".\"main\".\"" + table_name +
+                     "\">: Binder Error: Table \"" + table_name +
+                     "\" does not have a column with name "
+                     "\"fake_column_name\"\n\nDid you mean: \"new_name\"");
   }
 
   // Rename column to existing fails
@@ -330,9 +342,11 @@ TEST_CASE("Migrate - rename column", "[integration][migrate]") {
 
     ::fivetran_sdk::v2::MigrateResponse response;
     auto status = service.Migrate(nullptr, &request, &response);
-    REQUIRE_FAIL(status, "Could not rename column <id> to <new_name> in table <\""
-      + TEST_DATABASE_NAME + "\".\"main\".\"" +
-      table_name + "\">: Catalog Error: Column with name new_name already exists!");
+    REQUIRE_FAIL(
+        status,
+        "Could not rename column <id> to <new_name> in table <\"" +
+            TEST_DATABASE_NAME + "\".\"main\".\"" + table_name +
+            "\">: Catalog Error: Column with name new_name already exists!");
   }
 
   // Clean up
@@ -351,14 +365,16 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
   // Create the source table
   {
     auto res = con->Query("CREATE TABLE " + from_table +
-      " (id INT, data VARCHAR, value DECIMAL(17,4) default 42, amount DECIMAL(31,6), primary key (id))");
+                          " (id INT, data VARCHAR, value DECIMAL(17,4) default "
+                          "42, amount DECIMAL(31,6), primary key (id))");
     REQUIRE_NO_FAIL(res);
   }
 
   // Insert data
   {
-    auto res = con->Query("INSERT INTO " + from_table +
-                          " VALUES (1, 'data1', 3.1415, 3), (2, 'data2', 10.0, 49)");
+    auto res =
+        con->Query("INSERT INTO " + from_table +
+                   " VALUES (1, 'data1', 3.1415, 3), (2, 'data2', 10.0, 49)");
     REQUIRE_NO_FAIL(res);
   }
 
@@ -399,8 +415,9 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
   // Check decimal precision
 
   {
-    auto res = con->Query("SELECT \"default\", key, column_type FROM (describe " +
-      duckdb::KeywordHelper::WriteQuoted(to_table, '\'') + ")");
+    auto res =
+        con->Query("SELECT \"default\", key, column_type FROM (describe " +
+                   duckdb::KeywordHelper::WriteQuoted(to_table, '\'') + ")");
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 4); // The order is: id, data, value, amount
 
@@ -528,7 +545,7 @@ TEST_CASE("Migrate - copy column", "[integration][migrate]") {
     ::fivetran_sdk::v2::MigrateResponse response;
     auto status = service.Migrate(nullptr, &request, &response);
     REQUIRE_FAIL(status, "Could not add column for copy_column: Catalog Error: "
-      "Column with name dest_col already exists!");
+                         "Column with name dest_col already exists!");
   }
 
   // Clean up
@@ -542,7 +559,8 @@ TEST_CASE("Migrate - copy table to history mode from soft delete",
       "migrate_copy_hist_src_" + std::to_string(Catch::rngSeed());
   const std::string dest_table =
       "migrate_copy_hist_dst_" + std::to_string(Catch::rngSeed());
-  const std::string soft_deleted_column = GENERATE("_fivetran_deleted", "custom_soft_deleted");
+  const std::string soft_deleted_column =
+      GENERATE("_fivetran_deleted", "custom_soft_deleted");
 
   auto con = get_test_connection(MD_TOKEN);
 
@@ -551,7 +569,8 @@ TEST_CASE("Migrate - copy table to history mode from soft delete",
   con->Query("DROP TABLE IF EXISTS " + dest_table);
   {
     auto res = con->Query("CREATE TABLE " + source_table +
-                          " (id INT, name VARCHAR, " + soft_deleted_column + " BOOLEAN, "
+                          " (id INT, name VARCHAR, " + soft_deleted_column +
+                          " BOOLEAN, "
                           "_fivetran_synced TIMESTAMPTZ, primary key (id))");
     REQUIRE_NO_FAIL(res);
   }
@@ -599,16 +618,19 @@ TEST_CASE("Migrate - copy table to history mode from soft delete",
     REQUIRE(res->GetValue(2, 2) == true);
   }
 
-  // Verify soft_deleted_column is NOT in destination when it's the "_fivetran_deleted" column
+  // Verify soft_deleted_column is NOT in destination when it's the
+  // "_fivetran_deleted" column
   if (soft_deleted_column == "_fivetran_deleted") {
-    auto res = con->Query("SELECT " + soft_deleted_column + " FROM " + dest_table);
+    auto res =
+        con->Query("SELECT " + soft_deleted_column + " FROM " + dest_table);
     REQUIRE(res->HasError());
-  } else
-  {
-    // We want check here that soft_deleted_column is not a PK, so we can ignore this column in the verify the whole PK
-    auto res = con->Query("SELECT key FROM (describe " +
-        duckdb::KeywordHelper::WriteQuoted(dest_table, '\'') + ") WHERE column_name = \'" +
-        soft_deleted_column + "\'");
+  } else {
+    // We want check here that soft_deleted_column is not a PK, so we can ignore
+    // this column in the verify the whole PK
+    auto res =
+        con->Query("SELECT key FROM (describe " +
+                   duckdb::KeywordHelper::WriteQuoted(dest_table, '\'') +
+                   ") WHERE column_name = \'" + soft_deleted_column + "\'");
     REQUIRE_NO_FAIL(res);
 
     // soft_deleted_column is not a pk
@@ -626,10 +648,13 @@ TEST_CASE("Migrate - copy table to history mode from soft delete",
   // Verify id is part of primary key
   {
     auto res = con->Query("SELECT key FROM (describe " +
-      duckdb::KeywordHelper::WriteQuoted(dest_table, '\'') + ") WHERE column_name != \'" +
-      soft_deleted_column + "\' ORDER BY column_name");
+                          duckdb::KeywordHelper::WriteQuoted(dest_table, '\'') +
+                          ") WHERE column_name != \'" + soft_deleted_column +
+                          "\' ORDER BY column_name");
     REQUIRE_NO_FAIL(res);
-    REQUIRE(res->RowCount() == 6); // The order is: _fivetran_active, _fivetran_end, _fivetran_start, _fivetran_synced, id, name
+    REQUIRE(res->RowCount() ==
+            6); // The order is: _fivetran_active, _fivetran_end,
+                // _fivetran_start, _fivetran_synced, id, name
 
     // _fivetran_active is not a pk
     REQUIRE(res->GetValue(0, 0).IsNull());
@@ -641,7 +666,7 @@ TEST_CASE("Migrate - copy table to history mode from soft delete",
     REQUIRE(res->GetValue(0, 2) == "PRI");
 
     // _fivetran_synced is not a pk
-    REQUIRE(res->GetValue(0, 3) .IsNull());
+    REQUIRE(res->GetValue(0, 3).IsNull());
 
     // id is a pk
     REQUIRE(res->GetValue(0, 4) == "PRI");

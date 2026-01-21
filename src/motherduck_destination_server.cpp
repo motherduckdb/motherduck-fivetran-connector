@@ -725,101 +725,115 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *context,
     case fivetran_sdk::v2::MigrationDetails::kDrop: {
       logger->info("Endpoint <Migrate>: DropOperation");
       const auto &drop = details.drop();
-      switch (drop.entity_case())
-      {
-        case fivetran_sdk::v2::DropOperation::EntityCase::kDropTable: {
-          logger->info("Endpoint <Migrate>: DROP_TABLE");
-          sql_generator->drop_table(*con, table);
-          break;
-        }
-        case fivetran_sdk::v2::DropOperation::EntityCase::kDropColumnInHistoryMode: {
-          logger->info("Endpoint <Migrate>: DROP_COLUMN_IN_HISTORY_MODE");
-          const auto &drop_col = drop.drop_column_in_history_mode();
-          sql_generator->drop_column_in_history_mode(
-              *con, table, drop_col.column(), drop_col.operation_timestamp());
-          break;
-        }
-        default: {
-          logger->warning("Endpoint <Migrate>: drop operation ");
-          response->set_unsupported(true);
-          return ::grpc::Status::OK;
-        }
+      switch (drop.entity_case()) {
+      case fivetran_sdk::v2::DropOperation::EntityCase::kDropTable: {
+        logger->info("Endpoint <Migrate>: DROP_TABLE");
+        sql_generator->drop_table(*con, table);
+        break;
+      }
+      case fivetran_sdk::v2::DropOperation::EntityCase::
+          kDropColumnInHistoryMode: {
+        logger->info("Endpoint <Migrate>: DROP_COLUMN_IN_HISTORY_MODE");
+        const auto &drop_col = drop.drop_column_in_history_mode();
+        sql_generator->drop_column_in_history_mode(
+            *con, table, drop_col.column(), drop_col.operation_timestamp());
+        break;
+      }
+      default: {
+        logger->warning("Endpoint <Migrate>: drop operation ");
+        response->set_unsupported(true);
+        return ::grpc::Status::OK;
+      }
       }
       break;
     }
     case fivetran_sdk::v2::MigrationDetails::kCopy: {
       logger->info("Endpoint <Migrate>: CopyOperation");
       const auto &copy = details.copy();
-      switch (copy.entity_case())
-      {
-        case fivetran_sdk::v2::CopyOperation::EntityCase::kCopyTable: {
-            logger->info("Endpoint <Migrate>: COPY_TABLE");
-            const auto &copy_table = copy.copy_table();
-            table_def from_table{db_name, schema_name, copy_table.from_table()};
-            table_def to_table{db_name, schema_name, copy_table.to_table()};
-            sql_generator->copy_table(*con, from_table, to_table);
-            break;
-          }
-        case fivetran_sdk::v2::CopyOperation::EntityCase::kCopyColumn: {
-            logger->info("Endpoint <Migrate>: COPY_COLUMN");
-            const auto &copy_col = copy.copy_column();
-            sql_generator->copy_column(*con, table, copy_col.from_column(),
-                                       copy_col.to_column());
-            break;
-          }
-        case fivetran_sdk::v2::CopyOperation::EntityCase::kCopyTableToHistoryMode: {
-            logger->info("Endpoint <Migrate>: COPY_TABLE_TO_HISTORY_MODE");
-            const auto &copy_hist = copy.copy_table_to_history_mode();
-            table_def from_table{db_name, schema_name, copy_hist.from_table()};
-            table_def to_table{db_name, schema_name, copy_hist.to_table()};
-            sql_generator->copy_table_to_history_mode(
-                *con, from_table, to_table, copy_hist.soft_deleted_column());
-            break;
-          }
-        default: {
-          response->set_unsupported(true);
-          return ::grpc::Status::OK;
-        }
+      switch (copy.entity_case()) {
+      case fivetran_sdk::v2::CopyOperation::EntityCase::kCopyTable: {
+        logger->info("Endpoint <Migrate>: COPY_TABLE");
+        const auto &copy_table = copy.copy_table();
+        table_def from_table{db_name, schema_name, copy_table.from_table()};
+        table_def to_table{db_name, schema_name, copy_table.to_table()};
+        sql_generator->copy_table(*con, from_table, to_table);
+        break;
+      }
+      case fivetran_sdk::v2::CopyOperation::EntityCase::kCopyColumn: {
+        logger->info("Endpoint <Migrate>: COPY_COLUMN");
+        const auto &copy_col = copy.copy_column();
+        sql_generator->copy_column(*con, table, copy_col.from_column(),
+                                   copy_col.to_column());
+        break;
+      }
+      case fivetran_sdk::v2::CopyOperation::EntityCase::
+          kCopyTableToHistoryMode: {
+        logger->info("Endpoint <Migrate>: COPY_TABLE_TO_HISTORY_MODE");
+        const auto &copy_hist = copy.copy_table_to_history_mode();
+        table_def from_table{db_name, schema_name, copy_hist.from_table()};
+        table_def to_table{db_name, schema_name, copy_hist.to_table()};
+        sql_generator->copy_table_to_history_mode(
+            *con, from_table, to_table, copy_hist.soft_deleted_column());
+        break;
+      }
+      default: {
+        response->set_unsupported(true);
+        return ::grpc::Status::OK;
+      }
       }
       break;
     }
     case fivetran_sdk::v2::MigrationDetails::kRename: {
       logger->info("Endpoint <Migrate>: RenameOperation");
       const auto &rename = details.rename();
-      if (rename.has_rename_table()) {
+      switch (rename.entity_case()) {
+      case fivetran_sdk::v2::RenameOperation::EntityCase::kRenameTable: {
         logger->info("Endpoint <Migrate>: RENAME_TABLE");
         const auto &rename_tbl = rename.rename_table();
         table_def from_table{db_name, schema_name, rename_tbl.from_table()};
         sql_generator->rename_table(*con, from_table, rename_tbl.to_table());
-      } else if (rename.has_rename_column()) {
+        break;
+      }
+      case fivetran_sdk::v2::RenameOperation::EntityCase::kRenameColumn: {
         logger->info("Endpoint <Migrate>: RENAME_COLUMN");
         const auto &rename_col = rename.rename_column();
         sql_generator->rename_column(*con, table, rename_col.from_column(),
                                      rename_col.to_column());
-      } else {
+        break;
+      }
+      default: {
         response->set_unsupported(true);
         return ::grpc::Status::OK;
+      }
       }
       break;
     }
     case fivetran_sdk::v2::MigrationDetails::kAdd: {
       logger->info("Endpoint <Migrate>: AddOperation");
       const auto &add = details.add();
-      if (add.has_add_column_with_default_value()) {
+      switch (add.entity_case()) {
+      case fivetran_sdk::v2::AddOperation::EntityCase::
+          kAddColumnWithDefaultValue: {
         logger->info("Endpoint <Migrate>: ADD_COLUMN_WITH_DEFAULT_VALUE");
         const auto &add_col = add.add_column_with_default_value();
         sql_generator->add_column_with_default(*con, table, add_col.column(),
                                                add_col.column_type(),
                                                add_col.default_value());
-      } else if (add.has_add_column_in_history_mode()) {
+        break;
+      }
+      case fivetran_sdk::v2::AddOperation::EntityCase::
+          kAddColumnInHistoryMode: {
         logger->info("Endpoint <Migrate>: ADD_COLUMN_IN_HISTORY_MODE");
         const auto &add_col = add.add_column_in_history_mode();
         sql_generator->add_column_in_history_mode(
             *con, table, add_col.column(), add_col.column_type(),
             add_col.default_value(), add_col.operation_timestamp());
-      } else {
+        break;
+      }
+      default: {
         response->set_unsupported(true);
         return ::grpc::Status::OK;
+      }
       }
       break;
     }
