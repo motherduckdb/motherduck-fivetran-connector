@@ -869,8 +869,7 @@ void MdSqlGenerator::drop_column_in_history_mode(
     const std::string &operation_timestamp) {
   const std::string absolute_table_name = table.to_escaped_string();
   const std::string quoted_column = KeywordHelper::WriteQuoted(column, '"');
-  const std::string quoted_timestamp =
-      "'" + operation_timestamp + "'::TIMESTAMPTZ";
+  const std::string quoted_timestamp = KeywordHelper::WriteQuoted(operation_timestamp) + "::TIMESTAMPTZ";
 
   if (!history_table_is_valid(con, absolute_table_name, quoted_timestamp)) {
     return;
@@ -1201,8 +1200,7 @@ void MdSqlGenerator::add_column_in_history_mode(duckdb::Connection &con,
     casted_default_value = "NULL";
   }
 
-  const std::string quoted_timestamp =
-      "'" + operation_timestamp + "'::TIMESTAMPTZ";
+  const std::string quoted_timestamp = KeywordHelper::WriteQuoted(operation_timestamp) + "::TIMESTAMPTZ";
 
   if (!history_table_is_valid(con, absolute_table_name, quoted_timestamp)) {
     return;
