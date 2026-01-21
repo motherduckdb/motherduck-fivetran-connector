@@ -293,17 +293,6 @@ void ProcessFile(
   logger.info("    validated file " + props.filename);
 
   const auto is_file_encrypted = !props.decryption_key.empty();
-
-#if !defined(NDEBUG) && defined(ENABLE_LEAK_DECRYPTION_KEY)
-  if (is_file_encrypted) {
-    const std::string key_file_path = props.filename + ".key";
-    std::ofstream key_ofs(key_file_path, std::ios::binary);
-    key_ofs.write(props.decryption_key.c_str(),
-                  static_cast<std::streamsize>(props.decryption_key.size()));
-    key_ofs.flush();
-  }
-#endif
-
   std::string decrypted_file_path;
   // Only used if file is encrypted to ensure MemoryBackedFile lives long enough
   std::optional<MemoryBackedFile> temp_file;
