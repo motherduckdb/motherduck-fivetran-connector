@@ -82,7 +82,7 @@ std::vector<column_def> get_duckdb_columns(
     }
 
     duckdb_columns.push_back(column_def{col.name(), duckdb_type,
-                                        "", col.primary_key(), decimal_width,
+                                        std::nullopt, col.primary_key(), decimal_width,
                                         decimal_scale});
   }
   return duckdb_columns;
