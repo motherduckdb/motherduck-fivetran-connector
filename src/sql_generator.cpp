@@ -1134,7 +1134,7 @@ void MdSqlGenerator::add_column_with_default(duckdb::Connection &con,
   sql << "ALTER TABLE " << absolute_table_name << " ADD COLUMN "
       << quoted_column << " " << format_type(column);
 
-  if (!column.column_default.empty()) {
+  if (column.column_default != "NULL") { // According to Fivetran, this shouldn't happen though for this operation
     const std::string casted_default_value =
     "CAST(" + KeywordHelper::WriteQuoted(column.column_default, '\'') + " AS " +
     format_type(column) + ")";
@@ -1186,9 +1186,15 @@ void MdSqlGenerator::add_column_in_history_mode(duckdb::Connection &con,
                                   const std::string &operation_timestamp) {
   const std::string absolute_table_name = table.to_escaped_string();
   const std::string quoted_column = KeywordHelper::WriteQuoted(column.name, '"');
-  const std::string casted_default_value =
-      "CAST(" + KeywordHelper::WriteQuoted(column.column_default, '\'') + " AS " +
+
+  std::string casted_default_value;
+  if (column.column_default != "NULL") {
+    casted_default_value = "CAST(" + KeywordHelper::WriteQuoted(column.column_default, '\'') + " AS " +
       format_type(column) + ")";
+  } else {
+    casted_default_value = "NULL";
+  }
+
   const std::string quoted_timestamp =
       "'" + operation_timestamp + "'::TIMESTAMPTZ";
 
@@ -1288,11 +1294,10 @@ void MdSqlGenerator::migrate_soft_delete_to_live(
               "Could not delete soft-deleted rows");
   }
 
-  // Always drop _fivetran_deleted
+  // Always drop the _fivetran_deleted column, with IF EXISTS as a safeguard
   {
     std::ostringstream sql;
-    sql << "ALTER TABLE " << absolute_table_name << " DROP COLUMN "
-             << quoted_deleted_col;
+    sql << "ALTER TABLE " << absolute_table_name << " DROP COLUMN IF EXISTS \"_fivetran_deleted\"";
     run_query(con, "migrate_soft_delete_to_live drop", sql.str(),
               "Could not drop soft_deleted_column");
   }
@@ -1350,17 +1355,15 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
   con.BeginTransaction(); // See duckdb issue #20570: we can only start the
                           // transaction here at this point.
 
-  // Always drop the _fivetran_deleted column
+  // Always drop the _fivetran_deleted column, with IF EXISTS as a safeguard
   {
     std::ostringstream sql;
-    sql << "ALTER TABLE " << absolute_table_name << " DROP COLUMN "
-             << quoted_deleted_col << ";";
+    sql << "ALTER TABLE " << absolute_table_name << " DROP COLUMN IF EXISTS \"_fivetran_deleted\";";
     run_query(con, "migrate_soft_delete_to_history drop", sql.str(),
               "Could not drop soft_deleted_column");
   }
 
-  // Rename, copy and drop the original table to be able to replace the primary
-  // key
+  // Rename, copy and drop the original table to be able to replace the primary key
   run_query(con, "migrate_soft_delete_to_history rename",
             "ALTER TABLE " + absolute_table_name + " RENAME TO " +
                 KeywordHelper::WriteQuoted(temp_table.table_name, '"') + ";",

@@ -569,16 +569,30 @@ TEST_CASE("Migrate - copy table to history mode from soft delete",
   con->Query("DROP TABLE IF EXISTS " + dest_table);
   {
     auto res = con->Query("CREATE TABLE " + source_table +
-                          " (id INT, name VARCHAR, " + soft_deleted_column +
-                          " BOOLEAN, "
+                          " (id INT, name VARCHAR, _fivetran_deleted BOOLEAN, "
                           "_fivetran_synced TIMESTAMPTZ, primary key (id))");
     REQUIRE_NO_FAIL(res);
+
+    if (soft_deleted_column != "_fivetran_deleted")
+    {
+      auto res2 = con->Query("ALTER TABLE " + source_table +
+                            " ADD COLUMN " + soft_deleted_column + " BOOLEAN");
+      REQUIRE_NO_FAIL(res2);
+    }
   }
 
   // Insert data with some deleted rows
+  if (soft_deleted_column != "_fivetran_deleted")
   {
     auto res = con->Query("INSERT INTO " + source_table +
-                          " VALUES (1, 'Alice', false, NOW()), "
+                          " (id, name, _fivetran_deleted, _fivetran_synced, " + soft_deleted_column
+                          + ") VALUES (1, 'Alice', false, NOW(), false), "
+                          "(2, 'Bob', true, NOW(), true), "
+                          "(3, 'Charlie', false, NOW(), false)");
+    REQUIRE_NO_FAIL(res);
+  } else {
+    auto res = con->Query("INSERT INTO " + source_table +
+                          " (id, name, _fivetran_deleted, _fivetran_synced) VALUES (1, 'Alice', false, NOW()), "
                           "(2, 'Bob', true, NOW()), "
                           "(3, 'Charlie', false, NOW())");
     REQUIRE_NO_FAIL(res);
@@ -618,7 +632,7 @@ TEST_CASE("Migrate - copy table to history mode from soft delete",
     REQUIRE(res->GetValue(2, 2) == true);
   }
 
-  // Verify soft_deleted_column is NOT in destination when it's the
+  // Verify soft_deleted_column is NOT in the destination when it's the
   // "_fivetran_deleted" column
   if (soft_deleted_column == "_fivetran_deleted") {
     auto res =
@@ -626,7 +640,7 @@ TEST_CASE("Migrate - copy table to history mode from soft delete",
     REQUIRE(res->HasError());
   } else {
     // We want check here that soft_deleted_column is not a PK, so we can ignore
-    // this column in the verify the whole PK
+    // this column when we verify the whole PK below
     auto res =
         con->Query("SELECT key FROM (describe " +
                    duckdb::KeywordHelper::WriteQuoted(dest_table, '\'') +
@@ -855,7 +869,7 @@ TEST_CASE("Migrate - update column value", "[integration][migrate]") {
     request.mutable_details()->mutable_update_column_value()->set_column(
         "status");
     request.mutable_details()->mutable_update_column_value()->set_value(
-        "'updated'");
+        "updated");
 
     ::fivetran_sdk::v2::MigrateResponse response;
     auto status = service.Migrate(nullptr, &request, &response);
@@ -949,21 +963,14 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
     REQUIRE(res->GetValue(0, 0) == 2);
   }
 
-  // Verify: new active row has the new column with default value
+  // Verify: new active row has the new columns with default values
   {
-    auto res = con->Query("SELECT age FROM " + table_name +
+    auto res = con->Query("SELECT age, switch FROM " + table_name +
                           " WHERE _fivetran_active = TRUE");
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 1);
     REQUIRE(res->GetValue(0, 0) == 25);
-  }
-  // Verify: new active row has the new column with default value
-  {
-    auto res = con->Query("SELECT switch FROM " + table_name +
-                          " WHERE _fivetran_active = TRUE");
-    REQUIRE_NO_FAIL(res);
-    REQUIRE(res->RowCount() == 1);
-    REQUIRE(res->GetValue(0, 0) == false);
+    REQUIRE(res->GetValue(1, 0) == false);
   }
 
   // Verify: old row is now inactive
