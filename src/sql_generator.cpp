@@ -979,8 +979,8 @@ void MdSqlGenerator::copy_table(duckdb::Connection &con,
               << " ADD PRIMARY KEY (";
     write_joined(sql, columns_pk, print_column);
     sql << ");";
-    run_query(con, "migrate_history_to_live alter", sql.str(),
-              "Could not alter soft_delete table");
+    run_query(con, "copy_table alter", sql.str(),
+              "Could not alter table");
   }
 
   con.Commit();
@@ -1087,7 +1087,7 @@ void MdSqlGenerator::copy_table_to_history_mode(
     write_joined(sql, columns_pk, print_column);
     sql << ");";
     run_query(con, "copy_table_to_history_mode alter", sql.str(),
-              "Could not alter soft_delete table");
+              "Could not alter history table");
   }
   con.Commit();
 
@@ -1265,7 +1265,7 @@ void MdSqlGenerator::update_column_value(duckdb::Connection &con,
 
   std::ostringstream sql;
   sql << "UPDATE " << absolute_table_name << " SET " << quoted_column << " = "
-      << value;
+      << KeywordHelper::WriteQuoted(value);
 
   run_query(con, "update_column_value", sql.str(),
             "Could not update column <" + column + "> in table <" +
@@ -1404,7 +1404,7 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
     write_joined(sql, columns_pk, print_column);
     sql << ");";
     run_query(con, "migrate_soft_delete_to_history alter", sql.str(),
-              "Could not alter soft_delete table");
+              "Could not alter history table");
   }
   con.Commit();
 }
@@ -1586,7 +1586,7 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection &con,
     write_joined(sql, columns_pk, print_column);
     sql << ");";
     run_query(con, "migrate_history_to_live alter", sql.str(),
-              "Could not alter soft_delete table");
+              "Could not alter live table");
   }
 
   // Swap the original and temporary table
@@ -1703,7 +1703,7 @@ void MdSqlGenerator::migrate_live_to_history(duckdb::Connection &con,
     write_joined(sql, columns_pk, print_column);
     sql << ");";
     run_query(con, "migrate_live_to_history alter", sql.str(),
-              "Could not alter soft_delete table");
+              "Could not alter history table");
   }
   con.Commit();
 }
