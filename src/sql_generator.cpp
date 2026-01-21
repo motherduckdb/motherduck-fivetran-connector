@@ -1173,8 +1173,8 @@ bool MdSqlGenerator::history_table_is_valid(
   }
 
   if (max_result->GetValue(0, 0).GetValue<bool>() != true) {
-    throw std::runtime_error("_fivetran_start column contains values larger "
-                             "than the operation timestamp");
+    throw std::runtime_error("The _fivetran_start column contains values larger "
+                             "than the operation timestamp. Please contact Fivetran support.");
   }
 
   return true;
@@ -1288,8 +1288,8 @@ void MdSqlGenerator::migrate_soft_delete_to_live(
               "Could not delete soft-deleted rows");
   }
 
-  // Drop the soft_deleted_column if it's _fivetran_deleted
-  if (soft_deleted_column == "_fivetran_deleted") {
+  // Always drop _fivetran_deleted
+  {
     std::ostringstream sql;
     sql << "ALTER TABLE " << absolute_table_name << " DROP COLUMN "
              << quoted_deleted_col;
@@ -1350,8 +1350,8 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
   con.BeginTransaction(); // See duckdb issue #20570: we can only start the
                           // transaction here at this point.
 
-  // Drop the soft_deleted_column if it's _fivetran_deleted
-  if (soft_deleted_column == "_fivetran_deleted") {
+  // Always drop the _fivetran_deleted column
+  {
     std::ostringstream sql;
     sql << "ALTER TABLE " << absolute_table_name << " DROP COLUMN "
              << quoted_deleted_col << ";";
