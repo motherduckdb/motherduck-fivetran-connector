@@ -1035,8 +1035,8 @@ void MdSqlGenerator::copy_column(duckdb::Connection &con,
   };
 
   if (column_type == duckdb::LogicalTypeId::DECIMAL) {
-    source_col.width = result->GetValue(2 ,0).GetValue<int32_t>();
-    source_col.scale = result->GetValue(3 ,0).GetValue<int32_t>();
+    source_col.width = result->GetValue(2 ,0).GetValue<uint8_t>();
+    source_col.scale = result->GetValue(3 ,0).GetValue<uint8_t>();
   }
 
   con.BeginTransaction();
