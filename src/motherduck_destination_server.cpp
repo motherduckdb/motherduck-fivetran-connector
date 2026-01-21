@@ -364,10 +364,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       throw std::invalid_argument("No primary keys found");
     }
 
-    // We start a transaction here to a) ensure data consistency and b) clean up
-    // server-side data staging tables in case of an error
-    con.BeginTransaction();
-
     for (auto &filename : request->replace_files()) {
       logger.info("Processing replace file " + filename);
       const auto decryption_key = get_decryption_key(
@@ -424,8 +420,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
           });
     }
 
-    con.Commit();
-
   } catch (const md_error::RecoverableError &mde) {
     auto const msg = "WriteBatch endpoint failed for schema <" +
                      request->schema_name() + ">, table <" +
@@ -476,10 +470,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     if (columns_pk.empty()) {
       throw std::invalid_argument("No primary keys found");
     }
-
-    // We start a transaction here to a) ensure data consistency and b) clean up
-    // server-side data staging tables in case of an error
-    con.BeginTransaction();
 
     /*
     The latest_active_records (lar) table is used to process the update file
@@ -597,8 +587,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                 con, table_name, staging_table_name, columns_pk);
           });
     }
-
-    con.Commit();
 
   } catch (const md_error::RecoverableError &mde) {
     auto const msg = "WriteHistoryBatch endpoint failed for schema <" +

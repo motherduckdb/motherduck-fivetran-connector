@@ -307,6 +307,10 @@ void ProcessFile(
     reset_file_cursor(temp_file.value().fd);
   }
 
+  if (!con.HasActiveTransaction()) {
+    con.BeginTransaction();
+  }
+
   MdSqlGenerator sql_generator(logger);
   const std::string staging_table_name =
       sql_generator.generate_temp_table_name(con, "__fivetran_ingest_staging");
@@ -341,5 +345,8 @@ void ProcessFile(
                   "> after processing CSV file <" + props.filename +
                   ">: " + drop_staging_table_res->GetError());
   }
+
+  // This throws any errors during commit
+  con.Commit();
 }
 } // namespace csv_processor
