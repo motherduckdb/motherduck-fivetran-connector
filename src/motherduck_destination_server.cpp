@@ -723,7 +723,6 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *context,
 
     switch (details.operation_case()) {
     case fivetran_sdk::v2::MigrationDetails::kDrop: {
-      logger->info("Endpoint <Migrate>: DropOperation");
       const auto &drop = details.drop();
       switch (drop.entity_case()) {
       case fivetran_sdk::v2::DropOperation::EntityCase::kDropTable: {
@@ -740,7 +739,7 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *context,
         break;
       }
       default: {
-        logger->warning("Endpoint <Migrate>: drop operation ");
+        logger->warning("Endpoint <Migrate>: received unsupported drop mode operation type");
         response->set_unsupported(true);
         return ::grpc::Status::OK;
       }
@@ -748,7 +747,6 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *context,
       break;
     }
     case fivetran_sdk::v2::MigrationDetails::kCopy: {
-      logger->info("Endpoint <Migrate>: CopyOperation");
       const auto &copy = details.copy();
       switch (copy.entity_case()) {
       case fivetran_sdk::v2::CopyOperation::EntityCase::kCopyTable: {
@@ -784,7 +782,6 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *context,
       break;
     }
     case fivetran_sdk::v2::MigrationDetails::kRename: {
-      logger->info("Endpoint <Migrate>: RenameOperation");
       const auto &rename = details.rename();
       switch (rename.entity_case()) {
       case fivetran_sdk::v2::RenameOperation::EntityCase::kRenameTable: {
@@ -809,7 +806,6 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *context,
       break;
     }
     case fivetran_sdk::v2::MigrationDetails::kAdd: {
-      logger->info("Endpoint <Migrate>: AddOperation");
       const auto &add = details.add();
       switch (add.entity_case()) {
       case fivetran_sdk::v2::AddOperation::EntityCase::
@@ -854,7 +850,6 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *context,
       break;
     }
     case fivetran_sdk::v2::MigrationDetails::kTableSyncModeMigration: {
-      logger->info("Endpoint <Migrate>: TableSyncModeMigrationOperation");
       const auto &sync_mode = details.table_sync_mode_migration();
       const std::string soft_deleted_column =
           sync_mode.has_soft_deleted_column() ? sync_mode.soft_deleted_column()
@@ -864,6 +859,8 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *context,
                                          : false;
 
       switch (sync_mode.type()) {
+      // Note: officially live mode is not supported yet for the partner SDK. Hence, the LIVE_TO_* and *_TO_LIVE are
+      // not yet expected to be sent out, and we could expect changes to the docs/spec on live mode in the future.
       case fivetran_sdk::v2::SOFT_DELETE_TO_LIVE:
         logger->info("Endpoint <Migrate>: SOFT_DELETE_TO_LIVE");
         sql_generator->migrate_soft_delete_to_live(*con, table,
