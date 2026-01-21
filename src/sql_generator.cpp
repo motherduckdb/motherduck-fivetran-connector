@@ -1156,7 +1156,7 @@ bool MdSqlGenerator::history_table_is_valid(
   auto result = con.Query("SELECT COUNT(*) FROM " + absolute_table_name);
 
   if (result->HasError()) {
-    throw std::runtime_error("Could not query table size");
+    throw std::runtime_error("Could not query table size: " + result->GetError());
   }
 
   if (result->GetValue(0, 0).GetValue<int64_t>() == 0) {
@@ -1169,7 +1169,7 @@ bool MdSqlGenerator::history_table_is_valid(
       absolute_table_name + " WHERE \"_fivetran_active\" = true");
 
   if (max_result->HasError()) {
-    throw std::runtime_error("Could not query _fivetran_start value");
+    throw std::runtime_error("Could not query _fivetran_start value: " + max_result->GetError());
   }
 
   if (max_result->GetValue(0, 0).GetValue<bool>() != true) {
