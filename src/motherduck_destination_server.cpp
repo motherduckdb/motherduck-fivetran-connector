@@ -89,31 +89,19 @@ std::vector<column_def> get_duckdb_columns(
 }
 
 std::string
-get_encryption_key(const std::string &filename,
+get_decryption_key(const std::string &filename,
                    const google::protobuf::Map<std::string, std::string> &keys,
-                   ::fivetran_sdk::v2::Encryption encryption) {
+                   const ::fivetran_sdk::v2::Encryption encryption) {
   if (encryption == ::fivetran_sdk::v2::Encryption::NONE) {
     return "";
   }
-  auto encryption_key_it = keys.find(filename);
 
+  const auto encryption_key_it = keys.find(filename);
   if (encryption_key_it == keys.end()) {
     throw std::invalid_argument("Missing encryption key for " + filename);
   }
 
   return encryption_key_it->second;
-}
-
-template <typename T>
-IngestProperties
-create_ingest_props(const std::string &filename, const T &request,
-                    const std::vector<column_def> &cols,
-                    const UnmodifiedMarker allow_unmodified_string) {
-  const std::string decryption_key = get_encryption_key(
-      filename, request->keys(), request->file_params().encryption());
-  return IngestProperties(filename, decryption_key, cols,
-                          request->file_params().null_string(),
-                          allow_unmodified_string);
 }
 
 grpc::Status DestinationSdkImpl::ConfigurationForm(
@@ -403,12 +391,13 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     for (auto &filename : request->replace_files()) {
       logger.info("Processing replace file " + filename);
-      const auto decryption_key = get_encryption_key(
+      const auto decryption_key = get_decryption_key(
           filename, request->keys(), request->file_params().encryption());
-
-      IngestProperties props(filename, decryption_key, cols,
-                             request->file_params().null_string(),
-                             UnmodifiedMarker::Disallowed);
+      IngestProperties props{.filename = filename,
+                             .decryption_key = decryption_key,
+                             .columns = cols,
+                             .null_value = request->file_params().null_string(),
+                             .allow_unmodified_string = false};
 
       csv_processor::ProcessFile(
           con, props, logger, [&](const std::string &staging_table_name) {
@@ -419,11 +408,13 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     for (auto &filename : request->update_files()) {
       logger.info("Processing update file " + filename);
-      auto decryption_key = get_encryption_key(
+      auto decryption_key = get_decryption_key(
           filename, request->keys(), request->file_params().encryption());
-      IngestProperties props(filename, decryption_key, cols,
-                             request->file_params().null_string(),
-                             UnmodifiedMarker::Allowed);
+      IngestProperties props{.filename = filename,
+                             .decryption_key = decryption_key,
+                             .columns = cols,
+                             .null_value = request->file_params().null_string(),
+                             .allow_unmodified_string = true};
 
       csv_processor::ProcessFile(
           con, props, logger, [&](const std::string &staging_table_name) {
@@ -435,15 +426,17 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     for (auto &filename : request->delete_files()) {
       logger.info("Processing delete file " + filename);
-      auto decryption_key = get_encryption_key(
-          filename, request->keys(), request->file_params().encryption());
       std::vector<column_def> cols_to_read;
       for (const auto &col : columns_pk) {
         cols_to_read.push_back(*col);
       }
-      IngestProperties props(filename, decryption_key, cols_to_read,
-                             request->file_params().null_string(),
-                             UnmodifiedMarker::Disallowed);
+      auto decryption_key = get_decryption_key(
+          filename, request->keys(), request->file_params().encryption());
+      IngestProperties props{.filename = filename,
+                             .decryption_key = decryption_key,
+                             .columns = cols_to_read,
+                             .null_value = request->file_params().null_string(),
+                             .allow_unmodified_string = false};
 
       csv_processor::ProcessFile(
           con, props, logger, [&](const std::string &staging_table_name) {
@@ -534,8 +527,15 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       earliest_start_cols.push_back(
           {.name = "_fivetran_start",
            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ});
-      IngestProperties props = create_ingest_props(
-          filename, request, earliest_start_cols, UnmodifiedMarker::Disallowed);
+
+      const std::string decryption_key = get_decryption_key(
+          filename, request->keys(), request->file_params().encryption());
+      IngestProperties props{.filename = filename,
+                             .decryption_key = decryption_key,
+                             .columns = earliest_start_cols,
+                             .null_value = request->file_params().null_string(),
+                             .allow_unmodified_string = false};
+
       csv_processor::ProcessFile(con, props, logger,
                                  [&](const std::string &staging_table_name) {
                                    sql_generator->deactivate_historical_records(
@@ -546,8 +546,13 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     for (auto &filename : request->update_files()) {
       logger.info("update file " + filename);
-      IngestProperties props = create_ingest_props(filename, request, cols,
-                                                   UnmodifiedMarker::Allowed);
+      const std::string decryption_key = get_decryption_key(
+          filename, request->keys(), request->file_params().encryption());
+      IngestProperties props{.filename = filename,
+                             .decryption_key = decryption_key,
+                             .columns = cols,
+                             .null_value = request->file_params().null_string(),
+                             .allow_unmodified_string = true};
 
       csv_processor::ProcessFile(
           con, props, logger, [&](const std::string &staging_table_name) {
@@ -569,8 +574,14 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     // upsert files
     for (auto &filename : request->replace_files()) {
       logger.info("replace/upsert file " + filename);
-      IngestProperties props = create_ingest_props(
-          filename, request, cols, UnmodifiedMarker::Disallowed);
+      const std::string decryption_key = get_decryption_key(
+          filename, request->keys(), request->file_params().encryption());
+      IngestProperties props{.filename = filename,
+                             .decryption_key = decryption_key,
+                             .columns = cols,
+                             .null_value = request->file_params().null_string(),
+                             .allow_unmodified_string = false};
+
       csv_processor::ProcessFile(
           con, props, logger, [&](const std::string &staging_table_name) {
             sql_generator->insert(con, table_name, staging_table_name,
@@ -593,8 +604,13 @@ grpc::Status DestinationSdkImpl::WriteBatch(
         }
       }
 
-      IngestProperties props = create_ingest_props(
-          filename, request, cols_to_read, UnmodifiedMarker::Disallowed);
+      const std::string decryption_key = get_decryption_key(
+          filename, request->keys(), request->file_params().encryption());
+      IngestProperties props{.filename = filename,
+                             .decryption_key = decryption_key,
+                             .columns = cols_to_read,
+                             .null_value = request->file_params().null_string(),
+                             .allow_unmodified_string = false};
 
       csv_processor::ProcessFile(
           con, props, logger, [&](const std::string &staging_table_name) {

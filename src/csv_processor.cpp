@@ -100,6 +100,8 @@ void reset_file_cursor(const int file_descriptor) {
   }
 }
 
+enum class CompressionType { None = 0, ZSTD = 1 };
+
 CompressionType determine_compression_type(const std::string &file_path) {
   std::ifstream ifs(file_path, std::ios::binary);
   if (ifs.fail()) {
