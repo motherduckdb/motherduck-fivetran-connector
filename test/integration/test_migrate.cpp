@@ -808,7 +808,7 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
                        ->mutable_add_column_with_default_value();
     add_col->set_column("new_col");
     add_col->set_column_type(::fivetran_sdk::v2::DataType::STRING);
-    add_col->set_default_value("'default_value'");
+    add_col->set_default_value("default_value");
 
     ::fivetran_sdk::v2::MigrateResponse response;
     auto status = service.Migrate(nullptr, &request, &response);
@@ -820,13 +820,74 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
   {
     auto res = con->Query("INSERT INTO " + table_name + " (id) VALUES (2)");
     REQUIRE_NO_FAIL(res);
-  }
-  {
-    auto res =
+    auto res2 =
         con->Query("SELECT new_col FROM " + table_name + " WHERE id = 2");
+    REQUIRE_NO_FAIL(res2);
+    REQUIRE(res2->RowCount() == 1);
+    REQUIRE(res2->GetValue(0, 0).ToString() == "default_value");
+  }
+
+  // Add column with default NULL
+  {
+    ::fivetran_sdk::v2::MigrateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_details()->set_table(table_name);
+    auto add_col = request.mutable_details()
+                       ->mutable_add()
+                       ->mutable_add_column_with_default_value();
+    add_col->set_column("new_col2");
+    add_col->set_column_type(::fivetran_sdk::v2::DataType::STRING);
+    add_col->set_default_value("NULL");
+
+    ::fivetran_sdk::v2::MigrateResponse response;
+    auto status = service.Migrate(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(response.success());
+  }
+
+  // Verify column exists (new rows get default)
+  {
+    auto res = con->Query("INSERT INTO " + table_name + " (id) VALUES (3)");
     REQUIRE_NO_FAIL(res);
-    REQUIRE(res->RowCount() == 1);
-    REQUIRE(res->GetValue(0, 0).ToString() == "'default_value'");
+    auto res2 =
+        con->Query("SELECT new_col2 FROM " + table_name + " WHERE id = 3");
+    REQUIRE_NO_FAIL(res2);
+    REQUIRE(res2->RowCount() == 1);
+    REQUIRE(res2->GetValue(0, 0).IsNull());
+  }
+
+
+  // Add column with default empty string
+  {
+    ::fivetran_sdk::v2::MigrateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_details()->set_table(table_name);
+    auto add_col = request.mutable_details()
+                       ->mutable_add()
+                       ->mutable_add_column_with_default_value();
+    add_col->set_column("new_col3");
+    add_col->set_column_type(::fivetran_sdk::v2::DataType::STRING);
+    add_col->set_default_value("");
+
+    ::fivetran_sdk::v2::MigrateResponse response;
+    auto status = service.Migrate(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(response.success());
+  }
+
+  // Verify column exists (new rows get default)
+  {
+    auto res = con->Query("INSERT INTO " + table_name + " (id) VALUES (4)");
+    REQUIRE_NO_FAIL(res);
+    auto res2 =
+        con->Query("SELECT new_col3 FROM " + table_name + " WHERE id = 4");
+    REQUIRE_NO_FAIL(res2);
+    REQUIRE(res2->RowCount() == 1);
+    REQUIRE(res2->GetValue(0, 0).ToString().empty());
   }
 
   // Clean up
