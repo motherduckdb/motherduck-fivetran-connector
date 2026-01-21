@@ -17,8 +17,6 @@
 namespace fs = std::filesystem;
 using namespace test::constants;
 
-const std::string TEMP_DB = "memory";
-
 TEST_CASE("Test can read simple CSV file", "[csv_processor]") {
   const fs::path test_file =
       fs::path(TEST_RESOURCES_DIR) / "csv" / "small_simple.csv";
@@ -32,12 +30,11 @@ TEST_CASE("Test can read simple CSV file", "[csv_processor]") {
       column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
       column_def{.name = "name", .type = duckdb::LogicalType::VARCHAR},
       column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT}};
-  IngestProperties props(test_file.string(), "", columns, "",
-                         UnmodifiedMarker::Disallowed, TEMP_DB);
-  auto logger = std::make_shared<mdlog::MdLog>();
+  IngestProperties props{.filename = test_file.string(), .columns = columns};
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
-      con, props, logger, [&con](const std::string &view_name) {
-        const auto res = con.Query("FROM " + view_name);
+      con, props, logger, [&con](const std::string &staging_table_name) {
+        const auto res = con.Query("FROM " + staging_table_name);
         REQUIRE_FALSE(res->HasError());
         REQUIRE(res->ColumnCount() == 3);
         REQUIRE(res->RowCount() == 3);
@@ -78,12 +75,11 @@ TEST_CASE("Test reading CSV file with auto-detection of column types",
       column_def{.name = "id", .type = duckdb::LogicalType::INVALID},
       column_def{.name = "name", .type = duckdb::LogicalType::INVALID},
       column_def{.name = "age", .type = duckdb::LogicalType::INVALID}};
-  IngestProperties props(test_file.string(), "", columns, "",
-                         UnmodifiedMarker::Disallowed, TEMP_DB);
-  auto logger = std::make_shared<mdlog::MdLog>();
+  IngestProperties props{.filename = test_file.string(), .columns = columns};
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
-      con, props, logger, [&con](const std::string &view_name) {
-        const auto res = con.Query("FROM " + view_name);
+      con, props, logger, [&con](const std::string &staging_table_name) {
+        const auto res = con.Query("FROM " + staging_table_name);
         REQUIRE_FALSE(res->HasError());
         REQUIRE(res->ColumnCount() == 3);
         CHECK(res->RowCount() == 3);
@@ -114,12 +110,11 @@ TEST_CASE("Test reading CSV file when not all column types specified",
       // Column "age" is not added to column_types
       column_def{.name = "age", .type = duckdb::LogicalType::INVALID},
   };
-  IngestProperties props(test_file.string(), "", columns, "",
-                         UnmodifiedMarker::Disallowed, TEMP_DB);
-  auto logger = std::make_shared<mdlog::MdLog>();
+  IngestProperties props{.filename = test_file.string(), .columns = columns};
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
-      con, props, logger, [&con](const std::string &view_name) {
-        const auto res = con.Query("FROM " + view_name);
+      con, props, logger, [&con](const std::string &staging_table_name) {
+        const auto res = con.Query("FROM " + staging_table_name);
         REQUIRE_FALSE(res->HasError());
         REQUIRE(res->ColumnCount() == 3);
         CHECK(res->RowCount() == 3);
@@ -147,12 +142,12 @@ TEST_CASE("Test reading CSV file with columns out of order",
       column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT},
       column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
   };
-  IngestProperties props(test_file.string(), "", columns, "",
-                         UnmodifiedMarker::Disallowed, TEMP_DB);
-  auto logger = std::make_shared<mdlog::MdLog>();
+  IngestProperties props{.filename = test_file.string(), .columns = columns};
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
-      con, props, logger, [&con](const std::string &view_name) {
-        const std::string query = "FROM " + view_name + " ORDER BY id LIMIT 1";
+      con, props, logger, [&con](const std::string &staging_table_name) {
+        const std::string query =
+            "FROM " + staging_table_name + " ORDER BY id LIMIT 1";
         auto res = con.Query(query);
         REQUIRE_FALSE(res->HasError());
         REQUIRE(res->ColumnCount() == 3);
@@ -175,16 +170,15 @@ TEST_CASE("Test reading CSV file with quotes in filename", "[csv_processor]") {
 
   std::vector<column_def> columns{
       column_def{.name = "a", .type = duckdb::LogicalType::SMALLINT}};
-  IngestProperties props(test_file.string(), "", columns, "",
-                         UnmodifiedMarker::Disallowed, TEMP_DB);
-  auto logger = std::make_shared<mdlog::MdLog>();
-  csv_processor::ProcessFile(con, props, logger,
-                             [&con](const std::string &view_name) {
-                               const auto res = con.Query("FROM " + view_name);
-                               REQUIRE_FALSE(res->HasError());
-                               REQUIRE(res->ColumnCount() == 1);
-                               CHECK(res->RowCount() == 1);
-                             });
+  IngestProperties props{.filename = test_file.string(), .columns = columns};
+  auto logger = mdlog::Logger::CreateNopLogger();
+  csv_processor::ProcessFile(
+      con, props, logger, [&con](const std::string &staging_table_name) {
+        const auto res = con.Query("FROM " + staging_table_name);
+        REQUIRE_FALSE(res->HasError());
+        REQUIRE(res->ColumnCount() == 1);
+        CHECK(res->RowCount() == 1);
+      });
 }
 
 TEST_CASE("Test reading various CSV files", "[csv_processor]") {
@@ -319,13 +313,13 @@ TEST_CASE("Test reading various CSV files", "[csv_processor]") {
   duckdb::DuckDB db(nullptr);
   duckdb::Connection con(db);
 
-  IngestProperties props(test_file.string(), "", columns, "",
-                         UnmodifiedMarker::Disallowed, TEMP_DB);
-  auto logger = std::make_shared<mdlog::MdLog>();
+  IngestProperties props{.filename = test_file.string(), .columns = columns};
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger,
-      [&con, expected_row_count = row_count](const std::string &view_name) {
-        const auto res = con.Query("FROM " + view_name);
+      [&con,
+       expected_row_count = row_count](const std::string &staging_table_name) {
+        const auto res = con.Query("FROM " + staging_table_name);
         if (res->HasError()) {
           FAIL("Failed to execute \"FROM csv_view\" query: " + res->GetError());
         }
@@ -347,12 +341,13 @@ TEST_CASE("Test reading CSV file with special null string", "[csv_processor]") {
       column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT},
       column_def{.name = "country", .type = duckdb::LogicalType::VARCHAR}};
   const std::string null_string = "special-null";
-  IngestProperties props(test_file.string(), "", columns, null_string,
-                         UnmodifiedMarker::Disallowed, TEMP_DB);
-  auto logger = std::make_shared<mdlog::MdLog>();
+  IngestProperties props{.filename = test_file.string(),
+                         .columns = columns,
+                         .null_value = null_string};
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
-      con, props, logger, [&con](const std::string &view_name) {
-        const auto res = con.Query("FROM " + view_name);
+      con, props, logger, [&con](const std::string &staging_table_name) {
+        const auto res = con.Query("FROM " + staging_table_name);
         REQUIRE_FALSE(res->HasError());
         REQUIRE(res->ColumnCount() == 4);
         REQUIRE(res->RowCount() == 2);
@@ -383,13 +378,11 @@ TEST_CASE("Test reading CSV file with escaped string", "[csv_processor]") {
 
   const std::vector<column_def> columns{column_def{
       .name = "escaped_string", .type = duckdb::LogicalType::VARCHAR}};
-
-  IngestProperties props(test_file.string(), "", columns, "",
-                         UnmodifiedMarker::Disallowed, TEMP_DB);
-  auto logger = std::make_shared<mdlog::MdLog>();
+  IngestProperties props{.filename = test_file.string(), .columns = columns};
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
-      con, props, logger, [&con](const std::string &view_name) {
-        const auto res = con.Query("FROM " + view_name);
+      con, props, logger, [&con](const std::string &staging_table_name) {
+        const auto res = con.Query("FROM " + staging_table_name);
         REQUIRE_FALSE(res->HasError());
         REQUIRE(res->ColumnCount() == 1);
         REQUIRE(res->RowCount() == 1);
@@ -411,13 +404,13 @@ TEST_CASE("Test reading CSV file with unmodified string setting",
       column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
       column_def{.name = "name", .type = duckdb::LogicalType::VARCHAR},
       column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT}};
-
-  IngestProperties props(test_file.string(), "", columns, "",
-                         UnmodifiedMarker::Allowed, TEMP_DB);
-  auto logger = std::make_shared<mdlog::MdLog>();
+  IngestProperties props{.filename = test_file.string(),
+                         .columns = columns,
+                         .allow_unmodified_string = true};
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
-      con, props, logger, [&con](const std::string &view_name) {
-        const auto res = con.Query("FROM " + view_name);
+      con, props, logger, [&con](const std::string &staging_table_name) {
+        const auto res = con.Query("FROM " + staging_table_name);
         REQUIRE_FALSE(res->HasError());
         REQUIRE(res->ColumnCount() == 3);
         REQUIRE(res->RowCount() == 2);
@@ -438,6 +431,49 @@ TEST_CASE("Test reading CSV file with unmodified string setting",
           }
         }
       });
+}
+
+TEST_CASE("Test reading CSV file with BINARY column", "[csv_processor]") {
+  const auto [base64_data, decoded_string] =
+      GENERATE(table<std::string, std::string>(
+          {std::make_tuple<std::string, std::string>("3q2+7w==",
+                                                     R"(\xDE\xAD\xBE\xEF)"),
+           std::make_tuple<std::string, std::string>(
+               "AAECAwQFBgc=", R"(\x00\x01\x02\x03\x04\x05\x06\x07)"),
+           std::make_tuple<std::string, std::string>("SGVsbG8gV29ybGQh",
+                                                     "Hello World!"),
+           std::make_tuple<std::string, std::string>("", "NULL")}));
+
+  const fs::path temp_csv_file = fs::temp_directory_path() / "temp_binary.csv";
+  {
+    std::ofstream ofs(temp_csv_file, std::ios::trunc);
+    ofs << "binary_val\n";
+    ofs << "\"" << base64_data << "\"\n";
+    ofs.close();
+  }
+
+  duckdb::DuckDB db(nullptr);
+  duckdb::Connection con(db);
+  const std::vector<column_def> columns{
+      column_def{.name = "binary_val", .type = duckdb::LogicalType::BLOB}};
+
+  IngestProperties props{.filename = temp_csv_file.string(),
+                         .columns = columns};
+  auto logger = mdlog::Logger::CreateNopLogger();
+  csv_processor::ProcessFile(
+      con, props, logger,
+      [&con, expected_varchar =
+                 decoded_string](const std::string &staging_table_name) {
+        const auto res =
+            con.Query("SELECT binary_val FROM " + staging_table_name);
+        REQUIRE_FALSE(res->HasError());
+        REQUIRE(res->RowCount() == 1);
+        const auto blob_value = res->GetValue(0, 0);
+        REQUIRE(blob_value.type().id() == duckdb::LogicalTypeId::BLOB);
+        REQUIRE(blob_value.ToString() == expected_varchar);
+      });
+
+  fs::remove(temp_csv_file);
 }
 
 TEST_CASE("Test reading zstd-compressed CSV files", "[csv_processor]") {
@@ -472,16 +508,16 @@ TEST_CASE("Test reading zstd-compressed CSV files", "[csv_processor]") {
   duckdb::DuckDB db(nullptr);
   duckdb::Connection con(db);
 
-  IngestProperties props(test_file.string(), "", columns, "",
-                         UnmodifiedMarker::Disallowed, TEMP_DB);
-  auto logger = std::make_shared<mdlog::MdLog>();
-  csv_processor::ProcessFile(
-      con, props, logger,
-      [&con, expected_row_count = row_count](const std::string &view_name) {
-        const auto res = con.Query("FROM " + view_name);
-        REQUIRE_FALSE(res->HasError());
-        REQUIRE(res->RowCount() == expected_row_count);
-      });
+  IngestProperties props{.filename = test_file.string(), .columns = columns};
+  auto logger = mdlog::Logger::CreateNopLogger();
+  csv_processor::ProcessFile(con, props, logger,
+                             [&con, expected_row_count = row_count](
+                                 const std::string &staging_table_name) {
+                               const auto res =
+                                   con.Query("FROM " + staging_table_name);
+                               REQUIRE_FALSE(res->HasError());
+                               REQUIRE(res->RowCount() == expected_row_count);
+                             });
 }
 
 TEST_CASE("Test reading files generated by Fivetran destination tester",
@@ -492,12 +528,12 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
   const auto file_extension = GENERATE(".csv", ".csv.zstd", ".csv.zstd.aes");
 
   auto [filename, row_count, null_string, can_contain_unmodified,
-        columns] = GENERATE(table<std::string, size_t, std::string,
-                                  UnmodifiedMarker, std::vector<column_def>>({
-      std::make_tuple<std::string, size_t, std::string, UnmodifiedMarker,
+        columns] = GENERATE(table<std::string, size_t, std::string, bool,
+                                  std::vector<column_def>>({
+      std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "campaign_input_1_upsert", 3, "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP",
-          UnmodifiedMarker::Disallowed,
+          false,
           {{.name = "name", .type = duckdb::LogicalTypeId::VARCHAR},
            {.name = "num",
             .type = duckdb::LogicalTypeId::DECIMAL,
@@ -510,10 +546,10 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
             .primary_key = true},
            {.name = "_fivetran_deleted",
             .type = duckdb::LogicalTypeId::BOOLEAN}}),
-      std::make_tuple<std::string, size_t, std::string, UnmodifiedMarker,
+      std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "campaign_input_1_update", 1, "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP",
-          UnmodifiedMarker::Allowed,
+          true,
           {{.name = "name", .type = duckdb::LogicalTypeId::VARCHAR},
            {.name = "num",
             .type = duckdb::LogicalTypeId::DECIMAL,
@@ -526,10 +562,10 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
             .primary_key = true},
            {.name = "_fivetran_deleted",
             .type = duckdb::LogicalTypeId::BOOLEAN}}),
-      std::make_tuple<std::string, size_t, std::string, UnmodifiedMarker,
+      std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "campaign_input_1_delete", 1, "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP",
-          UnmodifiedMarker::Disallowed,
+          false,
           {{.name = "name", .type = duckdb::LogicalTypeId::VARCHAR},
            {.name = "num",
             .type = duckdb::LogicalTypeId::DECIMAL,
@@ -543,10 +579,10 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
            {.name = "_fivetran_deleted",
             .type = duckdb::LogicalTypeId::BOOLEAN}}),
 
-      std::make_tuple<std::string, size_t, std::string, UnmodifiedMarker,
+      std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "transaction_input_1_upsert", 7,
-          "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP", UnmodifiedMarker::Disallowed,
+          "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP", false,
           {{.name = "id",
             .type = duckdb::LogicalTypeId::INTEGER,
             .primary_key = true},
@@ -556,10 +592,10 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
             .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
            {.name = "_fivetran_deleted",
             .type = duckdb::LogicalTypeId::BOOLEAN}}),
-      std::make_tuple<std::string, size_t, std::string, UnmodifiedMarker,
+      std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "transaction_input_1_update", 4,
-          "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP", UnmodifiedMarker::Allowed,
+          "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP", true,
           {{.name = "id",
             .type = duckdb::LogicalTypeId::INTEGER,
             .primary_key = true},
@@ -569,10 +605,10 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
             .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
            {.name = "_fivetran_deleted",
             .type = duckdb::LogicalTypeId::BOOLEAN}}),
-      std::make_tuple<std::string, size_t, std::string, UnmodifiedMarker,
+      std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "transaction_input_1_delete", 2,
-          "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP", UnmodifiedMarker::Disallowed,
+          "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP", false,
           {{.name = "id",
             .type = duckdb::LogicalTypeId::INTEGER,
             .primary_key = true},
@@ -583,10 +619,10 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
            {.name = "_fivetran_deleted",
             .type = duckdb::LogicalTypeId::BOOLEAN}}),
 
-      std::make_tuple<std::string, size_t, std::string, UnmodifiedMarker,
+      std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "orders_input_2_upsert", 3, "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP",
-          UnmodifiedMarker::Disallowed,
+          false,
           {{.name = "order_id",
             .type = duckdb::LogicalTypeId::VARCHAR,
             .primary_key = true},
@@ -598,10 +634,10 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
             .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
            {.name = "_fivetran_deleted",
             .type = duckdb::LogicalTypeId::BOOLEAN}}),
-      std::make_tuple<std::string, size_t, std::string, UnmodifiedMarker,
+      std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "orders_input_2_update", 3, "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP",
-          UnmodifiedMarker::Allowed,
+          true,
           {{.name = "order_id",
             .type = duckdb::LogicalTypeId::VARCHAR,
             .primary_key = true},
@@ -614,10 +650,10 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
            {.name = "_fivetran_deleted",
             .type = duckdb::LogicalTypeId::BOOLEAN}}),
 
-      std::make_tuple<std::string, size_t, std::string, UnmodifiedMarker,
+      std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "customers_input_2_upsert", 6, "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP",
-          UnmodifiedMarker::Disallowed,
+          false,
           {{.name = "customer_id",
             .type = duckdb::LogicalTypeId::BIGINT,
             .primary_key = true},
@@ -632,10 +668,10 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
            {.name = "_fivetran_synced",
             .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
            {.name = "loyalty_tier", .type = duckdb::LogicalTypeId::VARCHAR}}),
-      std::make_tuple<std::string, size_t, std::string, UnmodifiedMarker,
+      std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "customers_input_2_update", 2, "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP",
-          UnmodifiedMarker::Allowed,
+          true,
           {{.name = "customer_id",
             .type = duckdb::LogicalTypeId::BIGINT,
             .primary_key = true},
@@ -650,10 +686,10 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
            {.name = "_fivetran_synced",
             .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
            {.name = "loyalty_tier", .type = duckdb::LogicalTypeId::VARCHAR}}),
-      std::make_tuple<std::string, size_t, std::string, UnmodifiedMarker,
+      std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "customers_input_2_delete", 1, "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP",
-          UnmodifiedMarker::Disallowed,
+          false,
           {{.name = "customer_id",
             .type = duckdb::LogicalTypeId::BIGINT,
             .primary_key = true},
@@ -669,10 +705,10 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
             .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
            {.name = "loyalty_tier", .type = duckdb::LogicalTypeId::VARCHAR}}),
 
-      std::make_tuple<std::string, size_t, std::string, UnmodifiedMarker,
+      std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "products_input_2_upsert", 5, "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP",
-          UnmodifiedMarker::Disallowed,
+          false,
           {{.name = "product_name", .type = duckdb::LogicalTypeId::VARCHAR},
            {.name = "category", .type = duckdb::LogicalTypeId::VARCHAR},
            {.name = "unit_price", .type = duckdb::LogicalTypeId::DOUBLE},
@@ -686,10 +722,10 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
             .type = duckdb::LogicalTypeId::VARCHAR,
             .primary_key = true}}),
 
-      std::make_tuple<std::string, size_t, std::string, UnmodifiedMarker,
+      std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "user_profiles_input_3_upsert", 24,
-          "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP", UnmodifiedMarker::Disallowed,
+          "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP", false,
           {{.name = "user_id",
             .type = duckdb::LogicalTypeId::BIGINT,
             .primary_key = true},
@@ -700,10 +736,10 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
            {.name = "_fivetran_synced",
             .type = duckdb::LogicalTypeId::TIMESTAMP_TZ}}),
 
-      std::make_tuple<std::string, size_t, std::string, UnmodifiedMarker,
+      std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "web_events_input_3_upsert", 154,
-          "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP", UnmodifiedMarker::Disallowed,
+          "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP", false,
           {{.name = "event_id",
             .type = duckdb::LogicalTypeId::VARCHAR,
             .primary_key = true},
@@ -722,10 +758,10 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
            {.name = "_fivetran_synced",
             .type = duckdb::LogicalTypeId::TIMESTAMP_TZ}}),
 
-      std::make_tuple<std::string, size_t, std::string, UnmodifiedMarker,
+      std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "mixed_data_input_4_upsert", 1,
-          "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP", UnmodifiedMarker::Disallowed,
+          "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP", false,
           {{.name = "bool_val", .type = duckdb::LogicalTypeId::BOOLEAN},
            {.name = "short_val", .type = duckdb::LogicalTypeId::SMALLINT},
            {.name = "int_val", .type = duckdb::LogicalTypeId::INTEGER},
@@ -736,14 +772,16 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
             .type = duckdb::LogicalTypeId::DECIMAL,
             .width = 38,
             .scale = 10},
+           {.name = "naive_time_val", .type = duckdb::LogicalTypeId::TIME},
            {.name = "naive_date_val", .type = duckdb::LogicalTypeId::DATE},
            {.name = "naive_datetime_val",
             .type = duckdb::LogicalTypeId::TIMESTAMP},
            {.name = "utc_datetime_val",
             .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
-           {.name = "binary_val", .type = duckdb::LogicalTypeId::BIT},
+           {.name = "binary_val", .type = duckdb::LogicalTypeId::BLOB},
            {.name = "json_val", .type = duckdb::LogicalTypeId::VARCHAR},
            {.name = "string_val", .type = duckdb::LogicalTypeId::VARCHAR},
+           {.name = "xml_val", .type = duckdb::LogicalTypeId::VARCHAR},
            {.name = "_fivetran_synced",
             .type = duckdb::LogicalTypeId::TIMESTAMP_TZ}}),
   }));
@@ -767,14 +805,18 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
                           std::istreambuf_iterator<char>());
   }
 
-  IngestProperties props(test_file.string(), decryption_key, columns,
-                         null_string, can_contain_unmodified, TEMP_DB);
+  IngestProperties props{.filename = test_file.string(),
+                         .decryption_key = decryption_key,
+                         .columns = columns,
+                         .null_value = null_string,
+                         .allow_unmodified_string = can_contain_unmodified};
 
-  auto logger = std::make_shared<mdlog::MdLog>();
+  auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger,
-      [&con, expected_row_count = row_count](const std::string &view_name) {
-        const auto res = con.Query("FROM " + view_name);
+      [&con,
+       expected_row_count = row_count](const std::string &staging_table_name) {
+        const auto res = con.Query("FROM " + staging_table_name);
         if (res->HasError()) {
           FAIL("Failed to execute \"FROM csv_view\" query: " + res->GetError());
         }
@@ -796,10 +838,8 @@ TEST_CASE("Test reading a CSV file with a huge VARCHAR column",
     const std::vector<column_def> columns{
         column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
         column_def{.name = "text", .type = duckdb::LogicalType::VARCHAR}};
-
-    IngestProperties props(test_file.string(), "", columns, "",
-                           UnmodifiedMarker::Disallowed, "memory");
-    auto logger = std::make_shared<mdlog::MdLog>();
+    IngestProperties props{.filename = test_file.string(), .columns = columns};
+    auto logger = mdlog::Logger::CreateNopLogger();
     REQUIRE_THROWS_WITH(csv_processor::ProcessFile(con, props, logger,
                                                    [](const std::string &) {
                                                      // Do nothing
@@ -819,13 +859,11 @@ TEST_CASE("Test reading a CSV file with a huge VARCHAR column",
     const std::vector<column_def> columns{
         column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
         column_def{.name = "text", .type = duckdb::LogicalType::VARCHAR}};
-
-    IngestProperties props(test_file.string(), "", columns, "",
-                           UnmodifiedMarker::Disallowed, "memory");
-    auto logger = std::make_shared<mdlog::MdLog>();
+    IngestProperties props{.filename = test_file.string(), .columns = columns};
+    auto logger = mdlog::Logger::CreateNopLogger();
     csv_processor::ProcessFile(
-        con, props, logger, [&con](const std::string &view_name) {
-          const auto res = con.Query("FROM " + view_name);
+        con, props, logger, [&con](const std::string &staging_table_name) {
+          const auto res = con.Query("FROM " + staging_table_name);
           if (res->HasError()) {
             FAIL("Failed to execute \"FROM csv_view\" query: " +
                  res->GetError());

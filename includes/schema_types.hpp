@@ -9,8 +9,8 @@ struct column_def {
   duckdb::LogicalTypeId type;
   std::string column_default;
   bool primary_key;
-  std::uint32_t width;
-  std::uint32_t scale;
+  std::uint8_t width;
+  std::uint8_t scale;
 };
 
 inline std::string format_type(const column_def &col) {

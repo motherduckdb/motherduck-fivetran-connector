@@ -1056,6 +1056,114 @@ TEST_CASE("Test all types with create and describe table") {
   }
 }
 
+TEST_CASE("Test that error is thrown for invalid DECIMAL width and scale") {
+  DestinationSdkImpl service;
+
+  // Try use DECIMAL column with precision/width > 38
+  ::fivetran_sdk::v2::CreateTableRequest request;
+  (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+  (*request.mutable_configuration())["motherduck_database"] =
+      TEST_DATABASE_NAME;
+  request.mutable_table()->set_name("my_decimal_table");
+
+  SECTION("Test precision/width > 38") {
+    auto decimal_col = request.mutable_table()->add_columns();
+    decimal_col->set_name("col_decimal");
+    decimal_col->set_type(::fivetran_sdk::v2::DataType::DECIMAL);
+    decimal_col->mutable_params()->mutable_decimal()->set_precision(39);
+    decimal_col->mutable_params()->mutable_decimal()->set_scale(5);
+    decimal_col->set_primary_key(true);
+
+    ::fivetran_sdk::v2::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_FALSE(status.ok());
+    REQUIRE_THAT(status.error_message(), Catch::Matchers::ContainsSubstring(
+                                             "maximum supported width of 38"));
+  }
+
+  SECTION("Test scale > precision/width") {
+    auto decimal_col = request.mutable_table()->add_columns();
+    decimal_col->set_name("col_decimal");
+    decimal_col->set_type(::fivetran_sdk::v2::DataType::DECIMAL);
+    decimal_col->mutable_params()->mutable_decimal()->set_precision(10);
+    decimal_col->mutable_params()->mutable_decimal()->set_scale(15);
+    decimal_col->set_primary_key(true);
+
+    ::fivetran_sdk::v2::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_FALSE(status.ok());
+    REQUIRE_THAT(
+        status.error_message(),
+        Catch::Matchers::ContainsSubstring("cannot be greater than precision"));
+  }
+}
+
+template <typename T>
+void add_config(T &request, const std::string &token,
+                const std::string &database, const std::string &table) {
+  (*request.mutable_configuration())["motherduck_token"] = token;
+  (*request.mutable_configuration())["motherduck_database"] = database;
+  request.mutable_table()->set_name(table);
+}
+
+template <typename T>
+void add_config(T &request, const std::string &token,
+                const std::string &database) {
+  (*request.mutable_configuration())["motherduck_token"] = token;
+  (*request.mutable_configuration())["motherduck_database"] = database;
+}
+
+template <typename T>
+void add_col(T &request, const std::string &name,
+             ::fivetran_sdk::v2::DataType type, bool is_primary_key) {
+  auto col = request.mutable_table()->add_columns();
+  col->set_name(name);
+  col->set_type(type);
+  col->set_primary_key(is_primary_key);
+}
+
+template <typename T>
+void add_decimal_col(T &request, const std::string &name, bool is_primary_key,
+                     std::uint32_t precision, std::uint32_t scale) {
+  auto col = request.mutable_table()->add_columns();
+  col->set_name(name);
+  col->set_type(::fivetran_sdk::v2::DataType::DECIMAL);
+  col->set_primary_key(is_primary_key);
+  col->mutable_params()->mutable_decimal()->set_precision(precision);
+  col->mutable_params()->mutable_decimal()->set_scale(scale);
+}
+
+// Helper to verify a row's values in order. Usage:
+//   check_row(res, 0, {1, "Initial Book", 100, false});
+void check_row(duckdb::unique_ptr<duckdb::MaterializedQueryResult> &res,
+               idx_t row, std::initializer_list<duckdb::Value> expected) {
+  idx_t col = 0;
+  for (const auto &val : expected) {
+    REQUIRE(res->GetValue(col++, row) == val);
+  }
+}
+
+// Same columns as define_history_test_table but in a DIFFERENT order.
+// Used to test that INSERT statements use explicit column lists.
+template <typename T>
+void define_history_test_table_reordered(T &request,
+                                         const std::string &table_name) {
+  request.mutable_table()->set_name(table_name);
+  add_col(request, "_fivetran_end", ::fivetran_sdk::v2::DataType::UTC_DATETIME,
+          false);
+  add_col(request, "magic_number", ::fivetran_sdk::v2::DataType::INT, false);
+  add_col(request, "_fivetran_active", ::fivetran_sdk::v2::DataType::BOOLEAN,
+          false);
+  add_col(request, "title", ::fivetran_sdk::v2::DataType::STRING, false);
+  add_col(request, "_fivetran_synced",
+          ::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
+  add_col(request, "_fivetran_start",
+          ::fivetran_sdk::v2::DataType::UTC_DATETIME, true);
+  add_col(request, "_fivetran_deleted", ::fivetran_sdk::v2::DataType::BOOLEAN,
+          false);
+  add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
+}
+
 TEST_CASE("AlterTable with constraints", "[integration]") {
   DestinationSdkImpl service;
 
@@ -2263,7 +2371,8 @@ TEST_CASE("AlterTable decimal width change", "[integration]") {
 
   auto con = get_test_connection(MD_TOKEN);
 
-  auto verify_decimal_column = [&](int expected_precision, int expected_scale) {
+  auto verify_decimal_column = [&](uint32_t expected_precision,
+                                   uint32_t expected_scale) {
     ::fivetran_sdk::v2::DescribeTableRequest request;
     add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
     request.set_table_name(table_name);

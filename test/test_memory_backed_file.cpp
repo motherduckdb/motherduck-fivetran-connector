@@ -36,7 +36,7 @@ TEST_CASE("MemoryBackedFile is zero-filled after creation",
   in.read(buffer.data(), file_size);
   REQUIRE(in.gcount() == file_size);
 
-  for (int i = 0; i < file_size; ++i) {
+  for (size_t i = 0; i < file_size; ++i) {
     REQUIRE(buffer[i] == 0);
   }
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "duckdb.hpp"
+#include "md_logging.hpp"
 #include "schema_types.hpp"
 #include <map>
 #include <memory>
@@ -17,7 +18,11 @@ void find_primary_keys(
 class MdSqlGenerator {
 
 public:
-  explicit MdSqlGenerator(std::shared_ptr<mdlog::MdLog> &logger_);
+  explicit MdSqlGenerator(mdlog::Logger &logger_);
+
+  /// Generates a randomized table name which is not used yet in the database
+  std::string generate_temp_table_name(duckdb::Connection &con,
+                                       const std::string &prefix) const;
 
   bool schema_exists(duckdb::Connection &con, const std::string &db_name,
                      const std::string &schema_name);
@@ -54,12 +59,19 @@ public:
                      std::vector<const column_def *> &columns_regular,
                      const std::string &unmodified_string);
 
+  /// This creates the latest_active_records (LAR) table, a table with a
+  /// randomized name. The caller is responsible for cleaning it up. The LAR
+  /// table is used in history mode (see DestinationSdkImpl::WriteHistoryBatch).
+  std::string
+  create_latest_active_records_table(duckdb::Connection &con,
+                                     const table_def &source_table) const;
+
   void add_partial_historical_values(
       duckdb::Connection &con, const table_def &table,
-      const std::string &staging_table_name,
+      const std::string &staging_table_name, const std::string &lar_table_name,
       std::vector<const column_def *> &columns_pk,
       std::vector<const column_def *> &columns_regular,
-      const std::string &unmodified_string, const std::string &temp_db_name);
+      const std::string &unmodified_string) const;
 
   void truncate_table(duckdb::Connection &con, const table_def &table,
                       const std::string &synced_column,
@@ -70,11 +82,10 @@ public:
                    const std::string &staging_table_name,
                    std::vector<const column_def *> &columns_pk);
 
-  void
-  deactivate_historical_records(duckdb::Connection &con, const table_def &table,
-                                const std::string &staging_table_name,
-                                std::vector<const column_def *> &columns_pk,
-                                const std::string &temp_db_name);
+  void deactivate_historical_records(
+      duckdb::Connection &con, const table_def &table,
+      const std::string &staging_table_name, const std::string &lar_table_name,
+      std::vector<const column_def *> &columns_pk) const;
 
   void delete_historical_rows(duckdb::Connection &con, const table_def &table,
                               const std::string &staging_table_name,
@@ -198,10 +209,11 @@ public:
   void migrate_live_to_history(duckdb::Connection &con, const table_def &table);
 
 private:
-  std::shared_ptr<mdlog::MdLog> logger;
+  mdlog::Logger &logger;
 
   void run_query(duckdb::Connection &con, const std::string &log_prefix,
-                 const std::string &query, const std::string &error_message);
+                 const std::string &query,
+                 const std::string &error_message) const;
   void alter_table_recreate(duckdb::Connection &con, const table_def &table,
                             const std::vector<column_def> &all_columns,
                             const std::set<std::string> &common_columns);

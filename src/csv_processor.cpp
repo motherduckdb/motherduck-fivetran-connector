@@ -6,6 +6,7 @@
 #include "md_logging.hpp"
 #include "memory_backed_file.hpp"
 #include "schema_types.hpp"
+#include "sql_generator.hpp"
 
 #include <fstream>
 #include <functional>
@@ -99,6 +100,8 @@ void reset_file_cursor(const int file_descriptor) {
   }
 }
 
+enum class CompressionType { None = 0, ZSTD = 1 };
+
 CompressionType determine_compression_type(const std::string &file_path) {
   std::ifstream ifs(file_path, std::ios::binary);
   if (ifs.fail()) {
@@ -137,9 +140,17 @@ void add_projections(std::ostringstream &query,
     query << " *";
   } else {
     for (const auto &column : columns) {
+      if (column.type == duckdb::LogicalTypeId::BLOB) {
+        // The CSV reader reads BLOBs as VARCHARs. We have to convert them with
+        // from_base64.
+        query << " from_base64("
+              << duckdb::KeywordHelper::WriteQuoted(column.name, '"') << ") AS "
+              << duckdb::KeywordHelper::WriteQuoted(column.name, '"');
+      } else {
+        query << " " << duckdb::KeywordHelper::WriteQuoted(column.name, '"');
+      }
       // DuckDB can handle trailing commas
-      query << " " << duckdb::KeywordHelper::WriteQuoted(column.name, '"')
-            << ",";
+      query << ",";
     }
   }
 }
@@ -149,7 +160,7 @@ void add_projections(std::ostringstream &query,
 void add_type_options(std::ostringstream &query,
                       const std::vector<column_def> &columns,
                       const bool allow_unmodified_string,
-                      const std::shared_ptr<mdlog::MdLog> &logger) {
+                      const mdlog::Logger &logger) {
   // We set all_varchar=true if we have to deal with `unmodified_string`. Those
   // are string values that represent an unchanged value in an UPDATE or UPSERT,
   // and they break type conversion in the CSV reader. DuckDB does an implicit
@@ -187,31 +198,34 @@ void add_type_options(std::ostringstream &query,
     // Even if we do not specify the type for this column, DuckDB will figure it
     // out itself because of auto_detect=true
     if (column.type == duckdb::LogicalTypeId::INVALID) {
-      logger->warning("Column \"" + column.name +
-                      "\" has no type specified, will be auto-detected");
+      logger.warning("Column \"" + column.name +
+                     "\" has no type specified, will be auto-detected");
       continue;
     }
 
-    query << duckdb::KeywordHelper::WriteQuoted(column.name, '\'') << ":";
-
-    query << "'" << duckdb::EnumUtil::ToString(column.type);
-    if (column.type == duckdb::LogicalTypeId::DECIMAL && column.width > 0) {
-      query << "(" << std::to_string(column.width) << ","
-            << std::to_string(column.scale) + ")";
+    duckdb::LogicalType pushdown_type;
+    if (column.type == duckdb::LogicalTypeId::BLOB) {
+      pushdown_type = duckdb::LogicalType::VARCHAR;
+    } else if (column.type == duckdb::LogicalTypeId::DECIMAL &&
+               column.width > 0) {
+      pushdown_type = duckdb::LogicalType::DECIMAL(column.width, column.scale);
+    } else {
+      pushdown_type = duckdb::LogicalType(column.type);
     }
+
     // DuckDB can handle trailing comma
-    query << "',";
+    query << duckdb::KeywordHelper::WriteQuoted(column.name, '\'') << ":'"
+          << pushdown_type.ToString() << "',";
   }
   query << "}";
 }
 
 /// Generates a DuckDB SQL query string to read a CSV file with the specified
 /// properties
-std::string
-generate_read_csv_query(const std::string &filepath,
-                        const IngestProperties &props,
-                        const CompressionType compression,
-                        const std::shared_ptr<mdlog::MdLog> &logger) {
+std::string generate_read_csv_query(const std::string &filepath,
+                                    const IngestProperties &props,
+                                    const CompressionType compression,
+                                    const mdlog::Logger &logger) {
   std::ostringstream query;
   query << "FROM read_csv("
         << duckdb::KeywordHelper::WriteQuoted(filepath, '\'');
@@ -275,11 +289,10 @@ generate_read_csv_query(const std::string &filepath,
 namespace csv_processor {
 void ProcessFile(
     duckdb::Connection &con, const IngestProperties &props,
-    std::shared_ptr<mdlog::MdLog> &logger,
-    const std::function<void(const std::string &view_name)> &process_view) {
-
+    mdlog::Logger &logger,
+    const std::function<void(const std::string &)> &process_staging_table) {
   validate_file(props.filename);
-  logger->info("    validated file " + props.filename);
+  logger.info("    validated file " + props.filename);
 
   const auto is_file_encrypted = !props.decryption_key.empty();
   std::string decrypted_file_path;
@@ -288,12 +301,11 @@ void ProcessFile(
   if (is_file_encrypted) {
     temp_file = decrypt_file_into_memory(props.filename, props.decryption_key);
     decrypted_file_path = temp_file.value().path;
-    logger->info(
-        "    wrote decrypted data to ephemeral memory-backed storage " +
-        decrypted_file_path);
+    logger.info("    wrote decrypted data to ephemeral memory-backed storage " +
+                decrypted_file_path);
   } else {
     decrypted_file_path = props.filename;
-    logger->info("    file is not encrypted");
+    logger.info("    file is not encrypted");
   }
 
   if (temp_file.has_value()) {
@@ -307,21 +319,23 @@ void ProcessFile(
     reset_file_cursor(temp_file.value().fd);
   }
 
-  const std::string view_name =
-      "\"" + props.temp_db_name + R"("."main"."csv_view")";
+  MdSqlGenerator sql_generator(logger);
+  const std::string staging_table_name =
+      sql_generator.generate_temp_table_name(con, "__fivetran_ingest_staging");
 
-  // The temporary in-memory database is reused for multiple calls of
-  // ProcessFile, hence we need `CREATE OR REPLACE` here.
+  // Create staging table in remote database. We upload all data anyway, and
+  // this way we make sure that all processing happens remotely.
   const auto final_query =
-      "CREATE OR REPLACE VIEW " + view_name + " AS " +
+      "CREATE TABLE " + staging_table_name + " AS " +
       generate_read_csv_query(decrypted_file_path, props, compression, logger);
-  logger->info("    creating view: " + final_query);
-  const auto create_view_res = con.Query(final_query);
-  if (create_view_res->HasError()) {
-    create_view_res->ThrowError("Failed to create view for CSV file <" +
-                                props.filename + ">: ");
+  logger.info("    creating staging table: " + final_query);
+  const auto create_staging_table_res = con.Query(final_query);
+  if (create_staging_table_res->HasError()) {
+    create_staging_table_res->ThrowError(
+        "Failed to create staging table for CSV file <" + props.filename +
+        ">: ");
   }
-  logger->info("    view created for file " + props.filename);
+  logger.info("    staging table created for file " + props.filename);
 
   // `read_csv` opened and read the file for binding. Reset the file cursor
   // again for execution.
@@ -329,7 +343,15 @@ void ProcessFile(
     reset_file_cursor(temp_file.value().fd);
   }
 
-  process_view(view_name);
-  logger->info("    view processed for file " + props.filename);
+  process_staging_table(staging_table_name);
+  logger.info("    CSV file " + props.filename + " processed successfully");
+
+  const auto drop_staging_table_res =
+      con.Query("DROP TABLE " + staging_table_name);
+  if (drop_staging_table_res->HasError()) {
+    logger.severe("Failed to drop temporary table <" + staging_table_name +
+                  "> after processing CSV file <" + props.filename +
+                  ">: " + drop_staging_table_res->GetError());
+  }
 }
 } // namespace csv_processor

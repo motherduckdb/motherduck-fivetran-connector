@@ -23,6 +23,8 @@ target_link_libraries(integration_tests PRIVATE
         Catch2::Catch2
         motherduck_destination_sources
 )
+get_target_property(CATCH2_INCLUDE_DIRS Catch2::Catch2 INTERFACE_INCLUDE_DIRECTORIES)
+target_include_directories(integration_tests SYSTEM PRIVATE ${CATCH2_INCLUDE_DIRS})
 
 # Place executable in the root build directory
 set_target_properties(integration_tests PROPERTIES

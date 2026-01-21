@@ -1,2 +1,8 @@
-string_val,short_val,long_val,binary_val,double_val,naive_datetime_val,_fivetran_synced,json_val,naive_date_val,decimal_val,float_val,int_val,utc_datetime_val,bool_val
-test1,1,1234567890123,0111111010111001,100.123456789,2024-01-01T10:00:00,2025-11-21T16:24:40.623Z,"{""a"":123}",2024-01-01,12345.123456789011,10.12,99999999,2024-01-01T10:00:00Z,true
+binary_val,xml_val,_fivetran_synced,naive_date_val,decimal_val,json_val,float_val,utc_datetime_val,naive_time_val,string_val,naive_datetime_val,long_val,double_val,short_val,bool_val,int_val
+"3q2+7w==","<?xml version=""1.0""?>
+<catalog>
+<book id=""bk101"">
+<author>Gambardella, Matthew</author>
+<title>&quot;XML Developer's Guide&quot;</title>
+</book>
+</catalog>",2026-01-19T16:25:58.536Z,2024-01-01,12345.123456789011,"{""a"":123}",10.12,2024-01-01T10:00:00Z,10:35:00,test1,2024-01-01T10:00:00,1234567890123,100.123456789,1,true,99999999
