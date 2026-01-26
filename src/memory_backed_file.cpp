@@ -50,16 +50,9 @@ MemoryBackedFile MemoryBackedFile::Create(const size_t max_file_size) {
   }
 #endif
 
-  MemoryBackedFile result(fd, max_file_size);
-
-  try {
-    result.Truncate(max_file_size);
-  } catch (...) {
-    close(fd);
-    throw;
-  }
-
-  return result;
+  MemoryBackedFile mem_file(fd, max_file_size);
+  mem_file.Truncate(max_file_size);
+  return mem_file;
 }
 
 MemoryBackedFile::MemoryBackedFile(MemoryBackedFile &&other) noexcept

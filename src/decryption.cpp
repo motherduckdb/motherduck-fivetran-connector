@@ -78,7 +78,7 @@ void decrypt_stream_content(std::istream &input, const std::string &input_name,
   plaintext_buffer.resize(buffer_size + AES_BLOCK_SIZE);
   int plaintext_length;
 
-  // Read 64 KiB from the stream into the input buffer, decrypt it, and write
+  // Read 256 KiB from the stream into the input buffer, decrypt it, and write
   // the plaintext to the output stream.
 
   // The istream bool operator evaluates to true if all requested bytes could be
