@@ -1341,6 +1341,9 @@ void MdSqlGenerator::migrate_soft_delete_to_live(
   const std::string quoted_deleted_col =
       KeywordHelper::WriteQuoted(soft_deleted_column, '"');
 
+  // Note: we cannot wrap these queries in a transaction because of duckdb issue
+  // #20570
+
   // Delete rows where soft_deleted_column = TRUE
   {
     std::ostringstream sql;
@@ -1376,6 +1379,8 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
   const auto columns = describe_table(con, table);
   find_primary_keys(columns, columns_pk, &columns_regular);
 
+  con.BeginTransaction();
+
   run_query(con, "migrate_soft_delete_to_history add_start",
             "ALTER TABLE " + absolute_table_name +
                 " ADD COLUMN \"_fivetran_start\" TIMESTAMPTZ;",
@@ -1409,6 +1414,7 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
               "Could not set history column values");
   }
 
+  con.Commit();
   con.BeginTransaction(); // See duckdb issue #20570: we can only start the
                           // transaction here at this point.
 
@@ -1480,7 +1486,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
   const std::string quoted_deleted_col =
       KeywordHelper::WriteQuoted(soft_deleted_column, '"');
 
-  con.BeginTransaction(); // Avoid creating dangling tables
+  con.BeginTransaction();
 
   // From the duckdb docs:
   // "ADD CONSTRAINT and DROP CONSTRAINT clauses are not yet supported in
@@ -1588,7 +1594,7 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection &con,
                                              bool keep_deleted_rows) {
   const std::string absolute_table_name = table.to_escaped_string();
 
-  con.BeginTransaction(); // Avoid creating hanging tables
+  con.BeginTransaction();
 
   // Optionally delete inactive rows
   if (!keep_deleted_rows) {
@@ -1674,6 +1680,9 @@ void MdSqlGenerator::migrate_live_to_soft_delete(
   const std::string absolute_table_name = table.to_escaped_string();
   const std::string quoted_deleted_col =
       KeywordHelper::WriteQuoted(soft_deleted_column, '"');
+
+  con.BeginTransaction();
+
   {
     // Add soft_deleted_column if it doesn't exist
     std::ostringstream sql;
@@ -1691,6 +1700,8 @@ void MdSqlGenerator::migrate_live_to_soft_delete(
     run_query(con, "migrate_live_to_soft_delete update", sql.str(),
               "Could not set soft_deleted_column values");
   }
+
+  con.Commit();
 }
 
 void MdSqlGenerator::migrate_live_to_history(duckdb::Connection &con,

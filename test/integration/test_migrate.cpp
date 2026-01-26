@@ -1089,7 +1089,8 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
   con->Query("DROP TABLE IF EXISTS " + table_name);
 }
 
-TEST_CASE("Migrate - add/drop column in history mode to empty table", "[integration][migrate]") {
+TEST_CASE("Migrate - add/drop column in history mode to empty table",
+          "[integration][migrate]") {
   DestinationSdkImpl service;
   const std::string table_name =
       "migrate_add_col_hist_" + std::to_string(Catch::rngSeed());
@@ -1154,7 +1155,8 @@ TEST_CASE("Migrate - add/drop column in history mode to empty table", "[integrat
   }
 
   {
-    // This asserts the column still exists and the fact that the table is empty at the same time
+    // This asserts the column still exists and the fact that the table is empty
+    // at the same time
     auto res = con->Query("SELECT name FROM " + table_name);
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 0);
