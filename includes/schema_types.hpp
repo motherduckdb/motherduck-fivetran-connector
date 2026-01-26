@@ -2,6 +2,7 @@
 
 #include "duckdb.hpp"
 #include <cstdint>
+#include <optional>
 #include <string>
 
 struct column_def {

@@ -816,7 +816,6 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
     REQUIRE(response.success());
   }
 
-  // Verify column exists (new rows get default)
   {
     auto res = con->Query("INSERT INTO " + table_name + " (id) VALUES (2)");
     REQUIRE_NO_FAIL(res);
@@ -847,7 +846,6 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
     REQUIRE(response.success());
   }
 
-  // Verify column exists (new rows get default)
   {
     auto res = con->Query("INSERT INTO " + table_name + " (id) VALUES (3)");
     REQUIRE_NO_FAIL(res);
@@ -878,7 +876,6 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
     REQUIRE(response.success());
   }
 
-  // Verify column exists (new rows get default)
   {
     auto res = con->Query("INSERT INTO " + table_name + " (id) VALUES (4)");
     REQUIRE_NO_FAIL(res);
