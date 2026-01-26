@@ -8,6 +8,8 @@
 #include "schema_types.hpp"
 #include "sql_generator.hpp"
 
+#include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <limits>
@@ -36,56 +38,50 @@ void validate_file(const std::string &file_path) {
 
 MemoryBackedFile
 decrypt_file_into_memory(const std::string &encrypted_file_path,
-                         const std::string &decryption_key) {
-  // TODO: Let decrypt_file write into the memory-backed file directly to avoid
-  // double buffering
-  const std::vector<unsigned char> plaintext = decrypt_file(
-      encrypted_file_path,
-      reinterpret_cast<const unsigned char *>(decryption_key.c_str()));
-
-  // Be defensive about casting errors from size_t (unsigned) to std::streamsize
-  // (signed)
-  constexpr auto max_file_size =
-      static_cast<size_t>(std::numeric_limits<std::streamsize>::max());
-  if (plaintext.size() > max_file_size) {
-    throw std::runtime_error("Decrypted file size exceeds limit of " +
-                             std::to_string(max_file_size) + " bytes");
-  }
-
-  auto temp_file = MemoryBackedFile::Create(plaintext.size());
+                         const std::span<const std::byte> decryption_key) {
+  const std::uintmax_t input_file_size = fs::file_size(encrypted_file_path);
+  // The encrypted file consists of the IV (16 bytes) + ciphertext + padding.
+  // Hence, the decrypted size is at least 16 bytes smaller.
+  const auto max_decrypted_size =
+      input_file_size - decryption::AES_BLOCK_SIZE; // IV size
+  auto temp_file = MemoryBackedFile::Create(max_decrypted_size);
   const auto decrypted_file_path = temp_file.path;
 
-  std::ofstream ofs(decrypted_file_path, std::ios::binary);
-  if (ofs.fail()) {
+  std::ofstream output_stream(decrypted_file_path, std::ios::binary);
+  if (output_stream.fail()) {
     throw std::system_error(
-        errno, std::generic_category(),
+        errno, std::iostream_category(),
         "Failed to open temporary output file for decrypted data with path <" +
             decrypted_file_path + ">");
   }
 
-  ofs.write(reinterpret_cast<const char *>(plaintext.data()),
-            static_cast<std::streamsize>(plaintext.size()));
-  if (ofs.fail()) {
-    throw std::system_error(
-        errno, std::generic_category(),
-        "Failed to write decrypted data to temporary file with path <" +
-            decrypted_file_path + ">");
-  }
+  decryption::decrypt_file(encrypted_file_path, output_stream, decryption_key);
 
-  ofs.flush();
-  if (ofs.fail()) {
-    throw std::system_error(errno, std::generic_category(),
+  output_stream.flush();
+  if (output_stream.fail()) {
+    throw std::system_error(errno, std::iostream_category(),
                             "Failed to flush ofstream for path <" +
                                 decrypted_file_path + ">");
   }
 
+  // Get the actual size of the decrypted file (smaller than encrypted due to IV
+  // and padding)
+  const auto bytes_written = output_stream.tellp();
+  if (bytes_written < 0) {
+    throw std::system_error(errno, std::iostream_category(),
+                            "Failed to get stream position for path <" +
+                                decrypted_file_path + ">");
+  }
+
   // Close explicitly to check for errors
-  ofs.close();
-  if (ofs.fail()) {
-    throw std::system_error(errno, std::generic_category(),
+  output_stream.close();
+  if (output_stream.fail()) {
+    throw std::system_error(errno, std::iostream_category(),
                             "Failed to close ofstream for path <" +
                                 decrypted_file_path + ">");
   }
+
+  temp_file.Truncate(static_cast<size_t>(bytes_written));
 
   return temp_file;
 }
@@ -299,7 +295,8 @@ void ProcessFile(
   // Only used if file is encrypted to ensure MemoryBackedFile lives long enough
   std::optional<MemoryBackedFile> temp_file;
   if (is_file_encrypted) {
-    temp_file = decrypt_file_into_memory(props.filename, props.decryption_key);
+    temp_file = decrypt_file_into_memory(
+        props.filename, std::as_bytes(std::span(props.decryption_key)));
     decrypted_file_path = temp_file.value().path;
     logger.info("    wrote decrypted data to ephemeral memory-backed storage " +
                 decrypted_file_path);

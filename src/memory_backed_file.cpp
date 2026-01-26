@@ -12,7 +12,7 @@
 #include <sys/stat.h>
 #endif
 
-MemoryBackedFile MemoryBackedFile::Create(const size_t file_size) {
+MemoryBackedFile MemoryBackedFile::Create(const size_t max_file_size) {
 #ifdef __linux__
   // memfd_create creates an anonymous RAM-backed file
   // MFD_CLOEXEC closes the file descriptor on execve which prevents it from
@@ -50,19 +50,16 @@ MemoryBackedFile MemoryBackedFile::Create(const size_t file_size) {
   }
 #endif
 
-  if (file_size > static_cast<size_t>(std::numeric_limits<off_t>::max())) {
+  MemoryBackedFile result(fd, max_file_size);
+
+  try {
+    result.Truncate(max_file_size);
+  } catch (...) {
     close(fd);
-    throw std::overflow_error("file_size exceeds maximum off_t value");
+    throw;
   }
 
-  if (ftruncate(fd, static_cast<off_t>(file_size)) == -1) {
-    close(fd);
-    throw std::system_error(errno, std::generic_category(),
-                            "Failed to truncate temp memfile with fd=" +
-                                std::to_string(fd));
-  }
-
-  return MemoryBackedFile(fd);
+  return result;
 }
 
 MemoryBackedFile::MemoryBackedFile(MemoryBackedFile &&other) noexcept
@@ -86,5 +83,23 @@ MemoryBackedFile::operator=(MemoryBackedFile &&other) noexcept {
 MemoryBackedFile::~MemoryBackedFile() {
   if (fd >= 0) {
     close(fd);
+  }
+}
+
+void MemoryBackedFile::Truncate(const size_t new_file_size) const {
+  if (new_file_size > max_file_size) {
+    throw std::invalid_argument(
+        "Cannot increase size of MemoryBackedFile (max size is " +
+        std::to_string(max_file_size) + " bytes)");
+  }
+
+  if (new_file_size > static_cast<size_t>(std::numeric_limits<off_t>::max())) {
+    throw std::overflow_error("file_size exceeds maximum off_t value");
+  }
+
+  if (ftruncate(fd, static_cast<off_t>(new_file_size)) == -1) {
+    throw std::system_error(errno, std::generic_category(),
+                            "Failed to truncate memfile with fd=" +
+                                std::to_string(fd));
   }
 }
