@@ -307,8 +307,10 @@ void ProcessFile(
     reset_file_cursor(temp_file.value().fd);
   }
 
+  bool should_commit = false;
   if (!con.HasActiveTransaction()) {
     con.BeginTransaction();
+    should_commit = true;
   }
 
   MdSqlGenerator sql_generator(logger);
@@ -346,7 +348,9 @@ void ProcessFile(
                   ">: " + drop_staging_table_res->GetError());
   }
 
-  // This throws any errors during commit
-  con.Commit();
+  if (should_commit) {
+    // This throws any errors during commit
+    con.Commit();
+  }
 }
 } // namespace csv_processor
