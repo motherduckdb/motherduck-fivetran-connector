@@ -38,6 +38,9 @@ public:
 
   std::vector<column_def> describe_table(duckdb::Connection &con,
                                          const table_def &table);
+  void add_column(duckdb::Connection &con, const table_def &table,
+                  const column_def &column, const std::string &log_prefix,
+                  const std::string &error_message) const;
 
   void alter_table(duckdb::Connection &con, const table_def &table,
                    const std::vector<column_def> &requested_columns,

@@ -325,6 +325,24 @@ std::vector<column_def> MdSqlGenerator::describe_table(duckdb::Connection &con,
   return columns;
 }
 
+void MdSqlGenerator::add_column(duckdb::Connection &con, const table_def &table,
+                                const column_def &column,
+                                const std::string &log_prefix,
+                                const std::string &error_message) const {
+  std::ostringstream sql;
+  sql << "ALTER TABLE " << table.to_escaped_string() << " ADD COLUMN "
+      << KeywordHelper::WriteQuoted(column.name, '"') << " "
+      << format_type(column);
+
+  if (column.column_default.has_value() &&
+      column.column_default.value() != "NULL") {
+    sql << " DEFAULT "
+        << KeywordHelper::WriteQuoted(column.column_default.value(), '\'');
+  }
+
+  return run_query(con, log_prefix, sql.str(), error_message);
+}
+
 void MdSqlGenerator::alter_table_recreate(
     duckdb::Connection &con, const table_def &table,
     const std::vector<column_def> &all_columns,
