@@ -385,10 +385,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       throw std::invalid_argument("No primary keys found");
     }
 
-    // We start a transaction here to a) ensure data consistency and b) clean up
-    // server-side data staging tables in case of an error
-    con.BeginTransaction();
-
     for (auto &filename : request->replace_files()) {
       logger.info("Processing replace file " + filename);
       const auto decryption_key = get_decryption_key(
@@ -445,8 +441,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
           });
     }
 
-    con.Commit();
-
   } catch (const md_error::RecoverableError &mde) {
     auto const msg = "WriteBatch endpoint failed for schema <" +
                      request->schema_name() + ">, table <" +
@@ -479,6 +473,10 @@ grpc::Status DestinationSdkImpl::WriteBatch(
   }
   auto &con = ctx->GetConnection();
   auto &logger = ctx->GetLogger();
+  auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
+  // We keep the table name in the outer scope to be able to drop the LAR table
+  // in the catch block
+  std::string lar_table_name;
 
   try {
     auto schema_name = get_schema_name(request);
@@ -488,7 +486,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     table_def table_name{db_name, get_schema_name(request),
                          request->table().name()};
-    auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
     const auto cols = get_duckdb_columns(request->table().columns());
     std::vector<const column_def *> columns_pk;
@@ -497,10 +494,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     if (columns_pk.empty()) {
       throw std::invalid_argument("No primary keys found");
     }
-
-    // We start a transaction here to a) ensure data consistency and b) clean up
-    // server-side data staging tables in case of an error
-    con.BeginTransaction();
 
     /*
     The latest_active_records (lar) table is used to process the update file
@@ -511,7 +504,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     a new row on updates, we cannot use UPDATE x SET y = value, as this updates
     in place.
     */
-    const std::string lar_table_name =
+    lar_table_name =
         sql_generator->create_latest_active_records_table(con, table_name);
 
     // delete overlapping records
@@ -563,13 +556,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     }
 
     // The following functions do not need the LAR table
-    auto drop_lar_table_res = con.Query("DROP TABLE " + lar_table_name);
-    if (drop_lar_table_res->HasError()) {
-      // Log error, but continue processing. In the worst case, this leaves a
-      // table lingering.
-      logger.severe("Could not drop latest_active_records table: " +
-                    drop_lar_table_res->GetError());
-    }
+    sql_generator->drop_latest_active_records_table(con, lar_table_name);
 
     // upsert files
     for (auto &filename : request->replace_files()) {
@@ -619,9 +606,11 @@ grpc::Status DestinationSdkImpl::WriteBatch(
           });
     }
 
-    con.Commit();
-
   } catch (const md_error::RecoverableError &mde) {
+    // Clean up bookkeeping table. The function uses IF EXISTS. Ignore any
+    // errors here.
+    sql_generator->drop_latest_active_records_table(con, lar_table_name);
+
     auto const msg = "WriteHistoryBatch endpoint failed for schema <" +
                      request->schema_name() + ">, table <" +
                      request->table().name() + ">:" + std::string(mde.what());
@@ -632,6 +621,11 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                      request->schema_name() + ">, table <" +
                      request->table().name() + ">:" + std::string(e.what());
     logger.severe(msg);
+
+    // Clean up bookkeeping table. The function uses IF EXISTS. Ignore any
+    // errors here.
+    sql_generator->drop_latest_active_records_table(con, lar_table_name);
+
     response->mutable_task()->set_message(msg);
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, msg);
   }

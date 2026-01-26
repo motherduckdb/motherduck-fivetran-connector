@@ -643,6 +643,18 @@ std::string MdSqlGenerator::create_latest_active_records_table(
   return lar_table_name;
 }
 
+void MdSqlGenerator::drop_latest_active_records_table(
+    duckdb::Connection &con, const std::string &lar_table_name) const {
+  const auto drop_lar_table_res =
+      con.Query("DROP TABLE IF EXISTS " + lar_table_name);
+  if (drop_lar_table_res->HasError()) {
+    // Log error, but do not throw. In the worst case, this leaves a
+    // table lingering.
+    logger.severe("Could not drop latest_active_records table " +
+                  lar_table_name + ": " + drop_lar_table_res->GetError());
+  }
+}
+
 void MdSqlGenerator::add_partial_historical_values(
     duckdb::Connection &con, const table_def &table,
     const std::string &staging_table_name, const std::string &lar_table_name,
