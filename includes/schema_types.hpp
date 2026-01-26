@@ -14,7 +14,8 @@ struct column_def {
 };
 
 inline std::string format_type(const column_def &col) {
-  if (col.type == duckdb::LogicalTypeId::DECIMAL && col.width > 0 and col.scale > 0) {
+  if (col.type == duckdb::LogicalTypeId::DECIMAL && col.width > 0 and
+      col.scale > 0) {
     return duckdb::EnumUtil::ToString(col.type) + " (" +
            std::to_string(col.width) + "," + std::to_string(col.scale) + ")";
   }

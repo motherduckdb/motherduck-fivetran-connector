@@ -886,9 +886,11 @@ void MdSqlGenerator::drop_column_in_history_mode(
     const std::string &operation_timestamp) {
   const std::string absolute_table_name = table.to_escaped_string();
   const std::string quoted_column = KeywordHelper::WriteQuoted(column, '"');
-  const std::string quoted_timestamp = KeywordHelper::WriteQuoted(operation_timestamp) + "::TIMESTAMPTZ";
+  const std::string quoted_timestamp =
+      KeywordHelper::WriteQuoted(operation_timestamp) + "::TIMESTAMPTZ";
 
   if (!history_table_is_valid(con, absolute_table_name, quoted_timestamp)) {
+    // The table is empty
     return;
   }
 
@@ -974,14 +976,16 @@ void MdSqlGenerator::copy_table(duckdb::Connection &con,
   find_primary_keys(columns, columns_pk, &columns_regular, "_fivetran_start");
 
   for (const auto &column : columns) {
-    if (!column.column_default.has_value() || column.column_default.value() == "NULL") {
+    if (!column.column_default.has_value() ||
+        column.column_default.value() == "NULL") {
       continue;
     }
 
     std::ostringstream sql;
     sql << "ALTER TABLE " << to_table.to_escaped_string() << " ALTER COLUMN "
         << KeywordHelper::WriteQuoted(column.name, '"') << " SET DEFAULT "
-        << KeywordHelper::WriteQuoted(column.column_default.value(), '\'') << ";";
+        << KeywordHelper::WriteQuoted(column.column_default.value(), '\'')
+        << ";";
     run_query(con, "copy_table set_default", sql.str(),
               "Could not add default to column " + column.name);
   }
@@ -992,11 +996,10 @@ void MdSqlGenerator::copy_table(duckdb::Connection &con,
     std::ostringstream sql;
 
     sql << "ALTER TABLE " << to_table.to_escaped_string()
-              << " ADD PRIMARY KEY (";
+        << " ADD PRIMARY KEY (";
     write_joined(sql, columns_pk, print_column);
     sql << ");";
-    run_query(con, "copy_table alter", sql.str(),
-              "Could not alter table");
+    run_query(con, "copy_table alter", sql.str(), "Could not alter table");
   }
 
   con.Commit();
@@ -1011,39 +1014,44 @@ void MdSqlGenerator::copy_column(duckdb::Connection &con,
   const std::string quoted_to = KeywordHelper::WriteQuoted(to_column, '"');
 
   // Get the column type from the source column
-  auto query = "SELECT data_type_id, column_default, numeric_precision, numeric_scale from duckdb_columns() WHERE "
-    "database_name = " + KeywordHelper::WriteQuoted(table.db_name) +
+  auto query =
+      "SELECT data_type_id, column_default, numeric_precision, numeric_scale "
+      "from duckdb_columns() WHERE "
+      "database_name = " +
+      KeywordHelper::WriteQuoted(table.db_name) +
       " AND schema_name = " + KeywordHelper::WriteQuoted(table.schema_name) +
-        " AND table_name = " + KeywordHelper::WriteQuoted(table.table_name) +
-          " AND column_name = " + KeywordHelper::WriteQuoted(from_column);
+      " AND table_name = " + KeywordHelper::WriteQuoted(table.table_name) +
+      " AND column_name = " + KeywordHelper::WriteQuoted(from_column);
   auto result = con.Query(query);
 
   if (result->HasError()) {
     throw std::runtime_error("copy_column get_type: " + result->GetError());
   }
   if (result->RowCount() < 1) {
-    throw std::runtime_error("No column with the name " + quoted_from + " found");
+    throw std::runtime_error("No column with the name " + quoted_from +
+                             " found");
   }
 
-  auto column_type =
-    static_cast<duckdb::LogicalTypeId>(result->GetValue(0, 0).GetValue<int8_t>());
+  auto column_type = static_cast<duckdb::LogicalTypeId>(
+      result->GetValue(0, 0).GetValue<int8_t>());
 
   column_def source_col{
-    .name = from_column,
-    .type = column_type,
-    .column_default = result->GetValue(1, 0).GetValue<duckdb::string>(),
+      .name = from_column,
+      .type = column_type,
+      .column_default = result->GetValue(1, 0).GetValue<duckdb::string>(),
   };
 
   if (column_type == duckdb::LogicalTypeId::DECIMAL) {
-    source_col.width = result->GetValue(2 ,0).GetValue<uint8_t>();
-    source_col.scale = result->GetValue(3 ,0).GetValue<uint8_t>();
+    source_col.width = result->GetValue(2, 0).GetValue<uint8_t>();
+    source_col.scale = result->GetValue(3, 0).GetValue<uint8_t>();
   }
 
   con.BeginTransaction();
   {
     std::ostringstream sql;
-    sql << "ALTER TABLE " << absolute_table_name << " ADD COLUMN " << quoted_to << " "
-      << format_type(source_col) << " DEFAULT " << KeywordHelper::WriteQuoted(source_col.column_default.value(), '\'');
+    sql << "ALTER TABLE " << absolute_table_name << " ADD COLUMN " << quoted_to
+        << " " << format_type(source_col) << " DEFAULT "
+        << KeywordHelper::WriteQuoted(source_col.column_default.value(), '\'');
     run_query(con, "copy_column add", sql.str(),
               "Could not add column for copy_column");
   }
@@ -1051,7 +1059,8 @@ void MdSqlGenerator::copy_column(duckdb::Connection &con,
   // Copy values
   {
     std::ostringstream sql;
-    sql << "UPDATE " << absolute_table_name << " SET " << quoted_to << " = " << quoted_from;
+    sql << "UPDATE " << absolute_table_name << " SET " << quoted_to << " = "
+        << quoted_from;
     run_query(con, "copy_column update", sql.str(),
               "Could not copy column values");
   }
@@ -1084,7 +1093,8 @@ void MdSqlGenerator::copy_table_to_history_mode(
   }
 
   for (const auto &column : columns) {
-    if (!column.column_default.has_value() || column.column_default.value() == "NULL") {
+    if (!column.column_default.has_value() ||
+        column.column_default.value() == "NULL") {
       continue;
     }
 
@@ -1095,7 +1105,8 @@ void MdSqlGenerator::copy_table_to_history_mode(
     std::ostringstream sql;
     sql << "ALTER TABLE " << to_table_name << " ALTER COLUMN "
         << KeywordHelper::WriteQuoted(column.name, '"') << " SET DEFAULT "
-        << KeywordHelper::WriteQuoted(column.column_default.value(), '\'') << ";";
+        << KeywordHelper::WriteQuoted(column.column_default.value(), '\'')
+        << ";";
     run_query(con, "copy_table_to_history_mode set_default", sql.str(),
               "Could not add default to column " + column.name);
   }
@@ -1150,16 +1161,20 @@ void MdSqlGenerator::add_column_with_default(duckdb::Connection &con,
                                              const table_def &table,
                                              const column_def &column) {
   const std::string absolute_table_name = table.to_escaped_string();
-  const std::string quoted_column = KeywordHelper::WriteQuoted(column.name, '"');
+  const std::string quoted_column =
+      KeywordHelper::WriteQuoted(column.name, '"');
 
   std::ostringstream sql;
   sql << "ALTER TABLE " << absolute_table_name << " ADD COLUMN "
       << quoted_column << " " << format_type(column);
 
-  if (column.column_default.value() != "NULL") { // According to Fivetran, this shouldn't happen though for this operation
+  if (column.column_default.value() !=
+      "NULL") { // According to Fivetran, this shouldn't happen though for this
+                // operation
     const std::string casted_default_value =
-    "CAST(" + KeywordHelper::WriteQuoted(column.column_default.value(), '\'') + " AS " +
-    format_type(column) + ")";
+        "CAST(" +
+        KeywordHelper::WriteQuoted(column.column_default.value(), '\'') +
+        " AS " + format_type(column) + ")";
 
     sql << " DEFAULT " << casted_default_value;
   }
@@ -1170,15 +1185,23 @@ void MdSqlGenerator::add_column_with_default(duckdb::Connection &con,
 }
 
 bool MdSqlGenerator::history_table_is_valid(
-    duckdb::Connection &con, const std::string& absolute_table_name,
-    const std::string& quoted_timestamp) {
+    duckdb::Connection &con, const std::string &absolute_table_name,
+    const std::string &quoted_timestamp) {
   // This performs the "Validation before starting the migration" part of
   // add/drop column in history mode as specified in the docs:
   // https://github.com/fivetran/fivetran_partner_sdk/blob/bdaea1a/schema-migration-helper-service.md
+  //
+  // The semantics are that we throw an exception when we encounter an error
+  // performing the check and when the data is inconsistent with respect to the
+  // _fivetran_start values, and we return false when the table is empty, and
+  // else we return true. This also allows us to cleanly redirect to performing
+  // a regular add/drop column when the table is empty.
+
   auto result = con.Query("SELECT COUNT(*) FROM " + absolute_table_name);
 
   if (result->HasError()) {
-    throw std::runtime_error("Could not query table size: " + result->GetError());
+    throw std::runtime_error("Could not query table size: " +
+                             result->GetError());
   }
 
   if (result->GetValue(0, 0).GetValue<int64_t>() == 0) {
@@ -1191,35 +1214,46 @@ bool MdSqlGenerator::history_table_is_valid(
       absolute_table_name + " WHERE \"_fivetran_active\" = true");
 
   if (max_result->HasError()) {
-    throw std::runtime_error("Could not query _fivetran_start value: " + max_result->GetError());
+    throw std::runtime_error("Could not query _fivetran_start value: " +
+                             max_result->GetError());
   }
 
   if (max_result->GetValue(0, 0).GetValue<bool>() != true) {
-    throw std::runtime_error("The _fivetran_start column contains values larger "
-                             "than the operation timestamp. Please contact Fivetran support.");
+    throw std::runtime_error(
+        "The _fivetran_start column contains values larger "
+        "than the operation timestamp. Please contact Fivetran support.");
   }
 
   return true;
 }
 
-void MdSqlGenerator::add_column_in_history_mode(duckdb::Connection &con,
-                                  const table_def &table,
-                                  const column_def &column,
-                                  const std::string &operation_timestamp) {
+void MdSqlGenerator::add_column_in_history_mode(
+    duckdb::Connection &con, const table_def &table, const column_def &column,
+    const std::string &operation_timestamp) {
   const std::string absolute_table_name = table.to_escaped_string();
-  const std::string quoted_column = KeywordHelper::WriteQuoted(column.name, '"');
+  const std::string quoted_column =
+      KeywordHelper::WriteQuoted(column.name, '"');
 
   std::string casted_default_value;
   if (column.column_default.value() != "NULL") {
-    casted_default_value = "CAST(" + KeywordHelper::WriteQuoted(column.column_default.value(), '\'') + " AS " +
-      format_type(column) + ")";
+    casted_default_value =
+        "CAST(" +
+        KeywordHelper::WriteQuoted(column.column_default.value(), '\'') +
+        " AS " + format_type(column) + ")";
   } else {
     casted_default_value = "NULL";
   }
 
-  const std::string quoted_timestamp = KeywordHelper::WriteQuoted(operation_timestamp) + "::TIMESTAMPTZ";
+  const std::string quoted_timestamp =
+      KeywordHelper::WriteQuoted(operation_timestamp) + "::TIMESTAMPTZ";
 
   if (!history_table_is_valid(con, absolute_table_name, quoted_timestamp)) {
+    // The table is empty
+    run_query(con, "add_column_in_history_mode empty_create",
+              "ALTER TABLE " + absolute_table_name + " ADD COLUMN " +
+                  quoted_column + " " + format_type(column),
+              "Could not add column for empty history table in "
+              "add_column_in_history_mode");
     return;
   }
 
@@ -1229,7 +1263,7 @@ void MdSqlGenerator::add_column_in_history_mode(duckdb::Connection &con,
     // Add the column
     std::ostringstream sql;
     sql << "ALTER TABLE " << absolute_table_name << " ADD COLUMN "
-            << quoted_column << " " << format_type(column);
+        << quoted_column << " " << format_type(column);
 
     run_query(con, "add_column_in_history_mode add", sql.str(),
               "Could not add column for add_column_in_history_mode");
@@ -1239,11 +1273,11 @@ void MdSqlGenerator::add_column_in_history_mode(duckdb::Connection &con,
     // Insert new rows with the default value, capturing the DDL change
     std::ostringstream sql;
     sql << "INSERT INTO " << absolute_table_name << " SELECT * REPLACE ("
-               << casted_default_value << " AS " << quoted_column << ", "
-               << quoted_timestamp << " AS \"_fivetran_start\")"
-               << " FROM " << absolute_table_name
-               << " WHERE \"_fivetran_active\" = TRUE AND _fivetran_start < "
-               << quoted_timestamp;
+        << casted_default_value << " AS " << quoted_column << ", "
+        << quoted_timestamp << " AS \"_fivetran_start\")"
+        << " FROM " << absolute_table_name
+        << " WHERE \"_fivetran_active\" = TRUE AND _fivetran_start < "
+        << quoted_timestamp;
 
     run_query(con, "add_column_in_history_mode insert", sql.str(),
               "Could not insert new rows for add_column_in_history_mode");
@@ -1252,15 +1286,16 @@ void MdSqlGenerator::add_column_in_history_mode(duckdb::Connection &con,
   {
     // Per the docs:
     //   This step is important in case of source connector sends multiple
-    //   ADD_COLUMN_IN_HISTORY_MODE operations with the same operation_timestamp.
-    //   It will ensure, we only record history once for that timestamp.
+    //   ADD_COLUMN_IN_HISTORY_MODE operations with the same
+    //   operation_timestamp. It will ensure, we only record history once for
+    //   that timestamp.
     // Also see drop_column_in_history_mode(): this ensures that if we already
     // inserted records for the current operation_timestamp, we set the right
     // default value for the column we're currently processing.
     std::ostringstream sql;
-    sql << "UPDATE " << absolute_table_name << " SET " << quoted_column
-                   << " = " << casted_default_value
-                   << " WHERE \"_fivetran_start\" = " << quoted_timestamp;
+    sql << "UPDATE " << absolute_table_name << " SET " << quoted_column << " = "
+        << casted_default_value
+        << " WHERE \"_fivetran_start\" = " << quoted_timestamp;
 
     run_query(con, "add_column_in_history_mode update_new", sql.str(),
               "Could not update new rows for add_column_in_history_mode");
@@ -1270,11 +1305,11 @@ void MdSqlGenerator::add_column_in_history_mode(duckdb::Connection &con,
     // Update previous active records
     std::ostringstream sql;
     sql << "UPDATE " << absolute_table_name
-                    << " SET \"_fivetran_active\" = FALSE,"
-                    << " \"_fivetran_end\" = (" << quoted_timestamp
-                    << "::TIMESTAMP - (INTERVAL '1 millisecond'))"
-                    << " WHERE \"_fivetran_active\" = TRUE"
-                    << " AND \"_fivetran_start\" < " << quoted_timestamp;
+        << " SET \"_fivetran_active\" = FALSE,"
+        << " \"_fivetran_end\" = (" << quoted_timestamp
+        << "::TIMESTAMP - (INTERVAL '1 millisecond'))"
+        << " WHERE \"_fivetran_active\" = TRUE"
+        << " AND \"_fivetran_start\" < " << quoted_timestamp;
 
     run_query(con, "add_column_in_history_mode update", sql.str(),
               "Could not update records for add_column_in_history_mode");
@@ -1310,7 +1345,7 @@ void MdSqlGenerator::migrate_soft_delete_to_live(
   {
     std::ostringstream sql;
     sql << "DELETE FROM " << absolute_table_name << " WHERE "
-               << quoted_deleted_col << " = TRUE";
+        << quoted_deleted_col << " = TRUE";
     run_query(con, "migrate_soft_delete_to_live delete", sql.str(),
               "Could not delete soft-deleted rows");
   }
@@ -1318,7 +1353,8 @@ void MdSqlGenerator::migrate_soft_delete_to_live(
   // Always drop the _fivetran_deleted column, with IF EXISTS as a safeguard
   {
     std::ostringstream sql;
-    sql << "ALTER TABLE " << absolute_table_name << " DROP COLUMN IF EXISTS \"_fivetran_deleted\"";
+    sql << "ALTER TABLE " << absolute_table_name
+        << " DROP COLUMN IF EXISTS \"_fivetran_deleted\"";
     run_query(con, "migrate_soft_delete_to_live drop", sql.str(),
               "Could not drop soft_deleted_column");
   }
@@ -1379,12 +1415,14 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
   // Always drop the _fivetran_deleted column, with IF EXISTS as a safeguard
   {
     std::ostringstream sql;
-    sql << "ALTER TABLE " << absolute_table_name << " DROP COLUMN IF EXISTS \"_fivetran_deleted\";";
+    sql << "ALTER TABLE " << absolute_table_name
+        << " DROP COLUMN IF EXISTS \"_fivetran_deleted\";";
     run_query(con, "migrate_soft_delete_to_history drop", sql.str(),
               "Could not drop soft_deleted_column");
   }
 
-  // Rename, copy and drop the original table to be able to replace the primary key
+  // Rename, copy and drop the original table to be able to replace the primary
+  // key
   run_query(con, "migrate_soft_delete_to_history rename",
             "ALTER TABLE " + absolute_table_name + " RENAME TO " +
                 KeywordHelper::WriteQuoted(temp_table.table_name, '"') + ";",
@@ -1400,7 +1438,8 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
   for (const auto &column : columns) {
     // This also sets the default value of the soft_deleted_column if it was not
     // equal to _fivetran_deleted
-    if (!column.column_default.has_value() || column.column_default.value() == "NULL") {
+    if (!column.column_default.has_value() ||
+        column.column_default.value() == "NULL") {
       continue;
     }
     if (column.name == "_fivetran_deleted") {
@@ -1410,7 +1449,8 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
     std::ostringstream sql;
     sql << "ALTER TABLE " << absolute_table_name << " ALTER COLUMN "
         << KeywordHelper::WriteQuoted(column.name, '"') << " SET DEFAULT "
-        << KeywordHelper::WriteQuoted(column.column_default.value(), '\'') << ";";
+        << KeywordHelper::WriteQuoted(column.column_default.value(), '\'')
+        << ";";
     run_query(con, "migrate_soft_delete_to_history set_default", sql.str(),
               "Could not add default to column " + column.name);
   }
@@ -1440,7 +1480,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
   const std::string quoted_deleted_col =
       KeywordHelper::WriteQuoted(soft_deleted_column, '"');
 
-  con.BeginTransaction(); // Avoid creating hanging tables
+  con.BeginTransaction(); // Avoid creating dangling tables
 
   // From the duckdb docs:
   // "ADD CONSTRAINT and DROP CONSTRAINT clauses are not yet supported in
@@ -1500,7 +1540,8 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
   for (const auto &column : columns) {
     // This also sets the default value of the soft_deleted_column if it was not
     // equal to _fivetran_deleted
-    if (!column.column_default.has_value() || column.column_default.value() == "NULL") {
+    if (!column.column_default.has_value() ||
+        column.column_default.value() == "NULL") {
       continue;
     }
     if (column.name == "_fivetran_start" || column.name == "_fivetran_end" ||
@@ -1512,7 +1553,8 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
     std::ostringstream sql;
     sql << "ALTER TABLE " << temp_absolute_table_name << " ALTER COLUMN "
         << KeywordHelper::WriteQuoted(column.name, '"') << " SET DEFAULT "
-        << KeywordHelper::WriteQuoted(column.column_default.value(), '\'') << ";";
+        << KeywordHelper::WriteQuoted(column.column_default.value(), '\'')
+        << ";";
     run_query(con, "migrate_history_to_soft_delete set_default", sql.str(),
               "Could not add default to column " + column.name);
   }
@@ -1568,9 +1610,9 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection &con,
     // Combine steps 1 and 3
     std::ostringstream sql;
     sql << "CREATE TABLE " << temp_absolute_table_name
-            << " AS SELECT * EXCLUDE (\"_fivetran_start\", \"_fivetran_end\", "
-               "\"_fivetran_active\") "
-            << " FROM " << absolute_table_name << ";";
+        << " AS SELECT * EXCLUDE (\"_fivetran_start\", \"_fivetran_end\", "
+           "\"_fivetran_active\") "
+        << " FROM " << absolute_table_name << ";";
     run_query(con, "migrate_history_to_live create", sql.str(),
               "Could not add soft_deleted_column");
   }
@@ -1582,7 +1624,8 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection &con,
   find_primary_keys(columns, columns_pk, &columns_regular, "_fivetran_start");
 
   for (const auto &column : columns) {
-    if (!column.column_default.has_value() || column.column_default.value() == "NULL") {
+    if (!column.column_default.has_value() ||
+        column.column_default.value() == "NULL") {
       continue;
     }
     if (column.name == "_fivetran_start" || column.name == "_fivetran_end" ||
@@ -1593,7 +1636,8 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection &con,
     std::ostringstream sql;
     sql << "ALTER TABLE " << temp_absolute_table_name << " ALTER COLUMN "
         << KeywordHelper::WriteQuoted(column.name, '"') << " SET DEFAULT "
-        << KeywordHelper::WriteQuoted(column.column_default.value(), '\'') << ";";
+        << KeywordHelper::WriteQuoted(column.column_default.value(), '\'')
+        << ";";
     run_query(con, "migrate_history_to_live set_default", sql.str(),
               "Could not add default to column " + column.name);
   }
@@ -1605,8 +1649,7 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection &con,
     // add any primary key constraints.
     std::ostringstream sql;
 
-    sql << "ALTER TABLE " << temp_absolute_table_name
-              << " ADD PRIMARY KEY (";
+    sql << "ALTER TABLE " << temp_absolute_table_name << " ADD PRIMARY KEY (";
     write_joined(sql, columns_pk, print_column);
     sql << ");";
     run_query(con, "migrate_history_to_live alter", sql.str(),
@@ -1634,8 +1677,8 @@ void MdSqlGenerator::migrate_live_to_soft_delete(
   {
     // Add soft_deleted_column if it doesn't exist
     std::ostringstream sql;
-    sql << "ALTER TABLE " << absolute_table_name
-            << " ADD COLUMN IF NOT EXISTS " << quoted_deleted_col << " BOOLEAN;";
+    sql << "ALTER TABLE " << absolute_table_name << " ADD COLUMN IF NOT EXISTS "
+        << quoted_deleted_col << " BOOLEAN;";
     run_query(con, "migrate_live_to_soft_delete add", sql.str(),
               "Could not add soft_deleted_column");
   }
@@ -1643,9 +1686,8 @@ void MdSqlGenerator::migrate_live_to_soft_delete(
   {
     // Set all existing rows to not deleted
     std::ostringstream sql;
-    sql << "UPDATE " << absolute_table_name << " SET "
-               << quoted_deleted_col << " = FALSE WHERE " << quoted_deleted_col
-               << " IS NULL";
+    sql << "UPDATE " << absolute_table_name << " SET " << quoted_deleted_col
+        << " = FALSE WHERE " << quoted_deleted_col << " IS NULL";
     run_query(con, "migrate_live_to_soft_delete update", sql.str(),
               "Could not set soft_deleted_column values");
   }
@@ -1703,14 +1745,16 @@ void MdSqlGenerator::migrate_live_to_history(duckdb::Connection &con,
   for (const auto &column : columns) {
     // This also sets the default value of the soft_deleted_column if it was not
     // equal to _fivetran_deleted
-    if (!column.column_default.has_value() || column.column_default.value() == "NULL") {
+    if (!column.column_default.has_value() ||
+        column.column_default.value() == "NULL") {
       continue;
     }
 
     std::ostringstream sql;
     sql << "ALTER TABLE " << absolute_table_name << " ALTER COLUMN "
         << KeywordHelper::WriteQuoted(column.name, '"') << " SET DEFAULT "
-        << KeywordHelper::WriteQuoted(column.column_default.value(), '\'') << ";";
+        << KeywordHelper::WriteQuoted(column.column_default.value(), '\'')
+        << ";";
     run_query(con, "migrate_live_to_history set_default", sql.str(),
               "Could not add default to column " + column.name);
   }

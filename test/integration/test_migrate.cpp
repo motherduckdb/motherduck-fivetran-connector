@@ -573,26 +573,26 @@ TEST_CASE("Migrate - copy table to history mode from soft delete",
                           "_fivetran_synced TIMESTAMPTZ, primary key (id))");
     REQUIRE_NO_FAIL(res);
 
-    if (soft_deleted_column != "_fivetran_deleted")
-    {
-      auto res2 = con->Query("ALTER TABLE " + source_table +
-                            " ADD COLUMN " + soft_deleted_column + " BOOLEAN");
+    if (soft_deleted_column != "_fivetran_deleted") {
+      auto res2 = con->Query("ALTER TABLE " + source_table + " ADD COLUMN " +
+                             soft_deleted_column + " BOOLEAN");
       REQUIRE_NO_FAIL(res2);
     }
   }
 
   // Insert data with some deleted rows
-  if (soft_deleted_column != "_fivetran_deleted")
-  {
+  if (soft_deleted_column != "_fivetran_deleted") {
     auto res = con->Query("INSERT INTO " + source_table +
-                          " (id, name, _fivetran_deleted, _fivetran_synced, " + soft_deleted_column
-                          + ") VALUES (1, 'Alice', false, NOW(), false), "
+                          " (id, name, _fivetran_deleted, _fivetran_synced, " +
+                          soft_deleted_column +
+                          ") VALUES (1, 'Alice', false, NOW(), false), "
                           "(2, 'Bob', true, NOW(), true), "
                           "(3, 'Charlie', false, NOW(), false)");
     REQUIRE_NO_FAIL(res);
   } else {
     auto res = con->Query("INSERT INTO " + source_table +
-                          " (id, name, _fivetran_deleted, _fivetran_synced) VALUES (1, 'Alice', false, NOW()), "
+                          " (id, name, _fivetran_deleted, _fivetran_synced) "
+                          "VALUES (1, 'Alice', false, NOW()), "
                           "(2, 'Bob', true, NOW()), "
                           "(3, 'Charlie', false, NOW())");
     REQUIRE_NO_FAIL(res);
@@ -858,7 +858,6 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
     REQUIRE(res2->GetValue(0, 0).IsNull());
   }
 
-
   // Add column with default empty string
   {
     ::fivetran_sdk::v2::MigrateRequest request;
@@ -1016,7 +1015,8 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
     REQUIRE_NO_FAIL(status);
     REQUIRE(response.success());
   }
-  // Add another column in history mode with a younger operation timestamp - should fail
+  // Add another column in history mode with a younger operation timestamp -
+  // should fail
   {
     ::fivetran_sdk::v2::MigrateRequest request;
     (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
@@ -1033,8 +1033,9 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 
     ::fivetran_sdk::v2::MigrateResponse response;
     auto status = service.Migrate(nullptr, &request, &response);
-    REQUIRE_FAIL(status, "The _fivetran_start column contains values larger than the "
-      "operation timestamp. Please contact Fivetran support.");
+    REQUIRE_FAIL(status,
+                 "The _fivetran_start column contains values larger than the "
+                 "operation timestamp. Please contact Fivetran support.");
   }
   // Add another column in history mode with a later operation timestamp
   {
@@ -1082,6 +1083,81 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 1);
     REQUIRE(res->GetValue(0, 0) == false);
+  }
+
+  // Clean up
+  con->Query("DROP TABLE IF EXISTS " + table_name);
+}
+
+TEST_CASE("Migrate - add/drop column in history mode to empty table", "[integration][migrate]") {
+  DestinationSdkImpl service;
+  const std::string table_name =
+      "migrate_add_col_hist_" + std::to_string(Catch::rngSeed());
+
+  auto con = get_test_connection(MD_TOKEN);
+
+  // Create a history table manually
+  con->Query("DROP TABLE IF EXISTS " + table_name);
+  {
+    auto res = con->Query("CREATE TABLE " + table_name +
+                          " (id INT, name VARCHAR, "
+                          "_fivetran_start TIMESTAMPTZ, "
+                          "_fivetran_end TIMESTAMPTZ, "
+                          "_fivetran_active BOOLEAN)");
+    REQUIRE_NO_FAIL(res);
+  }
+
+  // Add column in history mode
+  {
+    ::fivetran_sdk::v2::MigrateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_details()->set_table(table_name);
+    auto *add_col = request.mutable_details()
+                        ->mutable_add()
+                        ->mutable_add_column_in_history_mode();
+    add_col->set_column("age");
+    add_col->set_column_type(::fivetran_sdk::v2::DataType::INT);
+    add_col->set_default_value("25");
+    add_col->set_operation_timestamp("2024-06-01T00:00:00Z");
+
+    ::fivetran_sdk::v2::MigrateResponse response;
+    auto status = service.Migrate(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(response.success());
+  }
+
+  {
+    auto res = con->Query("SELECT COUNT(*) FROM " + table_name);
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->GetValue(0, 0) == 0);
+  }
+
+  // Drop column in history mode
+  {
+    ::fivetran_sdk::v2::MigrateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_details()->set_table(table_name);
+    auto *drop_col = request.mutable_details()
+                         ->mutable_drop()
+                         ->mutable_drop_column_in_history_mode();
+    drop_col->set_column("name");
+    drop_col->set_operation_timestamp("2024-06-01T00:00:00Z");
+
+    ::fivetran_sdk::v2::MigrateResponse response;
+    auto status = service.Migrate(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(response.success());
+  }
+
+  {
+    // This asserts the column still exists and the fact that the table is empty at the same time
+    auto res = con->Query("SELECT name FROM " + table_name);
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 0);
   }
 
   // Clean up

@@ -81,8 +81,8 @@ std::vector<column_def> get_duckdb_columns(
       }
     }
 
-    duckdb_columns.push_back(column_def{col.name(), duckdb_type,
-                                        std::nullopt, col.primary_key(), decimal_width,
+    duckdb_columns.push_back(column_def{col.name(), duckdb_type, std::nullopt,
+                                        col.primary_key(), decimal_width,
                                         decimal_scale});
   }
   return duckdb_columns;
@@ -709,7 +709,7 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
 
     table_def table{db_name, schema_name, table_name};
     logger.info("Endpoint <Migrate>: schema <" + schema_name + ">, table <" +
-                 table_name + ">");
+                table_name + ">");
 
     switch (details.operation_case()) {
     case fivetran_sdk::v2::MigrationDetails::kDrop: {
@@ -729,7 +729,8 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
         break;
       }
       default: {
-        logger.warning("Endpoint <Migrate>: received unsupported drop mode operation type");
+        logger.warning("Endpoint <Migrate>: received unsupported drop mode "
+                       "operation type");
         response->set_unsupported(true);
         return ::grpc::Status::OK;
       }
@@ -804,10 +805,10 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
         const auto &add_col = add.add_column_with_default_value();
 
         column_def col{
-          .name = add_col.column(),
-          .type = get_duckdb_type(add_col.column_type()),
-          .column_default = add_col.default_value(),
-          .primary_key = false,
+            .name = add_col.column(),
+            .type = get_duckdb_type(add_col.column_type()),
+            .column_default = add_col.default_value(),
+            .primary_key = false,
         };
         sql_generator->add_column_with_default(con, table, col);
         break;
@@ -817,12 +818,13 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
         logger.info("Endpoint <Migrate>: ADD_COLUMN_IN_HISTORY_MODE");
         const auto &add_col = add.add_column_in_history_mode();
         column_def col{
-          .name = add_col.column(),
-          .type = get_duckdb_type(add_col.column_type()),
-          .column_default = add_col.default_value(),
-          .primary_key = false,
+            .name = add_col.column(),
+            .type = get_duckdb_type(add_col.column_type()),
+            .column_default = add_col.default_value(),
+            .primary_key = false,
         };
-        sql_generator->add_column_in_history_mode(con, table, col, add_col.operation_timestamp());
+        sql_generator->add_column_in_history_mode(
+            con, table, col, add_col.operation_timestamp());
         break;
       }
       default: {
@@ -849,8 +851,10 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
                                          : false;
 
       switch (sync_mode.type()) {
-      // Note: officially live mode is not supported yet for the partner SDK. Hence, the LIVE_TO_* and *_TO_LIVE are
-      // not yet expected to be sent out, and we could expect changes to the docs/spec on live mode in the future.
+      // Note: officially live mode is not supported yet for the partner SDK.
+      // Hence, the LIVE_TO_* and *_TO_LIVE are not yet expected to be sent out,
+      // and we could expect changes to the docs/spec on live mode in the
+      // future.
       case fivetran_sdk::v2::SOFT_DELETE_TO_LIVE:
         logger.info("Endpoint <Migrate>: SOFT_DELETE_TO_LIVE");
         sql_generator->migrate_soft_delete_to_live(con, table,
@@ -897,7 +901,7 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
     const std::string schema = request->details().schema();
     const std::string table = request->details().table();
     logger.severe("Migrate endpoint failed for schema <" + schema +
-                   ">, table <" + table + ">: " + std::string(e.what()));
+                  ">, table <" + table + ">: " + std::string(e.what()));
     response->mutable_task()->set_message(e.what());
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
