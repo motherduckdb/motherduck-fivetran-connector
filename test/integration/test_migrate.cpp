@@ -523,7 +523,7 @@ TEST_CASE("Migrate - copy column", "[integration][migrate]") {
 
     ::fivetran_sdk::v2::MigrateResponse response;
     auto status = service.Migrate(nullptr, &request, &response);
-    REQUIRE_FAIL(status, "No column with the name \"fake_column_name\" found");
+    REQUIRE_FAIL(status, "Column with name \"fake_column_name\" not found");
   }
 
   // Copy copy to existing column fails
@@ -544,8 +544,12 @@ TEST_CASE("Migrate - copy column", "[integration][migrate]") {
 
     ::fivetran_sdk::v2::MigrateResponse response;
     auto status = service.Migrate(nullptr, &request, &response);
-    REQUIRE_FAIL(status, "Could not add column for copy_column: Catalog Error: "
-                         "Column with name dest_col already exists!");
+
+    REQUIRE_FAIL(
+        status,
+        "Could not add column <dest_col> to table "
+           "<\"" + TEST_DATABASE_NAME + "\".\"main\".\"" + table_name + "\">: "
+        "Catalog Error: Column with name dest_col already exists!");
   }
 
   // Clean up

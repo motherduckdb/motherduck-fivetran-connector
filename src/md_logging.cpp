@@ -4,6 +4,7 @@
 #include <iostream>
 #include <mutex>
 #include <string>
+#include <duckdb/main/connection_manager.hpp>
 
 namespace mdlog {
 

@@ -79,11 +79,11 @@ duckdb::Connection
 ConnectionFactory::GetConnection(const std::string &md_auth_token,
                                  const std::string &db_name) {
   stdout_logger.info("get_connection: start");
-  duckdb::DuckDB &db = get_duckdb(md_auth_token, db_name);
-  auto con = duckdb::Connection(db);
+  duckdb::DuckDB &db_ = get_duckdb(md_auth_token, db_name);
+  auto con = duckdb::Connection(db_);
   stdout_logger.info("get_connection: created connection");
 
-  // Trigger welcome pack fetch, but do not raise errors
+  // Trigger welcome pack fetch, but do not raise errors. TODO: move?
   const auto welcome_pack_res = con.Query("FROM md_welcome_messages()");
   if (welcome_pack_res->HasError()) {
     stdout_logger.severe("get_connection: Could not fetch welcome pack: " +

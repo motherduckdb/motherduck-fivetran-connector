@@ -19,6 +19,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <duckdb/main/connection_manager.hpp>
 
 template <typename T> std::string get_schema_name(const T *request) {
   std::string schema_name = request->schema_name();
@@ -687,7 +688,7 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
                             ::fivetran_sdk::v2::MigrateResponse *response) {
   std::optional<RequestContext> ctx;
   try {
-    ctx.emplace("WriteBatch", connection_factory, request->configuration());
+    ctx.emplace("Migrate", connection_factory, request->configuration());
   } catch (const std::exception &e) {
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
   }
@@ -717,7 +718,7 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
       switch (drop.entity_case()) {
       case fivetran_sdk::v2::DropOperation::EntityCase::kDropTable: {
         logger.info("Endpoint <Migrate>: DROP_TABLE");
-        sql_generator->drop_table(con, table);
+        sql_generator->drop_table(con, table, "drop_table");
         break;
       }
       case fivetran_sdk::v2::DropOperation::EntityCase::
@@ -745,7 +746,7 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
         const auto &copy_table = copy.copy_table();
         table_def from_table{db_name, schema_name, copy_table.from_table()};
         table_def to_table{db_name, schema_name, copy_table.to_table()};
-        sql_generator->copy_table(con, from_table, to_table);
+        sql_generator->copy_table(con, from_table, to_table, "copy_table");
         break;
       }
       case fivetran_sdk::v2::CopyOperation::EntityCase::kCopyColumn: {
@@ -779,7 +780,8 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
         logger.info("Endpoint <Migrate>: RENAME_TABLE");
         const auto &rename_tbl = rename.rename_table();
         table_def from_table{db_name, schema_name, rename_tbl.from_table()};
-        sql_generator->rename_table(con, from_table, rename_tbl.to_table());
+        sql_generator->rename_table(con, from_table, rename_tbl.to_table(),
+                                    "rename_table");
         break;
       }
       case fivetran_sdk::v2::RenameOperation::EntityCase::kRenameColumn: {
@@ -810,7 +812,7 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
             .column_default = add_col.default_value(),
             .primary_key = false,
         };
-        sql_generator->add_column_with_default(con, table, col);
+        sql_generator->add_column(con, table, col, "add_column");
         break;
       }
       case fivetran_sdk::v2::AddOperation::EntityCase::
@@ -823,7 +825,7 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
             .column_default = add_col.default_value(),
             .primary_key = false,
         };
-        sql_generator->add_column_in_history_mode(
+          sql_generator->add_column_in_history_mode(
             con, table, col, add_col.operation_timestamp());
         break;
       }
@@ -898,6 +900,10 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
 
     response->set_success(true);
   } catch (const std::exception &e) {
+    // if (con.HasActiveTransaction()) {
+    //   con.Rollback();
+    // }
+
     const std::string schema = request->details().schema();
     const std::string table = request->details().table();
     logger.severe("Migrate endpoint failed for schema <" + schema +

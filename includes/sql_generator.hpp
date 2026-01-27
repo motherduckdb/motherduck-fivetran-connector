@@ -40,7 +40,12 @@ public:
                                          const table_def &table);
   void add_column(duckdb::Connection &con, const table_def &table,
                   const column_def &column, const std::string &log_prefix,
-                  const std::string &error_message) const;
+                  bool exists_ok = false) const;
+
+  void drop_column(duckdb::Connection &con, const table_def &table,
+                   const std::string &column_name,
+                   const std::string &log_prefix,
+                   bool not_exists_ok = false) const;
 
   void alter_table(duckdb::Connection &con, const table_def &table,
                    const std::vector<column_def> &requested_columns,
@@ -97,7 +102,8 @@ public:
   // Migration operations
 
   // Drop the destination table
-  void drop_table(duckdb::Connection &con, const table_def &table);
+  void drop_table(duckdb::Connection &con, const table_def &table,
+                  const std::string &log_prefix);
 
   // In history mode, instead of dropping the actual column we pretend that all
   // column values have been set to NULL in the source. This means that for all
@@ -114,7 +120,8 @@ public:
 
   // Copy a table in the destination.
   void copy_table(duckdb::Connection &con, const table_def &from_table,
-                  const table_def &to_table);
+                  const table_def &to_table, const std::string &log_prefix,
+                  const std::vector<const column_def *> &additional_pks = {});
 
   // Copy a column in the destination.
   void copy_column(duckdb::Connection &con, const table_def &table,
@@ -132,16 +139,13 @@ public:
 
   // Rename a destination table
   void rename_table(duckdb::Connection &con, const table_def &from_table,
-                    const std::string &to_table_name);
+                    const std::string &to_table_name,
+                    const std::string &log_prefix);
 
   // Rename a destination column
   void rename_column(duckdb::Connection &con, const table_def &table,
                      const std::string &from_column,
                      const std::string &to_column);
-
-  // Add a column in the destination with a default value
-  void add_column_with_default(duckdb::Connection &con, const table_def &table,
-                               const column_def &column);
 
   // Verify the state of the history table before performing schema migrations
   static bool history_table_is_valid(duckdb::Connection &con,
@@ -178,6 +182,14 @@ public:
   void migrate_soft_delete_to_history(duckdb::Connection &con,
                                       const table_def &table,
                                       const std::string &soft_deleted_column);
+  void add_defaults(duckdb::Connection &con,
+                    const std::vector<column_def> &columns,
+                    const std::string &table_name,
+                    const std::string &log_prefix);
+  void add_pks(duckdb::Connection &con,
+               const std::vector<const column_def *> &columns_pk,
+               const std::string &table_name,
+               const std::string &log_prefix) const;
 
   // Switch between sync modes: history to soft-delete. This means keeping only
   // the last entries based on per MAX("_fivetran_start") per primary key,
@@ -220,8 +232,7 @@ private:
                             const std::vector<column_def> &all_columns,
                             const std::set<std::string> &common_columns);
   void
-  alter_table_in_place(duckdb::Connection &con,
-                       const std::string &absolute_table_name,
+  alter_table_in_place(duckdb::Connection &con, const table_def &table,
                        const std::vector<column_def> &added_columns,
                        const std::set<std::string> &deleted_columns,
                        const std::set<std::string> &alter_types,
