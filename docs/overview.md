@@ -36,21 +36,25 @@ We use the following data type conversions:
 | SHORT              | SMALLINT              |
 | INT                | INTEGER               |
 | LONG               | BIGINT                |
+| BIGDECIMAL         | DECIMAL               |
 | FLOAT              | FLOAT                 |
 | DOUBLE             | DOUBLE                |
-| DECIMAL            | DECIMAL               |
+| LOCALTIME          | TIME                  |
 | LOCALDATE          | DATE                  |
 | LOCALDATETIME      | TIMESTAMP             |
-| INSTANT            | TIMESTAMP             |
+| INSTANT            | TIMESTAMPTZ           |
 | STRING             | VARCHAR               |
 | JSON               | VARCHAR               |
-| BINARY             | BIT                   |
+| XML                | VARCHAR               |
+| BINARY             | BLOB                  |
+
+Please note that XML and JSON type information is not preserved in MotherDuck because those values are stored as VARCHAR.
 
 ------------
 
-## Limitations
+## Current Limitations
 
-[History mode](/docs/core-concepts/sync-modes/history-mode) is not supported for MotherDuck destinations.
+- Support for [History Mode](/docs/core-concepts/sync-modes/history-mode) is currently in beta status.
 
 
 
