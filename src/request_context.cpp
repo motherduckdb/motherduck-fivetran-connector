@@ -3,6 +3,7 @@
 #include "connection_factory.hpp"
 #include "google/protobuf/map.h"
 
+#include <cstdlib>
 #include <string>
 
 RequestContext::RequestContext(
@@ -12,7 +13,9 @@ RequestContext::RequestContext(
       con(connection_factory.GetConnection(
           config::find_property(request_config, config::PROP_TOKEN),
           config::find_property(request_config, config::PROP_DATABASE))),
-      logger(mdlog::Logger::CreateMultiSinkLogger(&con)) {
+      logger(std::getenv("MD_DISABLE_DUCKDB_LOGGING")
+                 ? mdlog::Logger::CreateStdoutLogger()
+                 : mdlog::Logger::CreateMultiSinkLogger(&con)) {
   logger.info("Endpoint <" + endpoint_name + "> started");
 }
 
