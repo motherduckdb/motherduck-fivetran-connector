@@ -48,7 +48,7 @@ We use the following data type conversions:
 | XML                | VARCHAR               |
 | BINARY             | BLOB                  |
 
-Please note that XML and JSON type information is not preserved in MotherDuck because these values are stored as VARCHAR.
+Please note that XML and JSON type information is not preserved in MotherDuck because those values are stored as VARCHAR.
 
 ------------
 
