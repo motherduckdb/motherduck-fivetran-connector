@@ -48,14 +48,13 @@ We use the following data type conversions:
 | XML                | VARCHAR               |
 | BINARY             | BLOB                  |
 
-Please note that XML and JSON type information are not preserved in MotherDuck because these values are stored as VARCHAR.
+Please note that XML and JSON type information is not preserved in MotherDuck because these values are stored as VARCHAR.
 
 ------------
 
 ## Current Limitations
 
 - Support for [History Mode](/docs/core-concepts/sync-modes/history-mode) is currently in beta status.
-- Support for schema migrations between live, soft-delete and history mode is currently in beta status.
 
 
 
