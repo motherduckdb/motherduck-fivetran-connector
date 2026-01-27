@@ -8,17 +8,28 @@
 #include "duckdb.hpp"
 #include "fivetran_duckdb_interop.hpp"
 #include "ingest_properties.hpp"
+#include "md_error.hpp"
 #include "md_logging.hpp"
 #include "request_context.hpp"
 #include "sql_generator.hpp"
 
-#include "md_error.hpp"
 #include <exception>
 #include <filesystem>
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <optional>
 #include <string>
+
+namespace {
+::grpc::Status
+create_grpc_status_from_exception(const std::exception &ex,
+                                  const std::string &prefix = "") {
+  const std::string error_message =
+      md_error::truncate_for_grpc_header(ex.what());
+  // The assumption here is that the prefix is short enough that it length can
+  // be disregarded
+  return ::grpc::Status(::grpc::StatusCode::INTERNAL, prefix + error_message);
+}
 
 template <typename T> std::string get_schema_name(const T *request) {
   std::string schema_name = request->schema_name();
@@ -103,6 +114,7 @@ get_decryption_key(const std::string &filename,
 
   return encryption_key_it->second;
 }
+} // namespace
 
 grpc::Status DestinationSdkImpl::ConfigurationForm(
     ::grpc::ServerContext *,
@@ -136,14 +148,14 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
     connection_test->set_label(test_case.description);
   }
 
-  return ::grpc::Status(::grpc::StatusCode::OK, "");
+  return ::grpc::Status::OK;
 }
 
 grpc::Status DestinationSdkImpl::Capabilities(
     ::grpc::ServerContext *, const ::fivetran_sdk::v2::CapabilitiesRequest *,
     ::fivetran_sdk::v2::CapabilitiesResponse *response) {
   response->set_batch_file_format(::fivetran_sdk::v2::CSV);
-  return ::grpc::Status(::grpc::StatusCode::OK, "");
+  return ::grpc::Status::OK;
 }
 
 grpc::Status DestinationSdkImpl::DescribeTable(
@@ -153,8 +165,8 @@ grpc::Status DestinationSdkImpl::DescribeTable(
   std::optional<RequestContext> ctx;
   try {
     ctx.emplace("DescribeTable", connection_factory, request->configuration());
-  } catch (const std::exception &e) {
-    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  } catch (const std::exception &ex) {
+    return create_grpc_status_from_exception(ex);
   }
   auto &con = ctx->GetConnection();
   auto &logger = ctx->GetLogger();
@@ -172,7 +184,7 @@ grpc::Status DestinationSdkImpl::DescribeTable(
     if (!sql_generator->table_exists(con, table_name)) {
       logger.info("Endpoint <DescribeTable>: table not found");
       response->set_not_found(true);
-      return ::grpc::Status(::grpc::StatusCode::OK, "");
+      return ::grpc::Status::OK;
     }
 
     logger.info("Endpoint <DescribeTable>: table exists; getting columns");
@@ -200,16 +212,16 @@ grpc::Status DestinationSdkImpl::DescribeTable(
                    request->schema_name() + ">, table <" +
                    request->table_name() + ">:" + std::string(mde.what()));
     response->mutable_task()->set_message(mde.what());
-    return ::grpc::Status(::grpc::StatusCode::OK, "");
-  } catch (const std::exception &e) {
+    return ::grpc::Status::OK;
+  } catch (const std::exception &ex) {
     logger.severe("DescribeTable endpoint failed for schema <" +
                   request->schema_name() + ">, table <" +
-                  request->table_name() + ">:" + std::string(e.what()));
-    response->mutable_task()->set_message(e.what());
-    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+                  request->table_name() + ">:" + std::string(ex.what()));
+    response->mutable_task()->set_message(ex.what());
+    return create_grpc_status_from_exception(ex);
   }
 
-  return ::grpc::Status(::grpc::StatusCode::OK, "");
+  return ::grpc::Status::OK;
 }
 
 grpc::Status DestinationSdkImpl::CreateTable(
@@ -219,8 +231,8 @@ grpc::Status DestinationSdkImpl::CreateTable(
   std::optional<RequestContext> ctx;
   try {
     ctx.emplace("CreateTable", connection_factory, request->configuration());
-  } catch (const std::exception &e) {
-    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  } catch (const std::exception &ex) {
+    return create_grpc_status_from_exception(ex);
   }
   auto &con = ctx->GetConnection();
   auto &logger = ctx->GetLogger();
@@ -245,16 +257,16 @@ grpc::Status DestinationSdkImpl::CreateTable(
                    request->schema_name() + ">, table <" +
                    request->table().name() + ">:" + std::string(mde.what()));
     response->mutable_task()->set_message(mde.what());
-    return ::grpc::Status(::grpc::StatusCode::OK, "");
-  } catch (const std::exception &e) {
+    return ::grpc::Status::OK;
+  } catch (const std::exception &ex) {
     logger.severe("CreateTable endpoint failed for schema <" +
                   request->schema_name() + ">, table <" +
-                  request->table().name() + ">:" + std::string(e.what()));
-    response->mutable_task()->set_message(e.what());
-    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+                  request->table().name() + ">:" + std::string(ex.what()));
+    response->mutable_task()->set_message(ex.what());
+    return create_grpc_status_from_exception(ex);
   }
 
-  return ::grpc::Status(::grpc::StatusCode::OK, "");
+  return ::grpc::Status::OK;
 }
 
 grpc::Status DestinationSdkImpl::AlterTable(
@@ -264,8 +276,8 @@ grpc::Status DestinationSdkImpl::AlterTable(
   std::optional<RequestContext> ctx;
   try {
     ctx.emplace("AlterTable", connection_factory, request->configuration());
-  } catch (const std::exception &e) {
-    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  } catch (const std::exception &ex) {
+    return create_grpc_status_from_exception(ex);
   }
   auto &con = ctx->GetConnection();
   auto &logger = ctx->GetLogger();
@@ -286,16 +298,16 @@ grpc::Status DestinationSdkImpl::AlterTable(
                   request->schema_name() + ">, table <" +
                   request->table().name() + ">:" + std::string(mde.what()));
     response->mutable_task()->set_message(mde.what());
-    return ::grpc::Status(::grpc::StatusCode::OK, "");
-  } catch (const std::exception &e) {
+    return ::grpc::Status::OK;
+  } catch (const std::exception &ex) {
     logger.severe("AlterTable endpoint failed for schema <" +
                   request->schema_name() + ">, table <" +
-                  request->table().name() + ">:" + std::string(e.what()));
-    response->mutable_task()->set_message(e.what());
-    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+                  request->table().name() + ">:" + std::string(ex.what()));
+    response->mutable_task()->set_message(ex.what());
+    return create_grpc_status_from_exception(ex);
   }
 
-  return ::grpc::Status(::grpc::StatusCode::OK, "");
+  return ::grpc::Status::OK;
 }
 
 grpc::Status
@@ -305,8 +317,8 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *,
   std::optional<RequestContext> ctx;
   try {
     ctx.emplace("Truncate", connection_factory, request->configuration());
-  } catch (const std::exception &e) {
-    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  } catch (const std::exception &ex) {
+    return create_grpc_status_from_exception(ex);
   }
   auto &con = ctx->GetConnection();
   auto &logger = ctx->GetLogger();
@@ -341,16 +353,16 @@ DestinationSdkImpl::Truncate(::grpc::ServerContext *,
                    request->schema_name() + ">, table <" +
                    request->table_name() + ">:" + std::string(mde.what()));
     response->mutable_task()->set_message(mde.what());
-    return ::grpc::Status(::grpc::StatusCode::OK, "");
-  } catch (const std::exception &e) {
+    return ::grpc::Status::OK;
+  } catch (const std::exception &ex) {
     logger.severe("Truncate endpoint failed for schema <" +
                   request->schema_name() + ">, table <" +
-                  request->table_name() + ">:" + std::string(e.what()));
-    response->mutable_task()->set_message(e.what());
-    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+                  request->table_name() + ">:" + std::string(ex.what()));
+    response->mutable_task()->set_message(ex.what());
+    return create_grpc_status_from_exception(ex);
   }
 
-  return ::grpc::Status(::grpc::StatusCode::OK, "");
+  return ::grpc::Status::OK;
 }
 
 grpc::Status DestinationSdkImpl::WriteBatch(
@@ -360,8 +372,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(
   std::optional<RequestContext> ctx;
   try {
     ctx.emplace("WriteBatch", connection_factory, request->configuration());
-  } catch (const std::exception &e) {
-    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  } catch (const std::exception &ex) {
+    return create_grpc_status_from_exception(ex);
   }
   auto &con = ctx->GetConnection();
   auto &logger = ctx->GetLogger();
@@ -447,17 +459,18 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                      request->table().name() + ">:" + std::string(mde.what());
     logger.warning(msg);
     response->mutable_task()->set_message(msg);
-    return ::grpc::Status(::grpc::StatusCode::OK, "");
-  } catch (const std::exception &e) {
-    auto const msg = "WriteBatch endpoint failed for schema <" +
-                     request->schema_name() + ">, table <" +
-                     request->table().name() + ">:" + std::string(e.what());
-    logger.severe(msg);
-    response->mutable_task()->set_message(msg);
-    return ::grpc::Status(::grpc::StatusCode::INTERNAL, msg);
+    return ::grpc::Status::OK;
+  } catch (const std::exception &ex) {
+    const std::string error_prefix = "WriteBatch endpoint failed for schema <" +
+                                     request->schema_name() + ">, table <" +
+                                     request->table().name() + ">: ";
+    const auto error_msg = error_prefix + ex.what();
+    logger.severe(error_msg);
+    response->mutable_task()->set_message(error_msg);
+    return create_grpc_status_from_exception(ex, error_prefix);
   }
 
-  return ::grpc::Status(::grpc::StatusCode::OK, "");
+  return ::grpc::Status::OK;
 }
 
 ::grpc::Status DestinationSdkImpl::WriteHistoryBatch(
@@ -468,8 +481,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(
   try {
     ctx.emplace("WriteHistoryBatch", connection_factory,
                 request->configuration());
-  } catch (const std::exception &e) {
-    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  } catch (const std::exception &ex) {
+    return create_grpc_status_from_exception(ex);
   }
   auto &con = ctx->GetConnection();
   auto &logger = ctx->GetLogger();
@@ -615,11 +628,12 @@ grpc::Status DestinationSdkImpl::WriteBatch(
                      request->schema_name() + ">, table <" +
                      request->table().name() + ">:" + std::string(mde.what());
     response->mutable_task()->set_message(mde.what());
-    return ::grpc::Status(::grpc::StatusCode::OK, "");
-  } catch (const std::exception &e) {
-    auto const msg = "WriteHistoryBatch endpoint failed for schema <" +
-                     request->schema_name() + ">, table <" +
-                     request->table().name() + ">:" + std::string(e.what());
+    return ::grpc::Status::OK;
+  } catch (const std::exception &ex) {
+    const std::string error_prefix =
+        "WriteHistoryBatch endpoint failed for schema <" +
+        request->schema_name() + ">, table <" + request->table().name() + ">: ";
+    const auto msg = error_prefix + ex.what();
     logger.severe(msg);
 
     // Clean up bookkeeping table. The function uses IF EXISTS. Ignore any
@@ -627,10 +641,10 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     sql_generator->drop_latest_active_records_table(con, lar_table_name);
 
     response->mutable_task()->set_message(msg);
-    return ::grpc::Status(::grpc::StatusCode::INTERNAL, msg);
+    return create_grpc_status_from_exception(ex, error_prefix);
   }
 
-  return ::grpc::Status(::grpc::StatusCode::OK, "");
+  return ::grpc::Status::OK;
 }
 
 std::string extract_readable_error(const std::exception &ex) {
