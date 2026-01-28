@@ -11,6 +11,7 @@
 #include <future>
 #include <thread>
 #include <vector>
+#include <catch2/internal/catch_run_context.hpp>
 
 using namespace test::constants;
 

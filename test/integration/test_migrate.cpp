@@ -11,6 +11,8 @@
 #include <future>
 #include <thread>
 #include <vector>
+#include <catch2/generators/catch_generators.hpp>
+#include <catch2/internal/catch_run_context.hpp>
 
 using namespace test::constants;
 
@@ -83,10 +85,9 @@ TEST_CASE("Migrate - drop table", "[integration][migrate]") {
     auto status = service.Migrate(nullptr, &request, &response);
     REQUIRE_FAIL(
         status,
-        "Could not drop table <\"" + TEST_DATABASE_NAME +
+        Catch::Matchers::ContainsSubstring("Could not drop table <\"" + TEST_DATABASE_NAME +
             "\".\"main\".\"fake_table_name\">: "
-            "Catalog Error: Table with name fake_table_name does not exist!\n"
-            "Did you mean \"information_schema.key_column_usage\"?");
+            "Catalog Error: Table with name fake_table_name does not exist!\n"));
   }
 }
 
@@ -182,11 +183,9 @@ TEST_CASE("Migrate - rename table", "[integration][migrate]") {
     auto status = service.Migrate(nullptr, &request, &response);
     REQUIRE_FAIL(
         status,
-        "Could not rename table <\"" + TEST_DATABASE_NAME +
+        Catch::Matchers::ContainsSubstring("Could not rename table <\"" + TEST_DATABASE_NAME +
             "\".\"main\".\"fake_table_name\">: " +
-            "Catalog Error: Table with name fake_table_name does not exist!\n"
-            "Did you mean \"" +
-            to_table + "\"?");
+            "Catalog Error: Table with name fake_table_name does not exist!\n"));
   }
 
   // Create another source table

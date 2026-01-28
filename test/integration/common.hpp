@@ -5,8 +5,9 @@
 #include "motherduck_destination_server.hpp"
 #include "extension_helper.hpp"
 
-#include <catch2/catch_all.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <catch2/reporters/catch_reporter_event_listener.hpp>
 #include <catch2/reporters/catch_reporter_registrars.hpp>
 
@@ -31,6 +32,15 @@ inline bool REQUIRE_FAIL(const grpc::Status &status,
                   const std::string &expected_error) {
   if (!status.ok()) {
     REQUIRE(status.error_message() == expected_error);
+    return true;
+  }
+  return false;
+}
+
+inline bool REQUIRE_FAIL(const grpc::Status &status,
+                  const Catch::Matchers::StringMatcherBase &matcher) {
+  if (!status.ok()) {
+    REQUIRE_THAT(status.error_message(), matcher);
     return true;
   }
   return false;
