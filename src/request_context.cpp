@@ -17,8 +17,8 @@ RequestContext::RequestContext(
 }
 
 RequestContext::~RequestContext() {
-    if (con.HasActiveTransaction() && !con.IsAutoCommit()) {
-        con.Rollback();
-    }
+  if (con.HasActiveTransaction() && !con.IsAutoCommit()) {
+    con.Rollback();
+  }
   logger.info("Endpoint <" + endpoint_name + "> completed");
 }

@@ -159,8 +159,7 @@ public:
                                   const table_def &table,
                                   const column_def &column,
                                   const std::string &operation_timestamp,
-                                  const std::string &default_value
-                                  );
+                                  const std::string &default_value);
 
   // Update the value of a column of every row. As per a discussion with
   // Fivetran, if value == "NULL" we should interpret this as an actual NULL.

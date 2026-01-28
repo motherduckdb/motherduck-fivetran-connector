@@ -5,14 +5,14 @@
 #include "motherduck_destination_server.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
+#include <catch2/internal/catch_run_context.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <catch2/reporters/catch_reporter_event_listener.hpp>
 #include <fstream>
 #include <future>
 #include <thread>
 #include <vector>
-#include <catch2/generators/catch_generators.hpp>
-#include <catch2/internal/catch_run_context.hpp>
 
 using namespace test::constants;
 
@@ -83,11 +83,11 @@ TEST_CASE("Migrate - drop table", "[integration][migrate]") {
 
     ::fivetran_sdk::v2::MigrateResponse response;
     auto status = service.Migrate(nullptr, &request, &response);
-    REQUIRE_FAIL(
-        status,
-        Catch::Matchers::ContainsSubstring("Could not drop table <\"" + TEST_DATABASE_NAME +
-            "\".\"main\".\"fake_table_name\">: "
-            "Catalog Error: Table with name fake_table_name does not exist!\n"));
+    REQUIRE_FAIL(status, Catch::Matchers::ContainsSubstring(
+                             "Could not drop table <\"" + TEST_DATABASE_NAME +
+                             "\".\"main\".\"fake_table_name\">: "
+                             "Catalog Error: Table with name fake_table_name "
+                             "does not exist!\n"));
   }
 }
 
@@ -181,11 +181,11 @@ TEST_CASE("Migrate - rename table", "[integration][migrate]") {
 
     ::fivetran_sdk::v2::MigrateResponse response;
     auto status = service.Migrate(nullptr, &request, &response);
-    REQUIRE_FAIL(
-        status,
-        Catch::Matchers::ContainsSubstring("Could not rename table <\"" + TEST_DATABASE_NAME +
-            "\".\"main\".\"fake_table_name\">: " +
-            "Catalog Error: Table with name fake_table_name does not exist!\n"));
+    REQUIRE_FAIL(status, Catch::Matchers::ContainsSubstring(
+                             "Could not rename table <\"" + TEST_DATABASE_NAME +
+                             "\".\"main\".\"fake_table_name\">: " +
+                             "Catalog Error: Table with name fake_table_name "
+                             "does not exist!\n"));
   }
 
   // Create another source table
@@ -366,8 +366,9 @@ TEST_CASE("Migrate - rename column", "[integration][migrate]") {
 
     ::fivetran_sdk::v2::MigrateResponse response;
     auto status = service.Migrate(nullptr, &request, &response);
-    REQUIRE_FAIL(status, "Cannot rename column to reserved name <_fivetran_deleted>. Please contact"
-        " Fivetran support.");
+    REQUIRE_FAIL(status, "Cannot rename column to reserved name "
+                         "<_fivetran_deleted>. Please contact"
+                         " Fivetran support.");
   }
 
   // Clean up
@@ -567,10 +568,11 @@ TEST_CASE("Migrate - copy column", "[integration][migrate]") {
     auto status = service.Migrate(nullptr, &request, &response);
 
     REQUIRE_FAIL(
-        status,
-        "Could not add column <dest_col> to table "
-           "<\"" + TEST_DATABASE_NAME + "\".\"main\".\"" + table_name + "\">: "
-        "Catalog Error: Column with name dest_col already exists!");
+        status, "Could not add column <dest_col> to table "
+                "<\"" +
+                    TEST_DATABASE_NAME + "\".\"main\".\"" + table_name +
+                    "\">: "
+                    "Catalog Error: Column with name dest_col already exists!");
   }
 
   // Copy to reserved name fails
@@ -592,7 +594,9 @@ TEST_CASE("Migrate - copy column", "[integration][migrate]") {
     ::fivetran_sdk::v2::MigrateResponse response;
     auto status = service.Migrate(nullptr, &request, &response);
 
-    REQUIRE_FAIL(status, "Cannot copy column to reserved name <_fivetran_end>. Please contact"
+    REQUIRE_FAIL(
+        status,
+        "Cannot copy column to reserved name <_fivetran_end>. Please contact"
         " Fivetran support.");
   }
 
@@ -880,7 +884,8 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
     REQUIRE(res2->GetValue(0, 0).ToString() == "default_value");
   }
 
-  // Add column with default "NULL", that should become a string "NULL", not NULL.
+  // Add column with default "NULL", that should become a string "NULL", not
+  // NULL.
   {
     ::fivetran_sdk::v2::MigrateRequest request;
     (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
@@ -946,8 +951,9 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
 
     ::fivetran_sdk::v2::MigrateResponse response;
     auto status = service.Migrate(nullptr, &request, &response);
-    REQUIRE_FAIL(status, "Cannot add column with reserved name <_fivetran_active>. Please contact"
-      " Fivetran support.");
+    REQUIRE_FAIL(status, "Cannot add column with reserved name "
+                         "<_fivetran_active>. Please contact"
+                         " Fivetran support.");
   }
 
   {
@@ -1016,7 +1022,6 @@ TEST_CASE("Migrate - update column value", "[integration][migrate]") {
     REQUIRE(res->GetValue(0, 0) == 3);
   }
 
-
   // Update all values in column to NULL using the string "NULL"
   {
     ::fivetran_sdk::v2::MigrateRequest request;
@@ -1026,8 +1031,7 @@ TEST_CASE("Migrate - update column value", "[integration][migrate]") {
     request.mutable_details()->set_table(table_name);
     request.mutable_details()->mutable_update_column_value()->set_column(
         "status");
-    request.mutable_details()->mutable_update_column_value()->set_value(
-        "NULL");
+    request.mutable_details()->mutable_update_column_value()->set_value("NULL");
 
     ::fivetran_sdk::v2::MigrateResponse response;
     auto status = service.Migrate(nullptr, &request, &response);

@@ -13,13 +13,13 @@
 #include "sql_generator.hpp"
 
 #include "md_error.hpp"
+#include <duckdb/main/connection_manager.hpp>
 #include <exception>
 #include <filesystem>
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <optional>
 #include <string>
-#include <duckdb/main/connection_manager.hpp>
 
 template <typename T> std::string get_schema_name(const T *request) {
   std::string schema_name = request->schema_name();
@@ -752,10 +752,10 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
       case fivetran_sdk::v2::CopyOperation::EntityCase::kCopyColumn: {
         logger.info("Endpoint <Migrate>: COPY_COLUMN");
         const auto &copy_col = copy.copy_column();
-        if (is_fivetran_system_column(copy_col.to_column()))
-        {
+        if (is_fivetran_system_column(copy_col.to_column())) {
           throw std::invalid_argument("Cannot copy column to reserved name <" +
-          copy_col.to_column() + ">. Please contact Fivetran support.");
+                                      copy_col.to_column() +
+                                      ">. Please contact Fivetran support.");
         }
 
         sql_generator->copy_column(con, table, copy_col.from_column(),
@@ -794,10 +794,10 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
         logger.info("Endpoint <Migrate>: RENAME_COLUMN");
         const auto &rename_col = rename.rename_column();
 
-        if (is_fivetran_system_column(rename_col.to_column()))
-        {
-          throw std::invalid_argument("Cannot rename column to reserved name <" +
-          rename_col.to_column() + ">. Please contact Fivetran support.");
+        if (is_fivetran_system_column(rename_col.to_column())) {
+          throw std::invalid_argument(
+              "Cannot rename column to reserved name <" +
+              rename_col.to_column() + ">. Please contact Fivetran support.");
         }
         sql_generator->rename_column(con, table, rename_col.from_column(),
                                      rename_col.to_column());
@@ -827,7 +827,8 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
 
         if (is_fivetran_system_column(column.name)) {
           throw std::invalid_argument("Cannot add column with reserved name <" +
-            column.name + ">. Please contact Fivetran support.");
+                                      column.name +
+                                      ">. Please contact Fivetran support.");
         }
 
         sql_generator->add_column(con, table, column, "add_column");
@@ -838,15 +839,16 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
         logger.info("Endpoint <Migrate>: ADD_COLUMN_IN_HISTORY_MODE");
         const auto &add_col = add.add_column_in_history_mode();
 
-        // The default value should not be a DDL level default, because NULLs in history mode
-        // can signify the column not existing in the past.
+        // The default value should not be a DDL level default, because NULLs in
+        // history mode can signify the column not existing in the past.
         column_def col{
             .name = add_col.column(),
             .type = get_duckdb_type(add_col.column_type()),
             .primary_key = false,
         };
-          sql_generator->add_column_in_history_mode(
-            con, table, col, add_col.operation_timestamp(), add_col.default_value());
+        sql_generator->add_column_in_history_mode(con, table, col,
+                                                  add_col.operation_timestamp(),
+                                                  add_col.default_value());
         break;
       }
       default: {

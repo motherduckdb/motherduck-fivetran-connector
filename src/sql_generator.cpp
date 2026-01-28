@@ -5,8 +5,9 @@
 #include "md_logging.hpp"
 #include "schema_types.hpp"
 
-#include <functional>
+#include <duckdb/main/connection_manager.hpp>
 #include <format>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -15,7 +16,6 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-#include <duckdb/main/connection_manager.hpp>
 
 #include "fivetran_duckdb_interop.hpp"
 
@@ -359,8 +359,7 @@ void MdSqlGenerator::add_column(duckdb::Connection &con, const table_def &table,
     // We should not expect NULLs here according to fivetran, so we also cast
     // the string "NULL" to the string "NULL" for varchar columns, not NULLs.
     const std::string casted_default_value =
-        "CAST(" +
-        KeywordHelper::WriteQuoted(column.column_default.value()) +
+        "CAST(" + KeywordHelper::WriteQuoted(column.column_default.value()) +
         " AS " + format_type(column) + ")";
 
     sql << " DEFAULT " << casted_default_value;
@@ -1119,8 +1118,8 @@ void MdSqlGenerator::copy_column(duckdb::Connection &con,
 
   add_column(con, table, to_column, "copy_column add");
   run_query(con, "copy_column update",
-            "UPDATE " + table.to_escaped_string() + " SET "
-            + KeywordHelper::WriteQuoted(to_name, '"') + " = " + quoted_from,
+            "UPDATE " + table.to_escaped_string() + " SET " +
+                KeywordHelper::WriteQuoted(to_name, '"') + " = " + quoted_from,
             "Could not copy column values");
 
   commit_callback();
@@ -1233,7 +1232,8 @@ void MdSqlGenerator::add_column_in_history_mode(
   }
 
   std::string casted_default_value = "CAST(" +
-    KeywordHelper::WriteQuoted(default_value) + " AS " + format_type(column) + ")";
+                                     KeywordHelper::WriteQuoted(default_value) +
+                                     " AS " + format_type(column) + ")";
 
   const std::string quoted_column =
       KeywordHelper::WriteQuoted(column.name, '"');
@@ -1435,10 +1435,9 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
   find_primary_keys(columns, columns_pk, &columns_regular, "_fivetran_start");
 
   if (columns_pk.empty()) {
-    throw std::runtime_error(
-      "History table has no primary keys except _fivetran_start. Please contact "
-      "Fivetran support."
-    );
+    throw std::runtime_error("History table has no primary keys except "
+                             "_fivetran_start. Please contact "
+                             "Fivetran support.");
   }
 
   {

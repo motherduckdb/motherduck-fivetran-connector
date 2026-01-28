@@ -5,13 +5,13 @@
 #include "motherduck_destination_server.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/internal/catch_run_context.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <catch2/reporters/catch_reporter_event_listener.hpp>
 #include <fstream>
 #include <future>
 #include <thread>
 #include <vector>
-#include <catch2/internal/catch_run_context.hpp>
 
 using namespace test::constants;
 
