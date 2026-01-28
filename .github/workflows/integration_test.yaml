@@ -24,17 +24,17 @@ jobs:
       - name: build the dependencies
         if: ${{ steps.cache-deps.outputs.cache-hit != 'true' }}
         env:
-          CC: clang-15
-          CXX: clang++-15
-          CPP: clang-cpp-15
+          CC: clang-17
+          CXX: clang++-17
+          CPP: clang-cpp-17
         run: |
           make build_openssl_native build_grpc build_test_dependencies
 
       - name: build the connector
         env:
-          CC: clang-15
-          CXX: clang++-15
-          CPP: clang-cpp-15
+          CC: clang-17
+          CXX: clang++-17
+          CPP: clang-cpp-17
         run: |
           make get_fivetran_protos
           make build_connector_debug
