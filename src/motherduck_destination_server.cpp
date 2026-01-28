@@ -26,7 +26,7 @@ create_grpc_status_from_exception(const std::exception &ex,
                                   const std::string &prefix = "") {
   const std::string error_message =
       md_error::truncate_for_grpc_header(ex.what());
-  // The assumption here is that the prefix is short enough that it length can
+  // The assumption here is that the prefix is short enough that its length can
   // be disregarded
   return ::grpc::Status(::grpc::StatusCode::INTERNAL, prefix + error_message);
 }

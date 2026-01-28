@@ -1,6 +1,8 @@
 #include "md_error.hpp"
 
+#include <cstddef>
 #include <string>
+#include <string_view>
 
 namespace md_error {
 std::string truncate_for_grpc_header(const std::string &message) {
@@ -17,10 +19,14 @@ std::string truncate_for_grpc_header(const std::string &message) {
   }
 
   // Find UTF-8 safe truncation point by walking backward from target position.
-  // See https://stackoverflow.com/a/35328573/8336143
+  // See https://stackoverflow.com/a/35328573/8336143.
+  // If a byte starts with 10xxxxxx, it's a continuation byte, that is, we are
+  // in the middle of a multi-byte character. We search for a byte that starts
+  // with either 11 or 0 and cut before this character.
   size_t pos = TARGET_LEN;
-  while (pos > 0 && (static_cast<unsigned char>(message[pos]) & 0xC0) == 0x80) {
-    --pos; // Skip continuation bytes (10xxxxxx)
+  while (pos > 0 && (static_cast<unsigned char>(message[pos]) & 0b11000000) ==
+                        0b10000000) {
+    --pos;
   }
 
   return message.substr(0, pos) + std::string(TRUNCATION_SUFFIX);
