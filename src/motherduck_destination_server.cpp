@@ -752,6 +752,12 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
       case fivetran_sdk::v2::CopyOperation::EntityCase::kCopyColumn: {
         logger.info("Endpoint <Migrate>: COPY_COLUMN");
         const auto &copy_col = copy.copy_column();
+        if (is_fivetran_system_column(copy_col.to_column()))
+        {
+          throw std::invalid_argument("Cannot copy column to reserved name <" +
+          copy_col.to_column() + ">. Please contact Fivetran support.");
+        }
+
         sql_generator->copy_column(con, table, copy_col.from_column(),
                                    copy_col.to_column());
         break;
@@ -787,6 +793,12 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
       case fivetran_sdk::v2::RenameOperation::EntityCase::kRenameColumn: {
         logger.info("Endpoint <Migrate>: RENAME_COLUMN");
         const auto &rename_col = rename.rename_column();
+
+        if (is_fivetran_system_column(rename_col.to_column()))
+        {
+          throw std::invalid_argument("Cannot rename column to reserved name <" +
+          rename_col.to_column() + ">. Please contact Fivetran support.");
+        }
         sql_generator->rename_column(con, table, rename_col.from_column(),
                                      rename_col.to_column());
         break;
@@ -806,13 +818,19 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
         logger.info("Endpoint <Migrate>: ADD_COLUMN_WITH_DEFAULT_VALUE");
         const auto &add_col = add.add_column_with_default_value();
 
-        column_def col{
+        column_def column{
             .name = add_col.column(),
             .type = get_duckdb_type(add_col.column_type()),
             .column_default = add_col.default_value(),
             .primary_key = false,
         };
-        sql_generator->add_column(con, table, col, "add_column");
+
+        if (is_fivetran_system_column(column.name)) {
+          throw std::invalid_argument("Cannot add column with reserved name <" +
+            column.name + ">. Please contact Fivetran support.");
+        }
+
+        sql_generator->add_column(con, table, column, "add_column");
         break;
       }
       case fivetran_sdk::v2::AddOperation::EntityCase::

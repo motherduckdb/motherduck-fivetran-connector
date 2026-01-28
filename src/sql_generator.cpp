@@ -1042,9 +1042,7 @@ void MdSqlGenerator::add_defaults(duckdb::Connection &con,
         col.column_default.value() == "NULL") {
       continue;
     }
-    if (col.name == "_fivetran_start" || col.name == "_fivetran_end" ||
-        col.name == "_fivetran_active" || col.name == "_fivetran_deleted" ||
-        col.name == "_fivetran_synced") {
+    if (is_fivetran_system_column(col.name)) {
       continue;
     }
 
