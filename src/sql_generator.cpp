@@ -363,12 +363,7 @@ void MdSqlGenerator::add_column(duckdb::Connection &con, const table_def &table,
 
     sql << " DEFAULT " << casted_default_value;
   }
-  auto conlist = con.context->db->GetConnectionManager().GetConnectionList();
 
-  if (conlist.size() > 1)
-  {
-    logger.info("wow");
-  }
   return run_query(con, log_prefix, sql.str(),
                    "Could not add column <" + column.name + "> to table <" +
                        table.to_escaped_string() + ">");
@@ -1066,7 +1061,11 @@ void MdSqlGenerator::add_pks(duckdb::Connection &con,
                              const std::string &table_name,
                              const std::string &log_prefix) const {
   if (columns_pk.empty()) {
-    return;
+    // All modes require a primary key to be present, because we cannot switch
+    // to history mode without a primary key. Fivetran has confirmed that the
+    // partner sdk assures existence of a primary key, and else adds a primary
+    // key itself.
+    throw std::runtime_error("No primary keys found for table " + table_name);
   }
 
   // Add the right primary key. Note that "CREATE TABLE AS SELECT" does not
@@ -1439,19 +1438,24 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
   const auto columns = describe_table(con, table);
   find_primary_keys(columns, columns_pk, &columns_regular, "_fivetran_start");
 
+  if (columns_pk.empty()) {
+    throw std::runtime_error(
+      "History table has no primary keys except _fivetran_start. Please contact "
+      "Fivetran support."
+    );
+  }
+
   {
     std::ostringstream sql;
     sql << "CREATE TABLE " << temp_table_name
         << " AS SELECT * EXCLUDE (\"_fivetran_start\", \"_fivetran_end\") FROM "
         << table.to_escaped_string();
 
-    if (!columns_pk.empty()) {
-      // Keep only the latest record for a primary key based on the highest
-      // _fivetran_start, using QUALIFY
-      sql << " QUALIFY row_number() OVER (partition by ";
-      write_joined(sql, columns_pk, print_column);
-      sql << " ORDER BY \"_fivetran_start\" DESC) = 1";
-    }
+    // Keep only the latest record for a primary key based on the highest
+    // _fivetran_start, using QUALIFY
+    sql << " QUALIFY row_number() OVER (partition by ";
+    write_joined(sql, columns_pk, print_column);
+    sql << " ORDER BY \"_fivetran_start\" DESC) = 1";
 
     run_query(con, "migrate_history_to_soft_delete create", sql.str(),
               "Could not add soft_deleted_column");
