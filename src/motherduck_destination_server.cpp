@@ -819,14 +819,16 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
           kAddColumnInHistoryMode: {
         logger.info("Endpoint <Migrate>: ADD_COLUMN_IN_HISTORY_MODE");
         const auto &add_col = add.add_column_in_history_mode();
+
+        // The default value should not be a DDL level default, because NULLs in history mode
+        // can signify the column not existing in the past.
         column_def col{
             .name = add_col.column(),
             .type = get_duckdb_type(add_col.column_type()),
-            .column_default = add_col.default_value(),
             .primary_key = false,
         };
           sql_generator->add_column_in_history_mode(
-            con, table, col, add_col.operation_timestamp());
+            con, table, col, add_col.operation_timestamp(), add_col.default_value());
         break;
       }
       default: {
@@ -900,10 +902,6 @@ DestinationSdkImpl::Migrate(::grpc::ServerContext *,
 
     response->set_success(true);
   } catch (const std::exception &e) {
-    // if (con.HasActiveTransaction()) {
-    //   con.Rollback();
-    // }
-
     const std::string schema = request->details().schema();
     const std::string table = request->details().table();
     logger.severe("Migrate endpoint failed for schema <" + schema +

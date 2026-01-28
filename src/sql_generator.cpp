@@ -354,11 +354,12 @@ void MdSqlGenerator::add_column(duckdb::Connection &con, const table_def &table,
   sql << KeywordHelper::WriteQuoted(column.name, '"') << " "
       << format_type(column);
 
-  if (column.column_default.has_value() &&
-      column.column_default.value() != "NULL") {
+  if (column.column_default.has_value()) {
+    // We should not expect NULLs here according to fivetran, so we also cast
+    // the string "NULL" to the string "NULL" for varchar columns, not NULLs.
     const std::string casted_default_value =
         "CAST(" +
-        KeywordHelper::WriteQuoted(column.column_default.value(), '\'') +
+        KeywordHelper::WriteQuoted(column.column_default.value()) +
         " AS " + format_type(column) + ")";
 
     sql << " DEFAULT " << casted_default_value;
@@ -1220,7 +1221,7 @@ bool MdSqlGenerator::history_table_is_valid(
 
 void MdSqlGenerator::add_column_in_history_mode(
     duckdb::Connection &con, const table_def &table, const column_def &column,
-    const std::string &operation_timestamp) {
+    const std::string &operation_timestamp, const std::string &default_value) {
   const std::string absolute_table_name = table.to_escaped_string();
 
   const std::string quoted_timestamp =
@@ -1235,15 +1236,8 @@ void MdSqlGenerator::add_column_in_history_mode(
     return;
   }
 
-  std::string casted_default_value;
-  if (column.column_default.value() != "NULL") {
-    casted_default_value =
-        "CAST(" +
-        KeywordHelper::WriteQuoted(column.column_default.value(), '\'') +
-        " AS " + format_type(column) + ")";
-  } else {
-    casted_default_value = "NULL";
-  }
+  std::string casted_default_value = "CAST(" +
+    KeywordHelper::WriteQuoted(default_value) + " AS " + format_type(column) + ")";
 
   const std::string quoted_column =
       KeywordHelper::WriteQuoted(column.name, '"');
@@ -1305,8 +1299,14 @@ void MdSqlGenerator::update_column_value(duckdb::Connection &con,
   const std::string quoted_column = KeywordHelper::WriteQuoted(column, '"');
 
   std::ostringstream sql;
-  sql << "UPDATE " << absolute_table_name << " SET " << quoted_column << " = "
-      << KeywordHelper::WriteQuoted(value);
+
+  if (value == "NULL") {
+    sql << "UPDATE " << absolute_table_name << " SET " << quoted_column << " = "
+        << value;
+  } else {
+    sql << "UPDATE " << absolute_table_name << " SET " << quoted_column << " = "
+        << KeywordHelper::WriteQuoted(value);
+  }
 
   run_query(con, "update_column_value", sql.str(),
             "Could not update column <" + column + "> in table <" +

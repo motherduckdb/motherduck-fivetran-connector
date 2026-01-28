@@ -829,7 +829,7 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
     REQUIRE(res2->GetValue(0, 0).ToString() == "default_value");
   }
 
-  // Add column with default NULL
+  // Add column with default "NULL", that should become a string "NULL", not NULL.
   {
     ::fivetran_sdk::v2::MigrateRequest request;
     (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
@@ -856,7 +856,7 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
         con->Query("SELECT new_col2 FROM " + table_name + " WHERE id = 3");
     REQUIRE_NO_FAIL(res2);
     REQUIRE(res2->RowCount() == 1);
-    REQUIRE(res2->GetValue(0, 0).IsNull());
+    REQUIRE(!res2->GetValue(0, 0).IsNull());
   }
 
   // Add column with default empty string
@@ -945,6 +945,33 @@ TEST_CASE("Migrate - update column value", "[integration][migrate]") {
     REQUIRE(res->GetValue(0, 0) == 3);
   }
 
+
+  // Update all values in column to NULL using the string "NULL"
+  {
+    ::fivetran_sdk::v2::MigrateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_details()->set_table(table_name);
+    request.mutable_details()->mutable_update_column_value()->set_column(
+        "status");
+    request.mutable_details()->mutable_update_column_value()->set_value(
+        "NULL");
+
+    ::fivetran_sdk::v2::MigrateResponse response;
+    auto status = service.Migrate(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+    REQUIRE(response.success());
+  }
+
+  // Verify all rows updated
+  {
+    auto res = con->Query("SELECT COUNT(*) FROM " + table_name +
+                          " WHERE status is NULL");
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->GetValue(0, 0) == 3);
+  }
+
   // Clean up
   con->Query("DROP TABLE IF EXISTS " + table_name);
 }
@@ -1028,7 +1055,7 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
                         ->mutable_add_column_in_history_mode();
     add_col->set_column("last");
     add_col->set_column_type(::fivetran_sdk::v2::DataType::BOOLEAN);
-    add_col->set_default_value("NULL");
+    add_col->set_default_value("false");
     add_col->set_operation_timestamp("2024-04-01T00:00:00Z");
 
     ::fivetran_sdk::v2::MigrateResponse response;
@@ -1048,7 +1075,7 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
                         ->mutable_add()
                         ->mutable_add_column_in_history_mode();
     add_col->set_column("final");
-    add_col->set_column_type(::fivetran_sdk::v2::DataType::BOOLEAN);
+    add_col->set_column_type(::fivetran_sdk::v2::DataType::STRING);
     add_col->set_default_value("NULL");
     add_col->set_operation_timestamp("2024-08-01T00:00:00Z");
 
@@ -1073,7 +1100,8 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
     REQUIRE(res->RowCount() == 1);
     REQUIRE(res->GetValue(0, 0) == 25);
     REQUIRE(res->GetValue(1, 0) == false);
-    REQUIRE(res->GetValue(2, 0).IsNull());
+    REQUIRE(!res->GetValue(2, 0).IsNull());
+    REQUIRE(res->GetValue(2, 0).ToString() == "NULL");
   }
 
   // Verify: old row is now inactive

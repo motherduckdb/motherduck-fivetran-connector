@@ -158,9 +158,13 @@ public:
   void add_column_in_history_mode(duckdb::Connection &con,
                                   const table_def &table,
                                   const column_def &column,
-                                  const std::string &operation_timestamp);
+                                  const std::string &operation_timestamp,
+                                  const std::string &default_value
+                                  );
 
-  // Update the value of a column of every row
+  // Update the value of a column of every row. As per a discussion with
+  // Fivetran, if value == "NULL" we should interpret this as an actual NULL.
+  // Varchar columns hence cannot be updated with the string 'NULL' here.
   void update_column_value(duckdb::Connection &con, const table_def &table,
                            const std::string &column, const std::string &value);
 
