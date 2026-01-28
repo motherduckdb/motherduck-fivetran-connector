@@ -6,6 +6,7 @@
 #include "schema_types.hpp"
 
 #include <functional>
+#include <format>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -1040,9 +1041,6 @@ void MdSqlGenerator::add_defaults(duckdb::Connection &con,
     // equal to _fivetran_deleted
     if (!col.column_default.has_value() ||
         col.column_default.value() == "NULL") {
-      continue;
-    }
-    if (is_fivetran_system_column(col.name)) {
       continue;
     }
 

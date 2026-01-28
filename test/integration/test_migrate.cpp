@@ -348,6 +348,28 @@ TEST_CASE("Migrate - rename column", "[integration][migrate]") {
             "\">: Catalog Error: Column with name new_name already exists!");
   }
 
+  // Rename column to reserved name fails
+  {
+    ::fivetran_sdk::v2::MigrateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_details()->set_table(table_name);
+    request.mutable_details()
+        ->mutable_rename()
+        ->mutable_rename_column()
+        ->set_from_column("id");
+    request.mutable_details()
+        ->mutable_rename()
+        ->mutable_rename_column()
+        ->set_to_column("_fivetran_deleted");
+
+    ::fivetran_sdk::v2::MigrateResponse response;
+    auto status = service.Migrate(nullptr, &request, &response);
+    REQUIRE_FAIL(status, "Cannot rename column to reserved name <_fivetran_deleted>. Please contact"
+        " Fivetran support.");
+  }
+
   // Clean up
   con->Query("DROP TABLE IF EXISTS " + table_name);
 }
@@ -551,6 +573,29 @@ TEST_CASE("Migrate - copy column", "[integration][migrate]") {
         "Catalog Error: Column with name dest_col already exists!");
   }
 
+  // Copy to reserved name fails
+  {
+    ::fivetran_sdk::v2::MigrateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_details()->set_table(table_name);
+    request.mutable_details()
+        ->mutable_copy()
+        ->mutable_copy_column()
+        ->set_from_column("source_col");
+    request.mutable_details()
+        ->mutable_copy()
+        ->mutable_copy_column()
+        ->set_to_column("_fivetran_end");
+
+    ::fivetran_sdk::v2::MigrateResponse response;
+    auto status = service.Migrate(nullptr, &request, &response);
+
+    REQUIRE_FAIL(status, "Cannot copy column to reserved name <_fivetran_end>. Please contact"
+        " Fivetran support.");
+  }
+
   // Clean up
   con->Query("DROP TABLE IF EXISTS " + table_name);
 }
@@ -662,34 +707,40 @@ TEST_CASE("Migrate - copy table to history mode from soft delete",
     REQUIRE(res->RowCount() == 3);
   }
 
-  // Verify id is part of primary key
+  // Verify id is part of primary key and defaults are set
   {
-    auto res = con->Query("SELECT key FROM (describe " +
+    auto res = con->Query("SELECT key, \"default\" FROM (describe " +
                           duckdb::KeywordHelper::WriteQuoted(dest_table, '\'') +
                           ") WHERE column_name != \'" + soft_deleted_column +
                           "\' ORDER BY column_name");
     REQUIRE_NO_FAIL(res);
-    REQUIRE(res->RowCount() ==
-            6); // The order is: _fivetran_active, _fivetran_end,
-                // _fivetran_start, _fivetran_synced, id, name
+    // The order is: _fivetran_active, _fivetran_end, _fivetran_start,
+    // _fivetran_synced, id, name
+    REQUIRE(res->RowCount() == 6);
 
-    // _fivetran_active is not a pk
+    // _fivetran_active is not a pk and has a default
     REQUIRE(res->GetValue(0, 0).IsNull());
+    REQUIRE(res->GetValue(1, 0).ToString() == "'CAST(''true'' AS BOOLEAN)'");
 
     // _fivetran_end is not a pk
     REQUIRE(res->GetValue(0, 1).IsNull());
+    REQUIRE(res->GetValue(1, 1).IsNull());
 
     // _fivetran_start is a pk
     REQUIRE(res->GetValue(0, 2) == "PRI");
+    REQUIRE(res->GetValue(1, 2).IsNull());
 
     // _fivetran_synced is not a pk
     REQUIRE(res->GetValue(0, 3).IsNull());
+    REQUIRE(res->GetValue(1, 3).IsNull());
 
     // id is a pk
     REQUIRE(res->GetValue(0, 4) == "PRI");
+    REQUIRE(res->GetValue(1, 4).IsNull());
 
     // name is not a pk
     REQUIRE(res->GetValue(0, 5).IsNull());
+    REQUIRE(res->GetValue(1, 5).IsNull());
   }
 
   // Clean up
@@ -877,6 +928,26 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
     auto status = service.Migrate(nullptr, &request, &response);
     REQUIRE_NO_FAIL(status);
     REQUIRE(response.success());
+  }
+
+  // Add column with reserved name should fail
+  {
+    ::fivetran_sdk::v2::MigrateRequest request;
+    (*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+    (*request.mutable_configuration())["motherduck_database"] =
+        TEST_DATABASE_NAME;
+    request.mutable_details()->set_table(table_name);
+    auto add_col = request.mutable_details()
+                       ->mutable_add()
+                       ->mutable_add_column_with_default_value();
+    add_col->set_column("_fivetran_active");
+    add_col->set_column_type(::fivetran_sdk::v2::DataType::STRING);
+    add_col->set_default_value("");
+
+    ::fivetran_sdk::v2::MigrateResponse response;
+    auto status = service.Migrate(nullptr, &request, &response);
+    REQUIRE_FAIL(status, "Cannot add column with reserved name <_fivetran_active>. Please contact"
+      " Fivetran support.");
   }
 
   {
