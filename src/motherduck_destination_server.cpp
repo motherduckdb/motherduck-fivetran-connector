@@ -18,6 +18,7 @@
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 
 template <typename T> std::string get_schema_name(const T *request) {

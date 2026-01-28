@@ -7,7 +7,7 @@
 /// descriptor.
 class MemoryBackedFile {
 public:
-  [[nodiscard]] static MemoryBackedFile Create(size_t file_size);
+  [[nodiscard]] static MemoryBackedFile Create(size_t max_file_size);
 
   ~MemoryBackedFile();
 
@@ -15,6 +15,8 @@ public:
   MemoryBackedFile &operator=(const MemoryBackedFile &) = delete;
   MemoryBackedFile(MemoryBackedFile &&other) noexcept;
   MemoryBackedFile &operator=(MemoryBackedFile &&other) noexcept;
+
+  void Truncate(size_t file_size) const;
 
   int fd;
   // On BSD/macOS, the cursor is shared between file descriptors
@@ -27,6 +29,9 @@ public:
 private:
   // The file descriptor can be accessed via /dev/fd/<fd> on both Linux and
   // macOS
-  explicit MemoryBackedFile(const int fd_)
-      : fd(fd_), path("/dev/fd/" + std::to_string(fd_)) {}
+  explicit MemoryBackedFile(const int fd_, const size_t max_file_size_)
+      : fd(fd_), path("/dev/fd/" + std::to_string(fd_)),
+        max_file_size(max_file_size_) {}
+
+  size_t max_file_size;
 };
