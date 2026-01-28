@@ -12,7 +12,9 @@ add_executable(integration_tests
         test_decryption.cpp
         test_memory_backed_file.cpp
         test_process_file.cpp
+        integration/common.cpp
         integration/test_server.cpp
+        integration/test_migrate.cpp
 )
 target_compile_definitions(integration_tests PRIVATE
         TEST_RESOURCES_LOCATION=${CMAKE_CURRENT_LIST_DIR}/files/
