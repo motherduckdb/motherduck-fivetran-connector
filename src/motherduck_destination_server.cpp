@@ -519,7 +519,10 @@ grpc::Status DestinationSdkImpl::WriteBatch(
       }
       earliest_start_cols.push_back(
           {.name = "_fivetran_start",
-           .type = duckdb::LogicalTypeId::TIMESTAMP_TZ});
+           .type = duckdb::LogicalTypeId::TIMESTAMP_TZ,
+           .primary_key = false,
+           .width = 0,
+           .scale = 0});
 
       const std::string decryption_key = get_decryption_key(
           filename, request->keys(), request->file_params().encryption());

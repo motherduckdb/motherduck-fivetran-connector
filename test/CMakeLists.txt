@@ -17,6 +17,11 @@ add_executable(integration_tests
 target_compile_definitions(integration_tests PRIVATE
         TEST_RESOURCES_LOCATION=${CMAKE_CURRENT_LIST_DIR}/files/
 )
+# Don't treat -Wmissing-designated-field-initializers as error for tests
+# as it requires verbose initialization of all struct fields even when defaults are sensible
+target_compile_options(integration_tests PRIVATE
+        -Wno-error=missing-designated-field-initializers
+)
 target_link_libraries(integration_tests PRIVATE
         Catch2::Catch2
         motherduck_destination_sources
