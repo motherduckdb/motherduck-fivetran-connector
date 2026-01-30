@@ -2,6 +2,7 @@
 #include "csv_processor.hpp"
 #include "duckdb.hpp"
 #include "schema_types.hpp"
+#include "test_helpers.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
@@ -16,6 +17,7 @@
 
 namespace fs = std::filesystem;
 using namespace test::constants;
+using namespace test_helpers;
 
 TEST_CASE("Test can read simple CSV file", "[csv_processor]") {
   const fs::path test_file =
@@ -27,10 +29,10 @@ TEST_CASE("Test can read simple CSV file", "[csv_processor]") {
   duckdb::Connection con(db);
 
   std::vector<column_def> columns{
-      column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
-      column_def{.name = "name", .type = duckdb::LogicalType::VARCHAR},
-      column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT}};
-  IngestProperties props{.filename = test_file.string(), .columns = columns};
+      col("id", duckdb::LogicalTypeId::INTEGER),
+      col("name", duckdb::LogicalTypeId::VARCHAR),
+      col("age", duckdb::LogicalTypeId::SMALLINT)};
+  auto props = make_props(test_file.string(), columns);
   auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &staging_table_name) {
@@ -72,10 +74,10 @@ TEST_CASE("Test reading CSV file with auto-detection of column types",
   duckdb::Connection con(db);
 
   std::vector<column_def> columns{
-      column_def{.name = "id", .type = duckdb::LogicalType::INVALID},
-      column_def{.name = "name", .type = duckdb::LogicalType::INVALID},
-      column_def{.name = "age", .type = duckdb::LogicalType::INVALID}};
-  IngestProperties props{.filename = test_file.string(), .columns = columns};
+      col("id", duckdb::LogicalTypeId::INVALID),
+      col("name", duckdb::LogicalTypeId::INVALID),
+      col("age", duckdb::LogicalTypeId::INVALID)};
+  auto props = make_props(test_file.string(), columns);
   auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &staging_table_name) {
@@ -105,12 +107,12 @@ TEST_CASE("Test reading CSV file when not all column types specified",
 
   // In the CSV file, the order is id, name, age
   std::vector<column_def> columns{
-      column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
-      column_def{.name = "name", .type = duckdb::LogicalType::VARCHAR},
+      col("id", duckdb::LogicalTypeId::INTEGER),
+      col("name", duckdb::LogicalTypeId::VARCHAR),
       // Column "age" is not added to column_types
-      column_def{.name = "age", .type = duckdb::LogicalType::INVALID},
+      col("age", duckdb::LogicalTypeId::INVALID),
   };
-  IngestProperties props{.filename = test_file.string(), .columns = columns};
+  auto props = make_props(test_file.string(), columns);
   auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &staging_table_name) {
@@ -138,11 +140,11 @@ TEST_CASE("Test reading CSV file with columns out of order",
 
   // In the CSV file, the order is id, name, age
   std::vector<column_def> columns{
-      column_def{.name = "name", .type = duckdb::LogicalType::VARCHAR},
-      column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT},
-      column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
+      col("name", duckdb::LogicalTypeId::VARCHAR),
+      col("age", duckdb::LogicalTypeId::SMALLINT),
+      col("id", duckdb::LogicalTypeId::INTEGER),
   };
-  IngestProperties props{.filename = test_file.string(), .columns = columns};
+  auto props = make_props(test_file.string(), columns);
   auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &staging_table_name) {
@@ -168,9 +170,8 @@ TEST_CASE("Test reading CSV file with quotes in filename", "[csv_processor]") {
   duckdb::DuckDB db(nullptr);
   duckdb::Connection con(db);
 
-  std::vector<column_def> columns{
-      column_def{.name = "a", .type = duckdb::LogicalType::SMALLINT}};
-  IngestProperties props{.filename = test_file.string(), .columns = columns};
+  std::vector<column_def> columns{col("a", duckdb::LogicalTypeId::SMALLINT)};
+  auto props = make_props(test_file.string(), columns);
   auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &staging_table_name) {
@@ -186,125 +187,113 @@ TEST_CASE("Test reading various CSV files", "[csv_processor]") {
                                                        std::vector<column_def>>(
       {std::make_tuple<std::string, size_t, std::vector<column_def>>(
            "booleans.csv", 6,
-           {{.name = "id", .type = duckdb::LogicalTypeId::INTEGER},
-            {.name = "bool_true_false",
-             .type =
-                 duckdb::LogicalTypeId::BOOLEAN}}),
+           {col("id", duckdb::LogicalTypeId::INTEGER),
+            col("bool_true_false", duckdb::LogicalTypeId::BOOLEAN)}),
        std::make_tuple<std::string, size_t, std::vector<column_def>>(
            "dates_and_times.csv", 5,
-           {{.name = "date", .type = duckdb::LogicalTypeId::DATE},
-            {.name = "time",
-             .type =
-                 duckdb::LogicalTypeId::TIME}, // TODO: Do we want this column?
-                                               // Fivetran doesn't support TIME
-                                               // type
-            {.name = "datetime", .type = duckdb::LogicalTypeId::TIMESTAMP},
-            {.name = "timestamp",
-             .type =
-                 duckdb::LogicalTypeId::TIMESTAMP_TZ}}),
+           {col("date", duckdb::LogicalTypeId::DATE),
+            col("time", duckdb::LogicalTypeId::TIME),
+            col("datetime", duckdb::LogicalTypeId::TIMESTAMP),
+            col("timestamp", duckdb::LogicalTypeId::TIMESTAMP_TZ)}),
        std::make_tuple<std::string, size_t, std::vector<column_def>>(
            "large.csv", 1000,
-           {{.name = "transaction_id", .type = duckdb::LogicalTypeId::INTEGER},
-            {.name = "user_id", .type = duckdb::LogicalTypeId::INTEGER},
-            {.name = "product_name", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "category", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "amount", .type = duckdb::LogicalTypeId::FLOAT},
-            {.name = "quantity", .type = duckdb::LogicalTypeId::INTEGER},
-            {.name = "discount", .type = duckdb::LogicalTypeId::DOUBLE},
-            {.name = "tax", .type = duckdb::LogicalTypeId::DOUBLE},
-            {.name = "shipping_cost", .type = duckdb::LogicalTypeId::DOUBLE},
-            {.name = "payment_method", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "status", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "order_date", .type = duckdb::LogicalTypeId::DATE}}),
+           {col("transaction_id", duckdb::LogicalTypeId::INTEGER),
+            col("user_id", duckdb::LogicalTypeId::INTEGER),
+            col("product_name", duckdb::LogicalTypeId::VARCHAR),
+            col("category", duckdb::LogicalTypeId::VARCHAR),
+            col("amount", duckdb::LogicalTypeId::FLOAT),
+            col("quantity", duckdb::LogicalTypeId::INTEGER),
+            col("discount", duckdb::LogicalTypeId::DOUBLE),
+            col("tax", duckdb::LogicalTypeId::DOUBLE),
+            col("shipping_cost", duckdb::LogicalTypeId::DOUBLE),
+            col("payment_method", duckdb::LogicalTypeId::VARCHAR),
+            col("status", duckdb::LogicalTypeId::VARCHAR),
+            col("order_date", duckdb::LogicalTypeId::DATE)}),
        std::make_tuple<std::string, size_t, std::vector<column_def>>(
            "many_columns.csv", 3,
-           {{.name = "col1", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col2", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col3", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col4", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col5", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col6", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col7", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col8", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col9", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col10", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col11", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col12", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col13", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col14", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col15", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col16", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col17", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col18", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col19", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col20", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col21", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col22", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col23", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col24", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col25", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col26", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col27", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col28", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col29", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col30", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col31", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col32", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col33", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col34", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col35", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col36", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col37", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col38", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col39", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col40", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col41", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col42", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col43", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col44", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col45", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col46", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col47", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col48", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col49", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col50", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col51", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "col52", .type = duckdb::LogicalTypeId::VARCHAR}}),
+           {col("col1", duckdb::LogicalTypeId::VARCHAR),
+            col("col2", duckdb::LogicalTypeId::VARCHAR),
+            col("col3", duckdb::LogicalTypeId::VARCHAR),
+            col("col4", duckdb::LogicalTypeId::VARCHAR),
+            col("col5", duckdb::LogicalTypeId::VARCHAR),
+            col("col6", duckdb::LogicalTypeId::VARCHAR),
+            col("col7", duckdb::LogicalTypeId::VARCHAR),
+            col("col8", duckdb::LogicalTypeId::VARCHAR),
+            col("col9", duckdb::LogicalTypeId::VARCHAR),
+            col("col10", duckdb::LogicalTypeId::VARCHAR),
+            col("col11", duckdb::LogicalTypeId::VARCHAR),
+            col("col12", duckdb::LogicalTypeId::VARCHAR),
+            col("col13", duckdb::LogicalTypeId::VARCHAR),
+            col("col14", duckdb::LogicalTypeId::VARCHAR),
+            col("col15", duckdb::LogicalTypeId::VARCHAR),
+            col("col16", duckdb::LogicalTypeId::VARCHAR),
+            col("col17", duckdb::LogicalTypeId::VARCHAR),
+            col("col18", duckdb::LogicalTypeId::VARCHAR),
+            col("col19", duckdb::LogicalTypeId::VARCHAR),
+            col("col20", duckdb::LogicalTypeId::VARCHAR),
+            col("col21", duckdb::LogicalTypeId::VARCHAR),
+            col("col22", duckdb::LogicalTypeId::VARCHAR),
+            col("col23", duckdb::LogicalTypeId::VARCHAR),
+            col("col24", duckdb::LogicalTypeId::VARCHAR),
+            col("col25", duckdb::LogicalTypeId::VARCHAR),
+            col("col26", duckdb::LogicalTypeId::VARCHAR),
+            col("col27", duckdb::LogicalTypeId::VARCHAR),
+            col("col28", duckdb::LogicalTypeId::VARCHAR),
+            col("col29", duckdb::LogicalTypeId::VARCHAR),
+            col("col30", duckdb::LogicalTypeId::VARCHAR),
+            col("col31", duckdb::LogicalTypeId::VARCHAR),
+            col("col32", duckdb::LogicalTypeId::VARCHAR),
+            col("col33", duckdb::LogicalTypeId::VARCHAR),
+            col("col34", duckdb::LogicalTypeId::VARCHAR),
+            col("col35", duckdb::LogicalTypeId::VARCHAR),
+            col("col36", duckdb::LogicalTypeId::VARCHAR),
+            col("col37", duckdb::LogicalTypeId::VARCHAR),
+            col("col38", duckdb::LogicalTypeId::VARCHAR),
+            col("col39", duckdb::LogicalTypeId::VARCHAR),
+            col("col40", duckdb::LogicalTypeId::VARCHAR),
+            col("col41", duckdb::LogicalTypeId::VARCHAR),
+            col("col42", duckdb::LogicalTypeId::VARCHAR),
+            col("col43", duckdb::LogicalTypeId::VARCHAR),
+            col("col44", duckdb::LogicalTypeId::VARCHAR),
+            col("col45", duckdb::LogicalTypeId::VARCHAR),
+            col("col46", duckdb::LogicalTypeId::VARCHAR),
+            col("col47", duckdb::LogicalTypeId::VARCHAR),
+            col("col48", duckdb::LogicalTypeId::VARCHAR),
+            col("col49", duckdb::LogicalTypeId::VARCHAR),
+            col("col50", duckdb::LogicalTypeId::VARCHAR),
+            col("col51", duckdb::LogicalTypeId::VARCHAR),
+            col("col52", duckdb::LogicalTypeId::VARCHAR)}),
        std::make_tuple<std::string, size_t, std::vector<column_def>>(
            "mixed_types.csv", 5,
-           {{.name = "id", .type = duckdb::LogicalTypeId::INTEGER},
-            {.name = "string_col", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "int_col", .type = duckdb::LogicalTypeId::INTEGER},
-            {.name = "float_col", .type = duckdb::LogicalTypeId::FLOAT},
-            {.name = "bool_col", .type = duckdb::LogicalTypeId::BOOLEAN},
-            {.name = "date_col", .type = duckdb::LogicalTypeId::DATE},
-            {.name = "mixed_col", .type = duckdb::LogicalTypeId::VARCHAR}}),
+           {col("id", duckdb::LogicalTypeId::INTEGER),
+            col("string_col", duckdb::LogicalTypeId::VARCHAR),
+            col("int_col", duckdb::LogicalTypeId::INTEGER),
+            col("float_col", duckdb::LogicalTypeId::FLOAT),
+            col("bool_col", duckdb::LogicalTypeId::BOOLEAN),
+            col("date_col", duckdb::LogicalTypeId::DATE),
+            col("mixed_col", duckdb::LogicalTypeId::VARCHAR)}),
        std::make_tuple<std::string, size_t, std::vector<column_def>>(
            "nulls_and_empty.csv", 6,
-           {{.name = "id", .type = duckdb::LogicalTypeId::INTEGER},
-            {.name = "nullable_string", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "nullable_int", .type = duckdb::LogicalTypeId::INTEGER},
-            {.name = "nullable_float", .type = duckdb::LogicalTypeId::FLOAT}}),
+           {col("id", duckdb::LogicalTypeId::INTEGER),
+            col("nullable_string", duckdb::LogicalTypeId::VARCHAR),
+            col("nullable_int", duckdb::LogicalTypeId::INTEGER),
+            col("nullable_float", duckdb::LogicalTypeId::FLOAT)}),
        std::make_tuple<std::string, size_t, std::vector<column_def>>(
            "numeric_types.csv", 5,
-           {{.name = "smallint_col", .type = duckdb::LogicalTypeId::SMALLINT},
-            {.name = "int_col", .type = duckdb::LogicalTypeId::INTEGER},
-            {.name = "bigint_col", .type = duckdb::LogicalTypeId::BIGINT},
-            {.name = "float_col", .type = duckdb::LogicalTypeId::FLOAT},
-            {.name = "double_col", .type = duckdb::LogicalTypeId::DOUBLE},
-            {.name = "decimal_5_3_col",
-             .type = duckdb::LogicalTypeId::DECIMAL,
-             .width = 5,
-             .scale = 3}}),
+           {col("smallint_col", duckdb::LogicalTypeId::SMALLINT),
+            col("int_col", duckdb::LogicalTypeId::INTEGER),
+            col("bigint_col", duckdb::LogicalTypeId::BIGINT),
+            col("float_col", duckdb::LogicalTypeId::FLOAT),
+            col("double_col", duckdb::LogicalTypeId::DOUBLE),
+            decimal_col("decimal_5_3_col", 5, 3)}),
        std::make_tuple<std::string, size_t, std::vector<column_def>>(
            "single_column.csv", 10,
-           {{.name = "value", .type = duckdb::LogicalTypeId::SMALLINT}}),
+           {col("value", duckdb::LogicalTypeId::SMALLINT)}),
        std::make_tuple<std::string, size_t, std::vector<column_def>>(
            "special_chars.csv", 6,
-           {{.name = "id", .type = duckdb::LogicalTypeId::INTEGER},
-            {.name = "text", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "description",
-             .type = duckdb::LogicalTypeId::VARCHAR}})}));
+           {col("id", duckdb::LogicalTypeId::INTEGER),
+            col("text", duckdb::LogicalTypeId::VARCHAR),
+            col("description", duckdb::LogicalTypeId::VARCHAR)})}));
 
   const fs::path test_file = fs::path(TEST_RESOURCES_DIR) / "csv" / filename;
   CAPTURE(test_file);
@@ -313,7 +302,7 @@ TEST_CASE("Test reading various CSV files", "[csv_processor]") {
   duckdb::DuckDB db(nullptr);
   duckdb::Connection con(db);
 
-  IngestProperties props{.filename = test_file.string(), .columns = columns};
+  auto props = make_props(test_file.string(), columns);
   auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger,
@@ -336,14 +325,12 @@ TEST_CASE("Test reading CSV file with special null string", "[csv_processor]") {
   duckdb::Connection con(db);
 
   const std::vector<column_def> columns{
-      column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
-      column_def{.name = "name", .type = duckdb::LogicalType::VARCHAR},
-      column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT},
-      column_def{.name = "country", .type = duckdb::LogicalType::VARCHAR}};
+      col("id", duckdb::LogicalTypeId::INTEGER),
+      col("name", duckdb::LogicalTypeId::VARCHAR),
+      col("age", duckdb::LogicalTypeId::SMALLINT),
+      col("country", duckdb::LogicalTypeId::VARCHAR)};
   const std::string null_string = "special-null";
-  IngestProperties props{.filename = test_file.string(),
-                         .columns = columns,
-                         .null_value = null_string};
+  auto props = make_props(test_file.string(), columns, "", null_string);
   auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &staging_table_name) {
@@ -376,9 +363,9 @@ TEST_CASE("Test reading CSV file with escaped string", "[csv_processor]") {
   duckdb::DuckDB db(nullptr);
   duckdb::Connection con(db);
 
-  const std::vector<column_def> columns{column_def{
-      .name = "escaped_string", .type = duckdb::LogicalType::VARCHAR}};
-  IngestProperties props{.filename = test_file.string(), .columns = columns};
+  const std::vector<column_def> columns{
+      col("escaped_string", duckdb::LogicalTypeId::VARCHAR)};
+  auto props = make_props(test_file.string(), columns);
   auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &staging_table_name) {
@@ -401,12 +388,10 @@ TEST_CASE("Test reading CSV file with unmodified string setting",
   duckdb::Connection con(db);
 
   const std::vector<column_def> columns{
-      column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
-      column_def{.name = "name", .type = duckdb::LogicalType::VARCHAR},
-      column_def{.name = "age", .type = duckdb::LogicalType::SMALLINT}};
-  IngestProperties props{.filename = test_file.string(),
-                         .columns = columns,
-                         .allow_unmodified_string = true};
+      col("id", duckdb::LogicalTypeId::INTEGER),
+      col("name", duckdb::LogicalTypeId::VARCHAR),
+      col("age", duckdb::LogicalTypeId::SMALLINT)};
+  auto props = make_props(test_file.string(), columns, "", "", true);
   auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger, [&con](const std::string &staging_table_name) {
@@ -455,10 +440,9 @@ TEST_CASE("Test reading CSV file with BINARY column", "[csv_processor]") {
   duckdb::DuckDB db(nullptr);
   duckdb::Connection con(db);
   const std::vector<column_def> columns{
-      column_def{.name = "binary_val", .type = duckdb::LogicalType::BLOB}};
+      col("binary_val", duckdb::LogicalTypeId::BLOB)};
 
-  IngestProperties props{.filename = temp_csv_file.string(),
-                         .columns = columns};
+  auto props = make_props(temp_csv_file.string(), columns);
   auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
       con, props, logger,
@@ -481,24 +465,24 @@ TEST_CASE("Test reading zstd-compressed CSV files", "[csv_processor]") {
                                                        std::vector<column_def>>(
       {std::make_tuple<std::string, size_t, std::vector<column_def>>(
            "customers-100000.csv.zst", 100000,
-           {{.name = "Index", .type = duckdb::LogicalTypeId::INTEGER},
-            {.name = "Customer Id", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "First Name", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "Last Name", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "Company", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "City", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "Country", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "Phone 1", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "Phone 2", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "Email", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "Subscription Date", .type = duckdb::LogicalTypeId::DATE},
-            {.name = "Website", .type = duckdb::LogicalTypeId::VARCHAR}}),
+           {col("Index", duckdb::LogicalTypeId::INTEGER),
+            col("Customer Id", duckdb::LogicalTypeId::VARCHAR),
+            col("First Name", duckdb::LogicalTypeId::VARCHAR),
+            col("Last Name", duckdb::LogicalTypeId::VARCHAR),
+            col("Company", duckdb::LogicalTypeId::VARCHAR),
+            col("City", duckdb::LogicalTypeId::VARCHAR),
+            col("Country", duckdb::LogicalTypeId::VARCHAR),
+            col("Phone 1", duckdb::LogicalTypeId::VARCHAR),
+            col("Phone 2", duckdb::LogicalTypeId::VARCHAR),
+            col("Email", duckdb::LogicalTypeId::VARCHAR),
+            col("Subscription Date", duckdb::LogicalTypeId::DATE),
+            col("Website", duckdb::LogicalTypeId::VARCHAR)}),
        std::make_tuple<std::string, size_t, std::vector<column_def>>(
            "train_few_shot.csv.zst", 40000,
-           {{.name = "text", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "label", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "source", .type = duckdb::LogicalTypeId::VARCHAR},
-            {.name = "reasoning", .type = duckdb::LogicalTypeId::VARCHAR}})}));
+           {col("text", duckdb::LogicalTypeId::VARCHAR),
+            col("label", duckdb::LogicalTypeId::VARCHAR),
+            col("source", duckdb::LogicalTypeId::VARCHAR),
+            col("reasoning", duckdb::LogicalTypeId::VARCHAR)})}));
 
   const fs::path test_file =
       fs::path(TEST_RESOURCES_DIR) / "compressed_csv" / filename;
@@ -508,7 +492,7 @@ TEST_CASE("Test reading zstd-compressed CSV files", "[csv_processor]") {
   duckdb::DuckDB db(nullptr);
   duckdb::Connection con(db);
 
-  IngestProperties props{.filename = test_file.string(), .columns = columns};
+  auto props = make_props(test_file.string(), columns);
   auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(con, props, logger,
                              [&con, expected_row_count = row_count](
@@ -534,256 +518,180 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
                       std::vector<column_def>>(
           "campaign_input_1_upsert", 3, "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP",
           false,
-          {{.name = "name", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "num",
-            .type = duckdb::LogicalTypeId::DECIMAL,
-            .width = 6,
-            .scale = 3},
-           {.name = "_fivetran_synced",
-            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
-           {.name = "_fivetran_id",
-            .type = duckdb::LogicalTypeId::VARCHAR,
-            .primary_key = true},
-           {.name = "_fivetran_deleted",
-            .type = duckdb::LogicalTypeId::BOOLEAN}}),
+          {col("name", duckdb::LogicalTypeId::VARCHAR),
+           decimal_col("num", 6, 3),
+           col("_fivetran_synced", duckdb::LogicalTypeId::TIMESTAMP_TZ),
+           pk("_fivetran_id", duckdb::LogicalTypeId::VARCHAR),
+           col("_fivetran_deleted", duckdb::LogicalTypeId::BOOLEAN)}),
       std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "campaign_input_1_update", 1, "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP",
           true,
-          {{.name = "name", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "num",
-            .type = duckdb::LogicalTypeId::DECIMAL,
-            .width = 6,
-            .scale = 3},
-           {.name = "_fivetran_synced",
-            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
-           {.name = "_fivetran_id",
-            .type = duckdb::LogicalTypeId::VARCHAR,
-            .primary_key = true},
-           {.name = "_fivetran_deleted",
-            .type = duckdb::LogicalTypeId::BOOLEAN}}),
+          {col("name", duckdb::LogicalTypeId::VARCHAR),
+           decimal_col("num", 6, 3),
+           col("_fivetran_synced", duckdb::LogicalTypeId::TIMESTAMP_TZ),
+           pk("_fivetran_id", duckdb::LogicalTypeId::VARCHAR),
+           col("_fivetran_deleted", duckdb::LogicalTypeId::BOOLEAN)}),
       std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "campaign_input_1_delete", 1, "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP",
           false,
-          {{.name = "name", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "num",
-            .type = duckdb::LogicalTypeId::DECIMAL,
-            .width = 6,
-            .scale = 3},
-           {.name = "_fivetran_synced",
-            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
-           {.name = "_fivetran_id",
-            .type = duckdb::LogicalTypeId::VARCHAR,
-            .primary_key = true},
-           {.name = "_fivetran_deleted",
-            .type = duckdb::LogicalTypeId::BOOLEAN}}),
+          {col("name", duckdb::LogicalTypeId::VARCHAR),
+           decimal_col("num", 6, 3),
+           col("_fivetran_synced", duckdb::LogicalTypeId::TIMESTAMP_TZ),
+           pk("_fivetran_id", duckdb::LogicalTypeId::VARCHAR),
+           col("_fivetran_deleted", duckdb::LogicalTypeId::BOOLEAN)}),
 
       std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "transaction_input_1_upsert", 7,
           "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP", false,
-          {{.name = "id",
-            .type = duckdb::LogicalTypeId::INTEGER,
-            .primary_key = true},
-           {.name = "amount", .type = duckdb::LogicalTypeId::FLOAT},
-           {.name = "desc", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "_fivetran_synced",
-            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
-           {.name = "_fivetran_deleted",
-            .type = duckdb::LogicalTypeId::BOOLEAN}}),
+          {pk("id", duckdb::LogicalTypeId::INTEGER),
+           col("amount", duckdb::LogicalTypeId::FLOAT),
+           col("desc", duckdb::LogicalTypeId::VARCHAR),
+           col("_fivetran_synced", duckdb::LogicalTypeId::TIMESTAMP_TZ),
+           col("_fivetran_deleted", duckdb::LogicalTypeId::BOOLEAN)}),
       std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "transaction_input_1_update", 4,
           "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP", true,
-          {{.name = "id",
-            .type = duckdb::LogicalTypeId::INTEGER,
-            .primary_key = true},
-           {.name = "amount", .type = duckdb::LogicalTypeId::FLOAT},
-           {.name = "desc", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "_fivetran_synced",
-            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
-           {.name = "_fivetran_deleted",
-            .type = duckdb::LogicalTypeId::BOOLEAN}}),
+          {pk("id", duckdb::LogicalTypeId::INTEGER),
+           col("amount", duckdb::LogicalTypeId::FLOAT),
+           col("desc", duckdb::LogicalTypeId::VARCHAR),
+           col("_fivetran_synced", duckdb::LogicalTypeId::TIMESTAMP_TZ),
+           col("_fivetran_deleted", duckdb::LogicalTypeId::BOOLEAN)}),
       std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "transaction_input_1_delete", 2,
           "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP", false,
-          {{.name = "id",
-            .type = duckdb::LogicalTypeId::INTEGER,
-            .primary_key = true},
-           {.name = "amount", .type = duckdb::LogicalTypeId::FLOAT},
-           {.name = "desc", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "_fivetran_synced",
-            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
-           {.name = "_fivetran_deleted",
-            .type = duckdb::LogicalTypeId::BOOLEAN}}),
+          {pk("id", duckdb::LogicalTypeId::INTEGER),
+           col("amount", duckdb::LogicalTypeId::FLOAT),
+           col("desc", duckdb::LogicalTypeId::VARCHAR),
+           col("_fivetran_synced", duckdb::LogicalTypeId::TIMESTAMP_TZ),
+           col("_fivetran_deleted", duckdb::LogicalTypeId::BOOLEAN)}),
 
       std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "orders_input_2_upsert", 3, "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP",
           false,
-          {{.name = "order_id",
-            .type = duckdb::LogicalTypeId::VARCHAR,
-            .primary_key = true},
-           {.name = "customer_id", .type = duckdb::LogicalTypeId::BIGINT},
-           {.name = "order_date", .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
-           {.name = "status", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "total_amount", .type = duckdb::LogicalTypeId::FLOAT},
-           {.name = "_fivetran_synced",
-            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
-           {.name = "_fivetran_deleted",
-            .type = duckdb::LogicalTypeId::BOOLEAN}}),
+          {pk("order_id", duckdb::LogicalTypeId::VARCHAR),
+           col("customer_id", duckdb::LogicalTypeId::BIGINT),
+           col("order_date", duckdb::LogicalTypeId::TIMESTAMP_TZ),
+           col("status", duckdb::LogicalTypeId::VARCHAR),
+           col("total_amount", duckdb::LogicalTypeId::FLOAT),
+           col("_fivetran_synced", duckdb::LogicalTypeId::TIMESTAMP_TZ),
+           col("_fivetran_deleted", duckdb::LogicalTypeId::BOOLEAN)}),
       std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "orders_input_2_update", 3, "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP",
           true,
-          {{.name = "order_id",
-            .type = duckdb::LogicalTypeId::VARCHAR,
-            .primary_key = true},
-           {.name = "customer_id", .type = duckdb::LogicalTypeId::BIGINT},
-           {.name = "order_date", .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
-           {.name = "status", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "total_amount", .type = duckdb::LogicalTypeId::FLOAT},
-           {.name = "_fivetran_synced",
-            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
-           {.name = "_fivetran_deleted",
-            .type = duckdb::LogicalTypeId::BOOLEAN}}),
+          {pk("order_id", duckdb::LogicalTypeId::VARCHAR),
+           col("customer_id", duckdb::LogicalTypeId::BIGINT),
+           col("order_date", duckdb::LogicalTypeId::TIMESTAMP_TZ),
+           col("status", duckdb::LogicalTypeId::VARCHAR),
+           col("total_amount", duckdb::LogicalTypeId::FLOAT),
+           col("_fivetran_synced", duckdb::LogicalTypeId::TIMESTAMP_TZ),
+           col("_fivetran_deleted", duckdb::LogicalTypeId::BOOLEAN)}),
 
       std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "customers_input_2_upsert", 6, "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP",
           false,
-          {{.name = "customer_id",
-            .type = duckdb::LogicalTypeId::BIGINT,
-            .primary_key = true},
-           {.name = "first_name", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "last_name", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "email", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "registration_date", .type = duckdb::LogicalTypeId::DATE},
-           {.name = "total_spent",
-            .type = duckdb::LogicalTypeId::DECIMAL,
-            .width = 12,
-            .scale = 2},
-           {.name = "_fivetran_synced",
-            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
-           {.name = "loyalty_tier", .type = duckdb::LogicalTypeId::VARCHAR}}),
+          {pk("customer_id", duckdb::LogicalTypeId::BIGINT),
+           col("first_name", duckdb::LogicalTypeId::VARCHAR),
+           col("last_name", duckdb::LogicalTypeId::VARCHAR),
+           col("email", duckdb::LogicalTypeId::VARCHAR),
+           col("registration_date", duckdb::LogicalTypeId::DATE),
+           decimal_col("total_spent", 12, 2),
+           col("_fivetran_synced", duckdb::LogicalTypeId::TIMESTAMP_TZ),
+           col("loyalty_tier", duckdb::LogicalTypeId::VARCHAR)}),
       std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "customers_input_2_update", 2, "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP",
           true,
-          {{.name = "customer_id",
-            .type = duckdb::LogicalTypeId::BIGINT,
-            .primary_key = true},
-           {.name = "first_name", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "last_name", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "email", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "registration_date", .type = duckdb::LogicalTypeId::DATE},
-           {.name = "total_spent",
-            .type = duckdb::LogicalTypeId::DECIMAL,
-            .width = 12,
-            .scale = 2},
-           {.name = "_fivetran_synced",
-            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
-           {.name = "loyalty_tier", .type = duckdb::LogicalTypeId::VARCHAR}}),
+          {pk("customer_id", duckdb::LogicalTypeId::BIGINT),
+           col("first_name", duckdb::LogicalTypeId::VARCHAR),
+           col("last_name", duckdb::LogicalTypeId::VARCHAR),
+           col("email", duckdb::LogicalTypeId::VARCHAR),
+           col("registration_date", duckdb::LogicalTypeId::DATE),
+           decimal_col("total_spent", 12, 2),
+           col("_fivetran_synced", duckdb::LogicalTypeId::TIMESTAMP_TZ),
+           col("loyalty_tier", duckdb::LogicalTypeId::VARCHAR)}),
       std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "customers_input_2_delete", 1, "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP",
           false,
-          {{.name = "customer_id",
-            .type = duckdb::LogicalTypeId::BIGINT,
-            .primary_key = true},
-           {.name = "first_name", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "last_name", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "email", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "registration_date", .type = duckdb::LogicalTypeId::DATE},
-           {.name = "total_spent",
-            .type = duckdb::LogicalTypeId::DECIMAL,
-            .width = 12,
-            .scale = 2},
-           {.name = "_fivetran_synced",
-            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
-           {.name = "loyalty_tier", .type = duckdb::LogicalTypeId::VARCHAR}}),
+          {pk("customer_id", duckdb::LogicalTypeId::BIGINT),
+           col("first_name", duckdb::LogicalTypeId::VARCHAR),
+           col("last_name", duckdb::LogicalTypeId::VARCHAR),
+           col("email", duckdb::LogicalTypeId::VARCHAR),
+           col("registration_date", duckdb::LogicalTypeId::DATE),
+           decimal_col("total_spent", 12, 2),
+           col("_fivetran_synced", duckdb::LogicalTypeId::TIMESTAMP_TZ),
+           col("loyalty_tier", duckdb::LogicalTypeId::VARCHAR)}),
 
       std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "products_input_2_upsert", 5, "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP",
           false,
-          {{.name = "product_name", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "category", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "unit_price", .type = duckdb::LogicalTypeId::DOUBLE},
-           {.name = "stock_count", .type = duckdb::LogicalTypeId::INTEGER},
-           {.name = "is_active", .type = duckdb::LogicalTypeId::BOOLEAN},
-           {.name = "specs_json", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "manual_xml", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "_fivetran_synced",
-            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
-           {.name = "_fivetran_id",
-            .type = duckdb::LogicalTypeId::VARCHAR,
-            .primary_key = true}}),
+          {col("product_name", duckdb::LogicalTypeId::VARCHAR),
+           col("category", duckdb::LogicalTypeId::VARCHAR),
+           col("unit_price", duckdb::LogicalTypeId::DOUBLE),
+           col("stock_count", duckdb::LogicalTypeId::INTEGER),
+           col("is_active", duckdb::LogicalTypeId::BOOLEAN),
+           col("specs_json", duckdb::LogicalTypeId::VARCHAR),
+           col("manual_xml", duckdb::LogicalTypeId::VARCHAR),
+           col("_fivetran_synced", duckdb::LogicalTypeId::TIMESTAMP_TZ),
+           pk("_fivetran_id", duckdb::LogicalTypeId::VARCHAR)}),
 
       std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "user_profiles_input_3_upsert", 24,
           "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP", false,
-          {{.name = "user_id",
-            .type = duckdb::LogicalTypeId::BIGINT,
-            .primary_key = true},
-           {.name = "username", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "email", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "created_at", .type = duckdb::LogicalTypeId::TIMESTAMP},
-           {.name = "is_active", .type = duckdb::LogicalTypeId::BOOLEAN},
-           {.name = "_fivetran_synced",
-            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ}}),
+          {pk("user_id", duckdb::LogicalTypeId::BIGINT),
+           col("username", duckdb::LogicalTypeId::VARCHAR),
+           col("email", duckdb::LogicalTypeId::VARCHAR),
+           col("created_at", duckdb::LogicalTypeId::TIMESTAMP),
+           col("is_active", duckdb::LogicalTypeId::BOOLEAN),
+           col("_fivetran_synced", duckdb::LogicalTypeId::TIMESTAMP_TZ)}),
 
       std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "web_events_input_3_upsert", 154,
           "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP", false,
-          {{.name = "event_id",
-            .type = duckdb::LogicalTypeId::VARCHAR,
-            .primary_key = true},
-           {.name = "session_id", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "user_id", .type = duckdb::LogicalTypeId::BIGINT},
-           {.name = "event_timestamp",
-            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
-           {.name = "event_type", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "url", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "ip_address", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "user_agent", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "payload", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "processing_time_ms",
-            .type = duckdb::LogicalTypeId::INTEGER},
-           {.name = "is_error", .type = duckdb::LogicalTypeId::BOOLEAN},
-           {.name = "_fivetran_synced",
-            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ}}),
+          {pk("event_id", duckdb::LogicalTypeId::VARCHAR),
+           col("session_id", duckdb::LogicalTypeId::VARCHAR),
+           col("user_id", duckdb::LogicalTypeId::BIGINT),
+           col("event_timestamp", duckdb::LogicalTypeId::TIMESTAMP_TZ),
+           col("event_type", duckdb::LogicalTypeId::VARCHAR),
+           col("url", duckdb::LogicalTypeId::VARCHAR),
+           col("ip_address", duckdb::LogicalTypeId::VARCHAR),
+           col("user_agent", duckdb::LogicalTypeId::VARCHAR),
+           col("payload", duckdb::LogicalTypeId::VARCHAR),
+           col("processing_time_ms", duckdb::LogicalTypeId::INTEGER),
+           col("is_error", duckdb::LogicalTypeId::BOOLEAN),
+           col("_fivetran_synced", duckdb::LogicalTypeId::TIMESTAMP_TZ)}),
 
       std::make_tuple<std::string, size_t, std::string, bool,
                       std::vector<column_def>>(
           "mixed_data_input_4_upsert", 1,
           "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP", false,
-          {{.name = "bool_val", .type = duckdb::LogicalTypeId::BOOLEAN},
-           {.name = "short_val", .type = duckdb::LogicalTypeId::SMALLINT},
-           {.name = "int_val", .type = duckdb::LogicalTypeId::INTEGER},
-           {.name = "long_val", .type = duckdb::LogicalTypeId::BIGINT},
-           {.name = "float_val", .type = duckdb::LogicalTypeId::FLOAT},
-           {.name = "double_val", .type = duckdb::LogicalTypeId::DOUBLE},
-           {.name = "decimal_val",
-            .type = duckdb::LogicalTypeId::DECIMAL,
-            .width = 38,
-            .scale = 10},
-           {.name = "naive_time_val", .type = duckdb::LogicalTypeId::TIME},
-           {.name = "naive_date_val", .type = duckdb::LogicalTypeId::DATE},
-           {.name = "naive_datetime_val",
-            .type = duckdb::LogicalTypeId::TIMESTAMP},
-           {.name = "utc_datetime_val",
-            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
-           {.name = "binary_val", .type = duckdb::LogicalTypeId::BLOB},
-           {.name = "json_val", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "string_val", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "xml_val", .type = duckdb::LogicalTypeId::VARCHAR},
-           {.name = "_fivetran_synced",
-            .type = duckdb::LogicalTypeId::TIMESTAMP_TZ}}),
+          {col("bool_val", duckdb::LogicalTypeId::BOOLEAN),
+           col("short_val", duckdb::LogicalTypeId::SMALLINT),
+           col("int_val", duckdb::LogicalTypeId::INTEGER),
+           col("long_val", duckdb::LogicalTypeId::BIGINT),
+           col("float_val", duckdb::LogicalTypeId::FLOAT),
+           col("double_val", duckdb::LogicalTypeId::DOUBLE),
+           decimal_col("decimal_val", 38, 10),
+           col("naive_time_val", duckdb::LogicalTypeId::TIME),
+           col("naive_date_val", duckdb::LogicalTypeId::DATE),
+           col("naive_datetime_val", duckdb::LogicalTypeId::TIMESTAMP),
+           col("utc_datetime_val", duckdb::LogicalTypeId::TIMESTAMP_TZ),
+           col("binary_val", duckdb::LogicalTypeId::BLOB),
+           col("json_val", duckdb::LogicalTypeId::VARCHAR),
+           col("string_val", duckdb::LogicalTypeId::VARCHAR),
+           col("xml_val", duckdb::LogicalTypeId::VARCHAR),
+           col("_fivetran_synced", duckdb::LogicalTypeId::TIMESTAMP_TZ)}),
   }));
 
   const fs::path test_file = fs::path(TEST_RESOURCES_DIR) /
@@ -805,11 +713,8 @@ TEST_CASE("Test reading files generated by Fivetran destination tester",
                           std::istreambuf_iterator<char>());
   }
 
-  IngestProperties props{.filename = test_file.string(),
-                         .decryption_key = decryption_key,
-                         .columns = columns,
-                         .null_value = null_string,
-                         .allow_unmodified_string = can_contain_unmodified};
+  auto props = make_props(test_file.string(), columns, decryption_key,
+                          null_string, can_contain_unmodified);
 
   auto logger = mdlog::Logger::CreateNopLogger();
   csv_processor::ProcessFile(
@@ -835,10 +740,9 @@ TEST_CASE("Test reading a CSV file with a huge VARCHAR column",
     duckdb::DuckDB db(nullptr);
     duckdb::Connection con(db);
 
-    const std::vector<column_def> columns{
-        column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
-        column_def{.name = "text", .type = duckdb::LogicalType::VARCHAR}};
-    IngestProperties props{.filename = test_file.string(), .columns = columns};
+    auto props = make_props(test_file.string(),
+                            {col("id", duckdb::LogicalTypeId::INTEGER),
+                             col("text", duckdb::LogicalTypeId::VARCHAR)});
     auto logger = mdlog::Logger::CreateNopLogger();
     REQUIRE_THROWS_WITH(csv_processor::ProcessFile(con, props, logger,
                                                    [](const std::string &) {
@@ -856,10 +760,9 @@ TEST_CASE("Test reading a CSV file with a huge VARCHAR column",
     duckdb::DuckDB db(nullptr);
     duckdb::Connection con(db);
 
-    const std::vector<column_def> columns{
-        column_def{.name = "id", .type = duckdb::LogicalType::INTEGER},
-        column_def{.name = "text", .type = duckdb::LogicalType::VARCHAR}};
-    IngestProperties props{.filename = test_file.string(), .columns = columns};
+    auto props = make_props(test_file.string(),
+                            {col("id", duckdb::LogicalTypeId::INTEGER),
+                             col("text", duckdb::LogicalTypeId::VARCHAR)});
     auto logger = mdlog::Logger::CreateNopLogger();
     csv_processor::ProcessFile(
         con, props, logger, [&con](const std::string &staging_table_name) {
