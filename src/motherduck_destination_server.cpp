@@ -624,13 +624,13 @@ grpc::Status DestinationSdkImpl::WriteBatch(
   } catch (const md_error::RecoverableError &mde) {
     auto const msg = "WriteHistoryBatch endpoint failed for schema <" +
                      request->schema_name() + ">, table <" +
-                     request->table().name() + ">:" + std::string(mde.what());
+                     request->table().name() + ">: " + std::string(mde.what());
     response->mutable_task()->set_message(mde.what());
     return ::grpc::Status(::grpc::StatusCode::OK, "");
   } catch (const std::exception &e) {
     auto const msg = "WriteHistoryBatch endpoint failed for schema <" +
                      request->schema_name() + ">, table <" +
-                     request->table().name() + ">:" + std::string(e.what());
+                     request->table().name() + ">: " + std::string(e.what());
     logger.severe(msg);
     response->mutable_task()->set_message(msg);
     return ::grpc::Status(::grpc::StatusCode::INTERNAL, msg);

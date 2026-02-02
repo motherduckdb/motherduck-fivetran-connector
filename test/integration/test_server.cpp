@@ -2084,6 +2084,71 @@ TEST_CASE("WriteBatchHistory upsert and delete", "[integration][write-batch]") {
   }
 }
 
+TEST_CASE("WriteBatchHistory should delete overlapping records", "[integration][write-batch]") {
+  DestinationSdkImpl service;
+
+  const std::string table_name = "books" + std::to_string(Catch::rngSeed());
+
+  {
+    // Create Table
+    ::fivetran_sdk::v2::CreateTableRequest request;
+    set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+    define_history_test_table(request, table_name);
+
+    ::fivetran_sdk::v2::CreateTableResponse response;
+    auto status = service.CreateTable(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // Initial batch
+    ::fivetran_sdk::v2::WriteHistoryBatchRequest request;
+    set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+    request.mutable_file_params()->set_unmodified_string(
+        "unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
+    request.mutable_file_params()->set_null_string("magic-nullvalue");
+
+    define_history_test_table(request, table_name);
+
+    request.add_earliest_start_files(TEST_RESOURCES_DIR +
+                                     "books_history_earlier_earliest_1.csv");
+    request.add_replace_files(TEST_RESOURCES_DIR + "books_history_earlier_upsert_1.csv");
+
+    ::fivetran_sdk::v2::WriteBatchResponse response;
+    auto status = service.WriteHistoryBatch(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    // Batch with overlapping value for id=2
+    ::fivetran_sdk::v2::WriteHistoryBatchRequest request;
+    set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+    request.mutable_file_params()->set_unmodified_string(
+        "unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
+    request.mutable_file_params()->set_null_string("magic-nullvalue");
+
+    define_history_test_table(request, table_name);
+
+    request.add_earliest_start_files(TEST_RESOURCES_DIR +
+                                     "books_history_earlier_earliest_2.csv");
+    request.add_replace_files(TEST_RESOURCES_DIR + "books_history_earlier_upsert_2.csv");
+
+    ::fivetran_sdk::v2::WriteBatchResponse response;
+    auto status = service.WriteHistoryBatch(nullptr, &request, &response);
+    REQUIRE_NO_FAIL(status);
+  }
+
+  {
+    auto con = get_test_connection(MD_TOKEN);
+
+    auto res = con->Query(
+        "SELECT title FROM " + table_name + " ORDER BY id");
+    REQUIRE_NO_FAIL(res);
+    REQUIRE(res->RowCount() == 3);
+    REQUIRE(res->GetValue(0, 1) == "The Two Towers Updated Title");
+  }
+}
+
 TEST_CASE("WriteBatch and WriteBatchHistory with reordered CSV columns",
           "[integration][write-batch]") {
   // Test that history mode handles CSV files where columns are in a different
