@@ -44,17 +44,25 @@ duckdb::DuckDB &ConnectionFactory::get_duckdb(const std::string &md_auth_token,
                            std::string("fivetran/") + GIT_COMMIT_SHA);
     config.SetOptionByName("old_implicit_casting", true);
     config.SetOptionByName("motherduck_attach_mode", "single");
-    stdout_logger.info("initialize_db: created configuration");
 
     try {
+      stdout_logger.info("get_duckdb: creating database instance");
       db = duckdb::DuckDB("md:" + db_name, &config);
-      stdout_logger.info("initialize_db: created database instance");
     } catch (std::exception &ex) {
       maybe_rewrite_error(ex, db_name);
       throw;
     }
 
     duckdb::Connection con(db);
+    // Trigger welcome pack fetch, but do not raise errors
+    const auto welcome_pack_res = con.Query("FROM md_welcome_messages()");
+    if (welcome_pack_res->HasError()) {
+      stdout_logger.severe("get_duckdb: Could not fetch welcome pack: " +
+                           welcome_pack_res->GetError());
+    } else {
+      stdout_logger.info("get_duckdb: fetched welcome pack");
+    }
+
     initial_md_token = md_auth_token;
     initial_db_name = db_name;
   };
@@ -76,21 +84,11 @@ duckdb::DuckDB &ConnectionFactory::get_duckdb(const std::string &md_auth_token,
 }
 
 duckdb::Connection
-ConnectionFactory::GetConnection(const std::string &md_auth_token,
-                                 const std::string &db_name) {
-  stdout_logger.info("get_connection: start");
+ConnectionFactory::CreateConnection(const std::string &md_auth_token,
+                                    const std::string &db_name) {
+  stdout_logger.info("create_connection: start");
   duckdb::DuckDB &db = get_duckdb(md_auth_token, db_name);
   auto con = duckdb::Connection(db);
-  stdout_logger.info("get_connection: created connection");
-
-  // Trigger welcome pack fetch, but do not raise errors
-  const auto welcome_pack_res = con.Query("FROM md_welcome_messages()");
-  if (welcome_pack_res->HasError()) {
-    stdout_logger.severe("get_connection: Could not fetch welcome pack: " +
-                         welcome_pack_res->GetError());
-  } else {
-    stdout_logger.info("get_connection: fetched welcome pack");
-  }
 
   // Set default_collation to a connection-specific default value which
   // overwrites any global setting and ensures that client-side planning and
