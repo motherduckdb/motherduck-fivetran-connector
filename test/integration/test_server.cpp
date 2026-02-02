@@ -2084,7 +2084,8 @@ TEST_CASE("WriteBatchHistory upsert and delete", "[integration][write-batch]") {
   }
 }
 
-TEST_CASE("WriteBatchHistory should delete overlapping records", "[integration][write-batch]") {
+TEST_CASE("WriteBatchHistory should delete overlapping records",
+          "[integration][write-batch]") {
   DestinationSdkImpl service;
 
   const std::string table_name = "books" + std::to_string(Catch::rngSeed());
@@ -2112,7 +2113,8 @@ TEST_CASE("WriteBatchHistory should delete overlapping records", "[integration][
 
     request.add_earliest_start_files(TEST_RESOURCES_DIR +
                                      "books_history_earlier_earliest_1.csv");
-    request.add_replace_files(TEST_RESOURCES_DIR + "books_history_earlier_upsert_1.csv");
+    request.add_replace_files(TEST_RESOURCES_DIR +
+                              "books_history_earlier_upsert_1.csv");
 
     ::fivetran_sdk::v2::WriteBatchResponse response;
     auto status = service.WriteHistoryBatch(nullptr, &request, &response);
@@ -2131,7 +2133,8 @@ TEST_CASE("WriteBatchHistory should delete overlapping records", "[integration][
 
     request.add_earliest_start_files(TEST_RESOURCES_DIR +
                                      "books_history_earlier_earliest_2.csv");
-    request.add_replace_files(TEST_RESOURCES_DIR + "books_history_earlier_upsert_2.csv");
+    request.add_replace_files(TEST_RESOURCES_DIR +
+                              "books_history_earlier_upsert_2.csv");
 
     ::fivetran_sdk::v2::WriteBatchResponse response;
     auto status = service.WriteHistoryBatch(nullptr, &request, &response);
@@ -2141,8 +2144,8 @@ TEST_CASE("WriteBatchHistory should delete overlapping records", "[integration][
   {
     auto con = get_test_connection(MD_TOKEN);
 
-    auto res = con->Query(
-        "SELECT title, _fivetran_start FROM " + table_name + " ORDER BY id");
+    auto res = con->Query("SELECT title, _fivetran_start FROM " + table_name +
+                          " ORDER BY id");
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 3);
     REQUIRE(res->GetValue(0, 1) == "The Two Towers Updated Title");
