@@ -87,8 +87,20 @@ void Logger::log_to_duckdb(const std::string &level,
 
   // Only log errors from the query, but continue execution
   if (log_res->HasError()) {
-    log_to_stdout("WARNING",
-                  "Failed to write log to DuckDB: " + log_res->GetError());
+    const auto msg = log_res->GetError();
+
+    if (msg.find("Current transaction is aborted (please ROLLBACK)") !=
+        std::string::npos) {
+      con->Rollback();
+      const auto new_log_res = con->Query(query);
+
+      if (new_log_res->HasError()) {
+        log_to_stdout("WARNING",
+                      "Failed to write log to DuckDB: " + log_res->GetError());
+      }
+    }
+
+    log_to_stdout("WARNING", "Failed to write log to DuckDB: " + msg);
   }
 }
 
