@@ -1747,7 +1747,7 @@ TEST_CASE("Capabilities", "[integration]") {
   REQUIRE(response.batch_file_format() == ::fivetran_sdk::v2::CSV);
 }
 
-TEST_CASE("WriteBatchHistory with update files", "[integration][write-batch]") {
+TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
   DestinationSdkImpl service;
 
   // Schema will be main
@@ -1939,7 +1939,7 @@ TEST_CASE("WriteBatchHistory with update files", "[integration][write-batch]") {
   }
 }
 
-TEST_CASE("WriteBatchHistory upsert and delete", "[integration][write-batch]") {
+TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
   DestinationSdkImpl service;
 
   // Schema will be main
@@ -2084,7 +2084,7 @@ TEST_CASE("WriteBatchHistory upsert and delete", "[integration][write-batch]") {
   }
 }
 
-TEST_CASE("WriteBatchHistory should delete overlapping records",
+TEST_CASE("WriteHistoryBatch should delete overlapping records",
           "[integration][write-batch]") {
   DestinationSdkImpl service;
 
@@ -2153,7 +2153,7 @@ TEST_CASE("WriteBatchHistory should delete overlapping records",
   }
 }
 
-TEST_CASE("WriteBatch and WriteBatchHistory with reordered CSV columns",
+TEST_CASE("WriteBatch and WriteHistoryBatch with reordered CSV columns",
           "[integration][write-batch]") {
   // Test that history mode handles CSV files where columns are in a different
   // order than the table definition. This verifies that INSERT statements
@@ -2243,7 +2243,7 @@ TEST_CASE("WriteBatch and WriteBatchHistory with reordered CSV columns",
   }
 }
 
-TEST_CASE("WriteBatch and WriteBatchHistory with upsert",
+TEST_CASE("WriteBatch and WriteHistoryBatch with upsert",
           "[integration][write-batch]") {
   DestinationSdkImpl service;
 
