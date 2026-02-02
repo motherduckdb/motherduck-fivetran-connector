@@ -2142,10 +2142,11 @@ TEST_CASE("WriteBatchHistory should delete overlapping records", "[integration][
     auto con = get_test_connection(MD_TOKEN);
 
     auto res = con->Query(
-        "SELECT title FROM " + table_name + " ORDER BY id");
+        "SELECT title, _fivetran_start FROM " + table_name + " ORDER BY id");
     REQUIRE_NO_FAIL(res);
     REQUIRE(res->RowCount() == 3);
     REQUIRE(res->GetValue(0, 1) == "The Two Towers Updated Title");
+    REQUIRE(res->GetValue(1, 1) == "2024-01-01 04:10:19.156057+00");
   }
 }
 
