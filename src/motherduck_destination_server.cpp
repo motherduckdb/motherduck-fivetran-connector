@@ -13,7 +13,6 @@
 #include "sql_generator.hpp"
 
 #include "md_error.hpp"
-#include <duckdb/main/connection_manager.hpp>
 #include <exception>
 #include <filesystem>
 #include <grpcpp/grpcpp.h>

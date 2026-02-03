@@ -1,7 +1,6 @@
 #include "md_logging.hpp"
 #include "duckdb.hpp"
 
-#include <duckdb/main/connection_manager.hpp>
 #include <iostream>
 #include <mutex>
 #include <string>

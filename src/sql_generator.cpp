@@ -5,7 +5,6 @@
 #include "md_logging.hpp"
 #include "schema_types.hpp"
 
-#include <duckdb/main/connection_manager.hpp>
 #include <format>
 #include <functional>
 #include <iostream>
@@ -53,6 +52,11 @@ struct TransactionContext {
   }
 
   ~TransactionContext() {
+    // We should commit the context before it goes out of scope. When this doesn't happen,
+    // HasActiveTransaction() is true. However, if the context did not begin a new transaction
+    // because the connection already had an active transaction from an outer scope
+    // (i.e. should_begin, and therefore has_begun are false), we don't want to rollback
+    // because it is expected that the outer transaction should remain active.
     if (con.HasActiveTransaction() && has_begun) {
       con.Rollback();
     }
