@@ -7,10 +7,13 @@
 #include <iostream>
 
 int main(const int argc, char *argv[]) {
-  // We cannot use Catch2 macros outside a running session.
-  // Hence, we log to stderr and exit with non-zero code on failure.
+  // Disable DuckDB logging in tests
+  setenv("MD_DISABLE_DUCKDB_LOGGING", "1", 0);
 
   preload_extensions();
+
+  // We cannot use Catch2 macros outside a running session.
+  // Hence, we log to stderr and exit with non-zero code on failure.
 
   const auto db_name = test::constants::TEST_DATABASE_NAME;
   {

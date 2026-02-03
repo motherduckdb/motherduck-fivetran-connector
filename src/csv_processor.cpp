@@ -319,6 +319,12 @@ void ProcessFile(
     reset_file_cursor(temp_file.value().fd);
   }
 
+  bool should_commit = false;
+  if (!con.HasActiveTransaction()) {
+    con.BeginTransaction();
+    should_commit = true;
+  }
+
   MdSqlGenerator sql_generator(logger);
   const std::string staging_table_name =
       sql_generator.generate_temp_table_name(con, "__fivetran_ingest_staging");
@@ -352,6 +358,11 @@ void ProcessFile(
     logger.severe("Failed to drop temporary table <" + staging_table_name +
                   "> after processing CSV file <" + props.filename +
                   ">: " + drop_staging_table_res->GetError());
+  }
+
+  if (should_commit) {
+    // This throws any errors during commit
+    con.Commit();
   }
 }
 } // namespace csv_processor

@@ -74,6 +74,10 @@ public:
   create_latest_active_records_table(duckdb::Connection &con,
                                      const table_def &source_table) const;
 
+  void
+  drop_latest_active_records_table(duckdb::Connection &con,
+                                   const std::string &lar_table_name) const;
+
   void add_partial_historical_values(
       duckdb::Connection &con, const table_def &table,
       const std::string &staging_table_name, const std::string &lar_table_name,
