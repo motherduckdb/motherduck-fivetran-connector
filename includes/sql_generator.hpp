@@ -40,7 +40,7 @@ public:
                                          const table_def &table);
   void add_column(duckdb::Connection &con, const table_def &table,
                   const column_def &column, const std::string &log_prefix,
-                  bool exists_ok = false) const;
+                  bool ignore_if_exists = false) const;
 
   void drop_column(duckdb::Connection &con, const table_def &table,
                    const std::string &column_name,

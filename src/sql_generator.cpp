@@ -52,11 +52,12 @@ struct TransactionContext {
   }
 
   ~TransactionContext() {
-    // We should commit the context before it goes out of scope. When this doesn't happen,
-    // HasActiveTransaction() is true. However, if the context did not begin a new transaction
-    // because the connection already had an active transaction from an outer scope
-    // (i.e. should_begin, and therefore has_begun are false), we don't want to rollback
-    // because it is expected that the outer transaction should remain active.
+    // We should commit the context before it goes out of scope. When this
+    // doesn't happen, HasActiveTransaction() is true. However, if the context
+    // did not begin a new transaction because the connection already had an
+    // active transaction from an outer scope (i.e. should_begin, and therefore
+    // has_begun are false), we don't want to rollback because it is expected
+    // that the outer transaction should remain active.
     if (con.HasActiveTransaction() && has_begun) {
       con.Rollback();
     }
@@ -361,12 +362,12 @@ std::vector<column_def> MdSqlGenerator::describe_table(duckdb::Connection &con,
 void MdSqlGenerator::add_column(duckdb::Connection &con, const table_def &table,
                                 const column_def &column,
                                 const std::string &log_prefix,
-                                const bool exists_ok) const {
+                                const bool ignore_if_exists) const {
   // Add `column` to `table` and add a default value if present in the struct.
   std::ostringstream sql;
   sql << "ALTER TABLE " << table.to_escaped_string() << " ADD COLUMN ";
 
-  if (exists_ok) {
+  if (ignore_if_exists) {
     sql << " IF NOT EXISTS ";
   }
 
@@ -381,7 +382,8 @@ void MdSqlGenerator::add_column(duckdb::Connection &con, const table_def &table,
     // We should not expect NULLs here according to fivetran, so we also cast
     // the string "NULL" to the string "NULL" for varchar columns, not NULLs.
     const std::string casted_default_value =
-        "CAST(" + KeywordHelper::WriteQuoted(column.column_default.value()) +
+        "CAST(" +
+        KeywordHelper::WriteQuoted(column.column_default.value(), '\'') +
         " AS " + format_type(column) + ")";
 
     sql << " DEFAULT " << casted_default_value;
@@ -423,7 +425,8 @@ void MdSqlGenerator::alter_table_recreate(
   auto absolute_table_name = table.to_escaped_string();
   auto absolute_temp_table_name = temp_table.to_escaped_string();
 
-  rename_table(con, table, temp_table.table_name, "renaming table");
+  rename_table(con, table, temp_table.table_name,
+               "alter_table_recreate rename");
 
   // new primary keys have to get a default value as they cannot be null
   std::set<std::string> new_primary_key_cols;
@@ -951,7 +954,7 @@ void MdSqlGenerator::drop_column_in_history_mode(
   const std::string absolute_table_name = table.to_escaped_string();
   const std::string quoted_column = KeywordHelper::WriteQuoted(column, '"');
   const std::string quoted_timestamp =
-      KeywordHelper::WriteQuoted(operation_timestamp) + "::TIMESTAMPTZ";
+      KeywordHelper::WriteQuoted(operation_timestamp, '\'') + "::TIMESTAMPTZ";
 
   if (!history_table_is_valid(con, absolute_table_name, quoted_timestamp)) {
     // The table is empty
@@ -967,7 +970,7 @@ void MdSqlGenerator::drop_column_in_history_mode(
     // Query 1: Insert new rows for active records where column is not null
     std::ostringstream sql;
     sql << "INSERT INTO " << absolute_table_name << " SELECT * REPLACE"
-        << " (NULL as" << quoted_column << ", " << quoted_timestamp
+        << " (NULL as " << quoted_column << ", " << quoted_timestamp
         << " as \"_fivetran_start\""
         << ")"
         << " FROM " << absolute_table_name
@@ -1109,10 +1112,11 @@ void MdSqlGenerator::copy_column(duckdb::Connection &con,
       "SELECT data_type_id, column_default, numeric_precision, numeric_scale "
       "from duckdb_columns() WHERE "
       "database_name = " +
-      KeywordHelper::WriteQuoted(table.db_name) +
-      " AND schema_name = " + KeywordHelper::WriteQuoted(table.schema_name) +
-      " AND table_name = " + KeywordHelper::WriteQuoted(table.table_name) +
-      " AND column_name = " + KeywordHelper::WriteQuoted(from_column);
+      KeywordHelper::WriteQuoted(table.db_name, '\'') + " AND schema_name = " +
+      KeywordHelper::WriteQuoted(table.schema_name, '\'') +
+      " AND table_name = " +
+      KeywordHelper::WriteQuoted(table.table_name, '\'') +
+      " AND column_name = " + KeywordHelper::WriteQuoted(from_column, '\'');
   auto result = con.Query(query);
 
   if (result->HasError()) {
@@ -1242,7 +1246,7 @@ void MdSqlGenerator::add_column_in_history_mode(
   const std::string absolute_table_name = table.to_escaped_string();
 
   const std::string quoted_timestamp =
-      KeywordHelper::WriteQuoted(operation_timestamp) + "::TIMESTAMPTZ";
+      KeywordHelper::WriteQuoted(operation_timestamp, '\'') + "::TIMESTAMPTZ";
 
   TransactionContext txn_ctx(con);
   add_column(con, table, column, "add_column_in_history_mode create");
@@ -1253,9 +1257,9 @@ void MdSqlGenerator::add_column_in_history_mode(
     return;
   }
 
-  std::string casted_default_value = "CAST(" +
-                                     KeywordHelper::WriteQuoted(default_value) +
-                                     " AS " + format_type(column) + ")";
+  std::string casted_default_value =
+      "CAST(" + KeywordHelper::WriteQuoted(default_value, '\'') + " AS " +
+      format_type(column) + ")";
 
   const std::string quoted_column =
       KeywordHelper::WriteQuoted(column.name, '"');
@@ -1319,11 +1323,14 @@ void MdSqlGenerator::update_column_value(duckdb::Connection &con,
   std::ostringstream sql;
 
   if (value == "NULL") {
-    sql << "UPDATE " << absolute_table_name << " SET " << quoted_column << " = "
-        << value;
+    // As per a discussion with Fivetran, if value == "NULL" we should interpret
+    // this as an actual NULL. Varchar columns hence cannot be updated with the
+    // string 'NULL' here.
+    sql << "UPDATE " << absolute_table_name << " SET " << quoted_column
+        << " = NULL";
   } else {
     sql << "UPDATE " << absolute_table_name << " SET " << quoted_column << " = "
-        << KeywordHelper::WriteQuoted(value);
+        << KeywordHelper::WriteQuoted(value, '\'');
   }
 
   run_query(con, "update_column_value", sql.str(),

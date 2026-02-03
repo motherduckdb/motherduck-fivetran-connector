@@ -81,7 +81,7 @@ void Logger::log_to_duckdb(const std::string &level,
       "SELECT write_log(" +
       duckdb::KeywordHelper::WriteQuoted(full_message, '\'') +
       ", log_type:='Fivetran', level:=" +
-      duckdb::KeywordHelper::WriteQuoted(ddb_log_level) + ")";
+      duckdb::KeywordHelper::WriteQuoted(ddb_log_level, '\'') + ")";
 
   const auto log_res = con->Query(query);
 
