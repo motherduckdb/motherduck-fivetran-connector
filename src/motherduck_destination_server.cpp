@@ -626,7 +626,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(
 
     auto const msg = "WriteHistoryBatch endpoint failed for schema <" +
                      request->schema_name() + ">, table <" +
-                     request->table().name() + ">:" + std::string(mde.what());
+                     request->table().name() + ">: " + std::string(mde.what());
     response->mutable_task()->set_message(mde.what());
     return ::grpc::Status::OK;
   } catch (const std::exception &ex) {
