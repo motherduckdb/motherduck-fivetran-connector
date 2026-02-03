@@ -381,9 +381,9 @@ void MdSqlGenerator::add_column(duckdb::Connection &con, const table_def &table,
     }
     // We should not expect NULLs here according to fivetran, so we also cast
     // the string "NULL" to the string "NULL" for varchar columns, not NULLs.
-    sql << " DEFAULT CAST(" <<
-        KeywordHelper::WriteQuoted(column.column_default.value(), '\'') <<
-        " AS " << format_type(column) << ")";
+    sql << " DEFAULT CAST("
+        << KeywordHelper::WriteQuoted(column.column_default.value(), '\'')
+        << " AS " << format_type(column) << ")";
   }
 
   return run_query(con, log_prefix, sql.str(),
@@ -1431,8 +1431,8 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
                               .type = duckdb::LogicalTypeId::TIMESTAMP_TZ};
     additional_pks.push_back(&fivetran_start);
 
-    copy_table(con, temp_table, original_table, "migrate_soft_delete_to_history copy",
-               additional_pks);
+    copy_table(con, temp_table, original_table,
+               "migrate_soft_delete_to_history copy", additional_pks);
     drop_table(con, temp_table, "migrate_soft_delete_to_history drop");
 
     transaction_context.Commit();
