@@ -1662,6 +1662,23 @@ TEST_CASE("Migrate - history to soft delete", "[integration][migrate]") {
   {
     auto res = con->Query("SELECT _fivetran_start FROM " + table_name);
     REQUIRE(res->HasError());
+    CHECK_THAT(res->GetError(),
+               Catch::Matchers::ContainsSubstring(
+                   "\"_fivetran_start\" not found in FROM clause"));
+  }
+  {
+    auto res = con->Query("SELECT _fivetran_end FROM " + table_name);
+    REQUIRE(res->HasError());
+    CHECK_THAT(res->GetError(),
+               Catch::Matchers::ContainsSubstring(
+                   "\"_fivetran_end\" not found in FROM clause"));
+  }
+  {
+    auto res = con->Query("SELECT _fivetran_active FROM " + table_name);
+    REQUIRE(res->HasError());
+    CHECK_THAT(res->GetError(),
+               Catch::Matchers::ContainsSubstring(
+                   "\"_fivetran_active\" not found in FROM clause"));
   }
 
   // Clean up

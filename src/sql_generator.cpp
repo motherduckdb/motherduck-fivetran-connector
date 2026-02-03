@@ -1495,7 +1495,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
       << " = NOT \"_fivetran_active\";";
   run_query(con, "migrate_history_to_soft_delete update_soft_deleted",
             sql.str(), "Could not update soft_deleted_column");
-  drop_column(con, table, "_fivetran_active",
+  drop_column(con, temp_table, "_fivetran_active",
               "migrate_history_to_soft_delete drop_active");
 
   add_defaults(con, columns, temp_table_name,
