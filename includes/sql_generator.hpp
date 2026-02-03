@@ -183,7 +183,7 @@ public:
   // timestamp respectively for active rows, because we interpret the latest
   // sync as the initial insert into the historic table.
   void migrate_soft_delete_to_history(duckdb::Connection &con,
-                                      const table_def &table,
+                                      const table_def &original_table,
                                       const std::string &soft_deleted_column);
   void add_defaults(duckdb::Connection &con,
                     const std::vector<column_def> &columns,

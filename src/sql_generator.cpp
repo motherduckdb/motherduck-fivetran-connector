@@ -381,12 +381,9 @@ void MdSqlGenerator::add_column(duckdb::Connection &con, const table_def &table,
     }
     // We should not expect NULLs here according to fivetran, so we also cast
     // the string "NULL" to the string "NULL" for varchar columns, not NULLs.
-    const std::string casted_default_value =
-        "CAST(" +
-        KeywordHelper::WriteQuoted(column.column_default.value(), '\'') +
-        " AS " + format_type(column) + ")";
-
-    sql << " DEFAULT " << casted_default_value;
+    sql << " DEFAULT CAST(" <<
+        KeywordHelper::WriteQuoted(column.column_default.value(), '\'') <<
+        " AS " << format_type(column) << ")";
   }
 
   return run_query(con, log_prefix, sql.str(),
@@ -571,7 +568,7 @@ void MdSqlGenerator::alter_table(
     }
   }
 
-  TransactionContext txn_ctx(con);
+  TransactionContext transaction_context(con);
 
   if (recreate_table) {
     logger.info("    recreating table");
@@ -598,7 +595,7 @@ void MdSqlGenerator::alter_table(
                          alter_types, new_column_map);
   }
 
-  txn_ctx.Commit();
+  transaction_context.Commit();
 }
 
 void MdSqlGenerator::upsert(
@@ -964,7 +961,7 @@ void MdSqlGenerator::drop_column_in_history_mode(
   // Per spec: In history mode, dropping a column preserves historical data.
   // We execute 3 queries as described in the spec if the table is not empty.
 
-  TransactionContext txn_ctx(con);
+  TransactionContext transaction_context(con);
 
   {
     // Query 1: Insert new rows for active records where column is not null
@@ -1019,14 +1016,14 @@ void MdSqlGenerator::drop_column_in_history_mode(
         "Could not update previous records for drop_column_in_history_mode");
   }
 
-  txn_ctx.Commit();
+  transaction_context.Commit();
 }
 
 void MdSqlGenerator::copy_table(
     duckdb::Connection &con, const table_def &from_table,
     const table_def &to_table, const std::string &log_prefix,
     const std::vector<const column_def *> &additional_pks) {
-  TransactionContext txn_ctx(con);
+  TransactionContext transaction_context(con);
 
   {
     std::ostringstream sql;
@@ -1053,7 +1050,7 @@ void MdSqlGenerator::copy_table(
   add_defaults(con, columns, to_table.to_escaped_string(), log_prefix);
   add_pks(con, combined_pks, to_table.to_escaped_string(), log_prefix);
 
-  txn_ctx.Commit();
+  transaction_context.Commit();
 }
 
 void MdSqlGenerator::add_defaults(duckdb::Connection &con,
@@ -1140,7 +1137,7 @@ void MdSqlGenerator::copy_column(duckdb::Connection &con,
     to_column.scale = result->GetValue(3, 0).GetValue<uint8_t>();
   }
 
-  TransactionContext txn_ctx(con);
+  TransactionContext transaction_context(con);
 
   add_column(con, table, to_column, "copy_column add");
   run_query(con, "copy_column update",
@@ -1148,7 +1145,7 @@ void MdSqlGenerator::copy_column(duckdb::Connection &con,
                 KeywordHelper::WriteQuoted(to_name, '"') + " = " + quoted_from,
             "Could not copy column values");
 
-  txn_ctx.Commit();
+  transaction_context.Commit();
 }
 
 void MdSqlGenerator::copy_table_to_history_mode(
@@ -1248,12 +1245,12 @@ void MdSqlGenerator::add_column_in_history_mode(
   const std::string quoted_timestamp =
       KeywordHelper::WriteQuoted(operation_timestamp, '\'') + "::TIMESTAMPTZ";
 
-  TransactionContext txn_ctx(con);
+  TransactionContext transaction_context(con);
   add_column(con, table, column, "add_column_in_history_mode create");
 
   if (!history_table_is_valid(con, absolute_table_name, quoted_timestamp)) {
     // The table is empty and the column has been added
-    txn_ctx.Commit();
+    transaction_context.Commit();
     return;
   }
 
@@ -1310,7 +1307,7 @@ void MdSqlGenerator::add_column_in_history_mode(
               "Could not update records for add_column_in_history_mode");
   }
 
-  txn_ctx.Commit();
+  transaction_context.Commit();
 }
 
 void MdSqlGenerator::update_column_value(duckdb::Connection &con,
@@ -1363,28 +1360,28 @@ void MdSqlGenerator::migrate_soft_delete_to_live(
 }
 
 void MdSqlGenerator::migrate_soft_delete_to_history(
-    duckdb::Connection &con, const table_def &table,
+    duckdb::Connection &con, const table_def &original_table,
     const std::string &soft_deleted_column) {
-  const std::string absolute_table_name = table.to_escaped_string();
+  const std::string absolute_table_name = original_table.to_escaped_string();
   const std::string quoted_deleted_col =
       KeywordHelper::WriteQuoted(soft_deleted_column, '"');
 
-  table_def temp_table{table.db_name, table.schema_name,
-                       table.table_name + "_temp"};
+  table_def temp_table{original_table.db_name, original_table.schema_name,
+                       original_table.table_name + "_temp"};
   const std::string temp_absolute_table_name = temp_table.to_escaped_string();
 
   {
-    TransactionContext txn_ctx(con);
+    TransactionContext transaction_context(con);
 
-    add_column(con, table,
+    add_column(con, original_table,
                column_def{.name = "_fivetran_start",
                           .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
                "migrate_soft_delete_to_history add_start");
-    add_column(con, table,
+    add_column(con, original_table,
                column_def{.name = "_fivetran_end",
                           .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
                "migrate_soft_delete_to_history add_end");
-    add_column(con, table,
+    add_column(con, original_table,
                column_def{
                    .name = "_fivetran_active",
                    .type = duckdb::LogicalTypeId::BOOLEAN,
@@ -1413,20 +1410,20 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
                 "Could not set history column values");
     }
 
-    txn_ctx.Commit();
+    transaction_context.Commit();
   }
 
   {
     // See duckdb issue #20570: we can only start the transaction here at this
     // point.
-    TransactionContext txn_ctx(con);
+    TransactionContext transaction_context(con);
 
     // Always drop the _fivetran_deleted column, with IF EXISTS as a safeguard
-    drop_column(con, table, "_fivetran_deleted",
+    drop_column(con, original_table, "_fivetran_deleted",
                 "migrate_soft_delete_to_history drop", true);
 
     // Rename, copy and drop the original table to replace the primary key
-    rename_table(con, table, temp_table.table_name,
+    rename_table(con, original_table, temp_table.table_name,
                  "migrate_soft_delete_to_history rename");
 
     std::vector<const column_def *> additional_pks;
@@ -1434,11 +1431,11 @@ void MdSqlGenerator::migrate_soft_delete_to_history(
                               .type = duckdb::LogicalTypeId::TIMESTAMP_TZ};
     additional_pks.push_back(&fivetran_start);
 
-    copy_table(con, temp_table, table, "migrate_soft_delete_to_history copy",
+    copy_table(con, temp_table, original_table, "migrate_soft_delete_to_history copy",
                additional_pks);
     drop_table(con, temp_table, "migrate_soft_delete_to_history drop");
 
-    txn_ctx.Commit();
+    transaction_context.Commit();
   }
 }
 
@@ -1448,7 +1445,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
   const std::string quoted_deleted_col =
       KeywordHelper::WriteQuoted(soft_deleted_column, '"');
 
-  TransactionContext txn_ctx(con);
+  TransactionContext transaction_context(con);
 
   // From the duckdb docs:
   // "ADD CONSTRAINT and DROP CONSTRAINT clauses are not yet supported in
@@ -1511,7 +1508,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(
   rename_table(con, temp_table, table.table_name,
                "migrate_history_to_soft_delete rename");
 
-  txn_ctx.Commit();
+  transaction_context.Commit();
 }
 
 void MdSqlGenerator::migrate_history_to_live(duckdb::Connection &con,
@@ -1519,7 +1516,7 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection &con,
                                              bool keep_deleted_rows) {
   const std::string absolute_table_name = table.to_escaped_string();
 
-  TransactionContext txn_ctx(con);
+  TransactionContext transaction_context(con);
 
   // Optionally delete inactive rows
   if (!keep_deleted_rows) {
@@ -1566,7 +1563,7 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection &con,
   rename_table(con, temp_table, table.table_name,
                "migrate_history_to_live rename");
 
-  txn_ctx.Commit();
+  transaction_context.Commit();
 }
 
 void MdSqlGenerator::migrate_live_to_soft_delete(
@@ -1576,7 +1573,7 @@ void MdSqlGenerator::migrate_live_to_soft_delete(
   const std::string quoted_deleted_col =
       KeywordHelper::WriteQuoted(soft_deleted_column, '"');
 
-  TransactionContext txn_ctx(con);
+  TransactionContext transaction_context(con);
 
   add_column(con, table,
              column_def{
@@ -1591,7 +1588,7 @@ void MdSqlGenerator::migrate_live_to_soft_delete(
                 " = FALSE WHERE " + quoted_deleted_col + " IS NULL",
             "Could not set soft_deleted_column values");
 
-  txn_ctx.Commit();
+  transaction_context.Commit();
 }
 
 void MdSqlGenerator::migrate_live_to_history(duckdb::Connection &con,
@@ -1601,7 +1598,7 @@ void MdSqlGenerator::migrate_live_to_history(duckdb::Connection &con,
                        table.table_name + "_temp"};
   const std::string temp_absolute_table_name = temp_table.to_escaped_string();
 
-  TransactionContext txn_ctx(con);
+  TransactionContext transaction_context(con);
 
   add_column(con, table,
              column_def{
@@ -1645,5 +1642,5 @@ void MdSqlGenerator::migrate_live_to_history(duckdb::Connection &con,
              additional_pks);
   drop_table(con, temp_table, "migrate_live_to_history drop");
 
-  txn_ctx.Commit();
+  transaction_context.Commit();
 }
