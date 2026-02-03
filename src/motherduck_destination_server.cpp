@@ -92,7 +92,7 @@ std::vector<column_def> get_duckdb_columns(
       }
     }
 
-    duckdb_columns.push_back(column_def{col.name(), duckdb_type,
+    duckdb_columns.push_back(column_def{col.name(), duckdb_type, std::nullopt,
                                         col.primary_key(), decimal_width,
                                         decimal_scale});
   }
@@ -678,6 +678,266 @@ std::string extract_readable_error(const std::exception &ex) {
   }
 
   return error_message;
+}
+
+std::string
+get_migration_schema_name(const fivetran_sdk::v2::MigrationDetails &details) {
+  const std::string &schema_name = details.schema();
+  if (schema_name.empty()) {
+    return "main";
+  }
+  return schema_name;
+}
+
+grpc::Status
+DestinationSdkImpl::Migrate(::grpc::ServerContext *,
+                            const ::fivetran_sdk::v2::MigrateRequest *request,
+                            ::fivetran_sdk::v2::MigrateResponse *response) {
+  std::optional<RequestContext> ctx;
+  try {
+    ctx.emplace("Migrate", connection_factory, request->configuration());
+  } catch (const std::exception &e) {
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  }
+  auto &con = ctx->GetConnection();
+  auto &logger = ctx->GetLogger();
+
+  try {
+    const auto &details = request->details();
+    const std::string schema_name = get_migration_schema_name(details);
+    const std::string &table_name = details.table();
+
+    if (table_name.empty()) {
+      throw std::invalid_argument("Table name cannot be empty");
+    }
+
+    const std::string db_name =
+        config::find_property(request->configuration(), config::PROP_DATABASE);
+    auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
+
+    table_def table{db_name, schema_name, table_name};
+    logger.info("Endpoint <Migrate>: schema <" + schema_name + ">, table <" +
+                table_name + ">");
+
+    switch (details.operation_case()) {
+    case fivetran_sdk::v2::MigrationDetails::kDrop: {
+      const auto &drop = details.drop();
+      switch (drop.entity_case()) {
+      case fivetran_sdk::v2::DropOperation::EntityCase::kDropTable: {
+        logger.info("Endpoint <Migrate>: DROP_TABLE");
+        sql_generator->drop_table(con, table, "drop_table");
+        break;
+      }
+      case fivetran_sdk::v2::DropOperation::EntityCase::
+          kDropColumnInHistoryMode: {
+        logger.info("Endpoint <Migrate>: DROP_COLUMN_IN_HISTORY_MODE");
+        const auto &drop_col = drop.drop_column_in_history_mode();
+        sql_generator->drop_column_in_history_mode(
+            con, table, drop_col.column(), drop_col.operation_timestamp());
+        break;
+      }
+      default: {
+        logger.warning("Endpoint <Migrate>: received unsupported drop mode "
+                       "operation type");
+        response->set_unsupported(true);
+        return ::grpc::Status::OK;
+      }
+      }
+      break;
+    }
+    case fivetran_sdk::v2::MigrationDetails::kCopy: {
+      const auto &copy = details.copy();
+      switch (copy.entity_case()) {
+      case fivetran_sdk::v2::CopyOperation::EntityCase::kCopyTable: {
+        logger.info("Endpoint <Migrate>: COPY_TABLE");
+        const auto &copy_table = copy.copy_table();
+        table_def from_table{db_name, schema_name, copy_table.from_table()};
+        table_def to_table{db_name, schema_name, copy_table.to_table()};
+        sql_generator->copy_table(con, from_table, to_table, "copy_table");
+        break;
+      }
+      case fivetran_sdk::v2::CopyOperation::EntityCase::kCopyColumn: {
+        logger.info("Endpoint <Migrate>: COPY_COLUMN");
+        const auto &copy_col = copy.copy_column();
+        if (is_fivetran_system_column(copy_col.to_column())) {
+          throw std::invalid_argument("Cannot copy column to reserved name <" +
+                                      copy_col.to_column() +
+                                      ">. Please contact Fivetran support.");
+        }
+
+        sql_generator->copy_column(con, table, copy_col.from_column(),
+                                   copy_col.to_column());
+        break;
+      }
+      case fivetran_sdk::v2::CopyOperation::EntityCase::
+          kCopyTableToHistoryMode: {
+        logger.info("Endpoint <Migrate>: COPY_TABLE_TO_HISTORY_MODE");
+        const auto &copy_hist = copy.copy_table_to_history_mode();
+        table_def from_table{db_name, schema_name, copy_hist.from_table()};
+        table_def to_table{db_name, schema_name, copy_hist.to_table()};
+        sql_generator->copy_table_to_history_mode(
+            con, from_table, to_table, copy_hist.soft_deleted_column());
+        break;
+      }
+      default: {
+        response->set_unsupported(true);
+        return ::grpc::Status::OK;
+      }
+      }
+      break;
+    }
+    case fivetran_sdk::v2::MigrationDetails::kRename: {
+      const auto &rename = details.rename();
+      switch (rename.entity_case()) {
+      case fivetran_sdk::v2::RenameOperation::EntityCase::kRenameTable: {
+        logger.info("Endpoint <Migrate>: RENAME_TABLE");
+        const auto &rename_tbl = rename.rename_table();
+        table_def from_table{db_name, schema_name, rename_tbl.from_table()};
+        sql_generator->rename_table(con, from_table, rename_tbl.to_table(),
+                                    "rename_table");
+        break;
+      }
+      case fivetran_sdk::v2::RenameOperation::EntityCase::kRenameColumn: {
+        logger.info("Endpoint <Migrate>: RENAME_COLUMN");
+        const auto &rename_col = rename.rename_column();
+
+        if (is_fivetran_system_column(rename_col.to_column())) {
+          throw std::invalid_argument(
+              "Cannot rename column to reserved name <" +
+              rename_col.to_column() + ">. Please contact Fivetran support.");
+        }
+        sql_generator->rename_column(con, table, rename_col.from_column(),
+                                     rename_col.to_column());
+        break;
+      }
+      default: {
+        response->set_unsupported(true);
+        return ::grpc::Status::OK;
+      }
+      }
+      break;
+    }
+    case fivetran_sdk::v2::MigrationDetails::kAdd: {
+      const auto &add = details.add();
+      switch (add.entity_case()) {
+      case fivetran_sdk::v2::AddOperation::EntityCase::
+          kAddColumnWithDefaultValue: {
+        logger.info("Endpoint <Migrate>: ADD_COLUMN_WITH_DEFAULT_VALUE");
+        const auto &add_col = add.add_column_with_default_value();
+
+        column_def column{
+            .name = add_col.column(),
+            .type = get_duckdb_type(add_col.column_type()),
+            .column_default = add_col.default_value(),
+            .primary_key = false,
+        };
+
+        if (is_fivetran_system_column(column.name)) {
+          throw std::invalid_argument("Cannot add column with reserved name <" +
+                                      column.name +
+                                      ">. Please contact Fivetran support.");
+        }
+
+        sql_generator->add_column(con, table, column, "add_column");
+        break;
+      }
+      case fivetran_sdk::v2::AddOperation::EntityCase::
+          kAddColumnInHistoryMode: {
+        logger.info("Endpoint <Migrate>: ADD_COLUMN_IN_HISTORY_MODE");
+        const auto &add_col = add.add_column_in_history_mode();
+
+        // The default value should not be a DDL level default, because NULLs in
+        // history mode can signify the column not existing in the past.
+        column_def col{
+            .name = add_col.column(),
+            .type = get_duckdb_type(add_col.column_type()),
+            .primary_key = false,
+        };
+        sql_generator->add_column_in_history_mode(con, table, col,
+                                                  add_col.operation_timestamp(),
+                                                  add_col.default_value());
+        break;
+      }
+      default: {
+        response->set_unsupported(true);
+        return ::grpc::Status::OK;
+      }
+      }
+      break;
+    }
+    case fivetran_sdk::v2::MigrationDetails::kUpdateColumnValue: {
+      logger.info("Endpoint <Migrate>: UpdateColumnValueOperation");
+      const auto &update = details.update_column_value();
+      sql_generator->update_column_value(con, table, update.column(),
+                                         update.value());
+      break;
+    }
+    case fivetran_sdk::v2::MigrationDetails::kTableSyncModeMigration: {
+      const auto &sync_mode = details.table_sync_mode_migration();
+      const std::string soft_deleted_column =
+          sync_mode.has_soft_deleted_column() ? sync_mode.soft_deleted_column()
+                                              : "_fivetran_deleted";
+      const bool keep_deleted_rows = sync_mode.has_keep_deleted_rows()
+                                         ? sync_mode.keep_deleted_rows()
+                                         : false;
+
+      switch (sync_mode.type()) {
+      // Note: officially live mode is not supported yet for the partner SDK.
+      // Hence, the LIVE_TO_* and *_TO_LIVE are not yet expected to be sent out,
+      // and we could expect changes to the docs/spec on live mode in the
+      // future.
+      case fivetran_sdk::v2::SOFT_DELETE_TO_LIVE:
+        logger.info("Endpoint <Migrate>: SOFT_DELETE_TO_LIVE");
+        sql_generator->migrate_soft_delete_to_live(con, table,
+                                                   soft_deleted_column);
+        break;
+      case fivetran_sdk::v2::SOFT_DELETE_TO_HISTORY:
+        logger.info("Endpoint <Migrate>: SOFT_DELETE_TO_HISTORY");
+        sql_generator->migrate_soft_delete_to_history(con, table,
+                                                      soft_deleted_column);
+        break;
+      case fivetran_sdk::v2::HISTORY_TO_SOFT_DELETE:
+        logger.info("Endpoint <Migrate>: HISTORY_TO_SOFT_DELETE");
+        sql_generator->migrate_history_to_soft_delete(con, table,
+                                                      soft_deleted_column);
+        break;
+      case fivetran_sdk::v2::HISTORY_TO_LIVE:
+        logger.info("Endpoint <Migrate>: HISTORY_TO_LIVE");
+        sql_generator->migrate_history_to_live(con, table, keep_deleted_rows);
+        break;
+      case fivetran_sdk::v2::LIVE_TO_SOFT_DELETE:
+        logger.info("Endpoint <Migrate>: LIVE_TO_SOFT_DELETE");
+        sql_generator->migrate_live_to_soft_delete(con, table,
+                                                   soft_deleted_column);
+        break;
+      case fivetran_sdk::v2::LIVE_TO_HISTORY:
+        logger.info("Endpoint <Migrate>: LIVE_TO_HISTORY");
+        sql_generator->migrate_live_to_history(con, table);
+        break;
+      default:
+        response->set_unsupported(true);
+        logger.warning("Endpoint <Migrate>: unsupported sync mode type");
+        return ::grpc::Status::OK;
+      }
+      break;
+    }
+    default:
+      logger.warning("Endpoint <Migrate>: Unknown operation type");
+      response->set_unsupported(true);
+      return ::grpc::Status::OK;
+    }
+
+    response->set_success(true);
+  } catch (const std::exception &e) {
+    const std::string schema = request->details().schema();
+    const std::string table = request->details().table();
+    logger.severe("Migrate endpoint failed for schema <" + schema +
+                  ">, table <" + table + ">: " + std::string(e.what()));
+    response->mutable_task()->set_message(e.what());
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+  }
+
+  return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
 grpc::Status
