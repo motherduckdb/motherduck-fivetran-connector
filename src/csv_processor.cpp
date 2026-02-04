@@ -26,18 +26,18 @@ namespace fs = std::filesystem;
 
 namespace {
 
-void validate_file(const std::string &file_path) {
+void validate_file(const std::string& file_path) {
 	const std::ifstream fs(file_path);
 	if (fs.fail()) {
 		throw std::system_error(errno, std::generic_category(), "Failed to open file <" + file_path + ">");
 	}
 }
 
-MemoryBackedFile decrypt_file_into_memory(const std::string &encrypted_file_path, const std::string &decryption_key) {
+MemoryBackedFile decrypt_file_into_memory(const std::string& encrypted_file_path, const std::string& decryption_key) {
 	// TODO: Let decrypt_file write into the memory-backed file directly to avoid
 	// double buffering
 	const std::vector<unsigned char> plaintext =
-	    decrypt_file(encrypted_file_path, reinterpret_cast<const unsigned char *>(decryption_key.c_str()));
+	    decrypt_file(encrypted_file_path, reinterpret_cast<const unsigned char*>(decryption_key.c_str()));
 
 	// Be defensive about casting errors from size_t (unsigned) to std::streamsize
 	// (signed)
@@ -56,7 +56,7 @@ MemoryBackedFile decrypt_file_into_memory(const std::string &encrypted_file_path
 		                            decrypted_file_path + ">");
 	}
 
-	ofs.write(reinterpret_cast<const char *>(plaintext.data()), static_cast<std::streamsize>(plaintext.size()));
+	ofs.write(reinterpret_cast<const char*>(plaintext.data()), static_cast<std::streamsize>(plaintext.size()));
 	if (ofs.fail()) {
 		throw std::system_error(errno, std::generic_category(),
 		                        "Failed to write decrypted data to temporary file with path <" + decrypted_file_path +
@@ -90,7 +90,7 @@ void reset_file_cursor(const int file_descriptor) {
 
 enum class CompressionType { None = 0, ZSTD = 1 };
 
-CompressionType determine_compression_type(const std::string &file_path) {
+CompressionType determine_compression_type(const std::string& file_path) {
 	std::ifstream ifs(file_path, std::ios::binary);
 	if (ifs.fail()) {
 		throw std::system_error(errno, std::generic_category(), "Failed to open file <" + file_path + ">");
@@ -98,7 +98,7 @@ CompressionType determine_compression_type(const std::string &file_path) {
 
 	constexpr int MAGIC_SIZE = 4;
 	uint8_t magic_bytes[MAGIC_SIZE];
-	ifs.read(reinterpret_cast<char *>(magic_bytes), sizeof(magic_bytes));
+	ifs.read(reinterpret_cast<char*>(magic_bytes), sizeof(magic_bytes));
 
 	if (ifs.fail() && !ifs.eof()) {
 		throw std::system_error(errno, std::generic_category(),
@@ -117,13 +117,13 @@ CompressionType determine_compression_type(const std::string &file_path) {
 }
 
 /// Adds a SELECT clause with the specified columns to the query
-void add_projections(std::ostringstream &query, const std::vector<column_def> &columns) {
+void add_projections(std::ostringstream& query, const std::vector<column_def>& columns) {
 	query << " SELECT";
 
 	if (columns.empty()) {
 		query << " *";
 	} else {
-		for (const auto &column : columns) {
+		for (const auto& column : columns) {
 			if (column.type == duckdb::LogicalTypeId::BLOB) {
 				// The CSV reader reads BLOBs as VARCHARs. We have to convert them with
 				// from_base64.
@@ -140,8 +140,8 @@ void add_projections(std::ostringstream &query, const std::vector<column_def> &c
 
 /// Adds CSV reader options related to column types to the query (all_varchar or
 /// column_types)
-void add_type_options(std::ostringstream &query, const std::vector<column_def> &columns,
-                      const bool allow_unmodified_string, const mdlog::Logger &logger) {
+void add_type_options(std::ostringstream& query, const std::vector<column_def>& columns,
+                      const bool allow_unmodified_string, const mdlog::Logger& logger) {
 	// We set all_varchar=true if we have to deal with `unmodified_string`. Those
 	// are string values that represent an unchanged value in an UPDATE or UPSERT,
 	// and they break type conversion in the CSV reader. DuckDB does an implicit
@@ -154,7 +154,7 @@ void add_type_options(std::ostringstream &query, const std::vector<column_def> &
 	}
 
 	bool has_valid_column_types = false;
-	for (const auto &column : columns) {
+	for (const auto& column : columns) {
 		if (column.type != duckdb::LogicalTypeId::INVALID) {
 			has_valid_column_types = true;
 			break;
@@ -175,7 +175,7 @@ void add_type_options(std::ostringstream &query, const std::vector<column_def> &
 	// DuckDB detects the order of columns by reading the header row.
 	// If no columns are specified, DuckDB will auto-detect all column types.
 	query << ", column_types={";
-	for (const auto &column : columns) {
+	for (const auto& column : columns) {
 		// Even if we do not specify the type for this column, DuckDB will figure it
 		// out itself because of auto_detect=true
 		if (column.type == duckdb::LogicalTypeId::INVALID) {
@@ -200,8 +200,8 @@ void add_type_options(std::ostringstream &query, const std::vector<column_def> &
 
 /// Generates a DuckDB SQL query string to read a CSV file with the specified
 /// properties
-std::string generate_read_csv_query(const std::string &filepath, const IngestProperties &props,
-                                    const CompressionType compression, const mdlog::Logger &logger) {
+std::string generate_read_csv_query(const std::string& filepath, const IngestProperties& props,
+                                    const CompressionType compression, const mdlog::Logger& logger) {
 	std::ostringstream query;
 	query << "FROM read_csv(" << duckdb::KeywordHelper::WriteQuoted(filepath, '\'');
 	// We set auto_detect=true so that DuckDB can detect the dialect options that
@@ -259,8 +259,8 @@ std::string generate_read_csv_query(const std::string &filepath, const IngestPro
 } // namespace
 
 namespace csv_processor {
-void ProcessFile(duckdb::Connection &con, const IngestProperties &props, mdlog::Logger &logger,
-                 const std::function<void(const std::string &)> &process_staging_table) {
+void ProcessFile(duckdb::Connection& con, const IngestProperties& props, mdlog::Logger& logger,
+                 const std::function<void(const std::string&)>& process_staging_table) {
 	validate_file(props.filename);
 	logger.info("    validated file " + props.filename);
 

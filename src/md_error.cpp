@@ -5,7 +5,7 @@
 #include <string_view>
 
 namespace md_error {
-std::string truncate_for_grpc_header(const std::string &message) {
+std::string truncate_for_grpc_header(const std::string& message) {
 	constexpr std::string_view TRUNCATION_SUFFIX = "...[truncated]";
 	constexpr std::size_t TRUNCATION_SUFFIX_LENGTH = TRUNCATION_SUFFIX.size();
 	// Maximum header size on Fivetran platform is currently 10240 bytes.

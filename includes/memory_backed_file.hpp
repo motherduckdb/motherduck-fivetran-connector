@@ -11,10 +11,10 @@ public:
 
 	~MemoryBackedFile();
 
-	MemoryBackedFile(const MemoryBackedFile &) = delete;
-	MemoryBackedFile &operator=(const MemoryBackedFile &) = delete;
-	MemoryBackedFile(MemoryBackedFile &&other) noexcept;
-	MemoryBackedFile &operator=(MemoryBackedFile &&other) noexcept;
+	MemoryBackedFile(const MemoryBackedFile&) = delete;
+	MemoryBackedFile& operator=(const MemoryBackedFile&) = delete;
+	MemoryBackedFile(MemoryBackedFile&& other) noexcept;
+	MemoryBackedFile& operator=(MemoryBackedFile&& other) noexcept;
 
 	int fd;
 	// On BSD/macOS, the cursor is shared between file descriptors

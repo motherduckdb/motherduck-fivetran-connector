@@ -11,16 +11,16 @@
 /// Contains the DuckDB connection and logger for the request.
 class RequestContext {
 public:
-	explicit RequestContext(const std::string &endpoint_name_, ConnectionFactory &connection_factory,
-	                        const google::protobuf::Map<std::string, std::string> &request_config);
+	explicit RequestContext(const std::string& endpoint_name_, ConnectionFactory& connection_factory,
+	                        const google::protobuf::Map<std::string, std::string>& request_config);
 	~RequestContext();
 
 	/// Get the DuckDB connection for the current request
-	duckdb::Connection &GetConnection() {
+	duckdb::Connection& GetConnection() {
 		return con;
 	}
 	/// Get the logger for the current request
-	mdlog::Logger &GetLogger() {
+	mdlog::Logger& GetLogger() {
 		return logger;
 	}
 

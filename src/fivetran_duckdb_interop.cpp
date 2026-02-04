@@ -2,7 +2,7 @@
 
 using duckdb::LogicalTypeId;
 
-fivetran_sdk::v2::DataType get_fivetran_type(const LogicalTypeId &duckdb_type) {
+fivetran_sdk::v2::DataType get_fivetran_type(const LogicalTypeId& duckdb_type) {
 	switch (duckdb_type) {
 	case LogicalTypeId::BOOLEAN:
 		return fivetran_sdk::v2::BOOLEAN;
@@ -35,7 +35,7 @@ fivetran_sdk::v2::DataType get_fivetran_type(const LogicalTypeId &duckdb_type) {
 	}
 }
 
-LogicalTypeId get_duckdb_type(const fivetran_sdk::v2::DataType &fivetranType) {
+LogicalTypeId get_duckdb_type(const fivetran_sdk::v2::DataType& fivetranType) {
 	switch (fivetranType) {
 	case fivetran_sdk::v2::BOOLEAN:
 		return LogicalTypeId::BOOLEAN;

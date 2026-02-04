@@ -21,7 +21,7 @@
 #include <string>
 
 namespace {
-::grpc::Status create_grpc_status_from_exception(const std::exception &ex, const std::string &prefix = "") {
+::grpc::Status create_grpc_status_from_exception(const std::exception& ex, const std::string& prefix = "") {
 	const std::string error_message = md_error::truncate_for_grpc_header(ex.what());
 	// The assumption here is that the prefix is short enough that its length can
 	// be disregarded
@@ -29,7 +29,7 @@ namespace {
 }
 
 template <typename T>
-std::string get_schema_name(const T *request) {
+std::string get_schema_name(const T* request) {
 	std::string schema_name = request->schema_name();
 	if (schema_name.empty()) {
 		return "main";
@@ -38,7 +38,7 @@ std::string get_schema_name(const T *request) {
 }
 
 template <typename T>
-std::string get_table_name(const T *request) {
+std::string get_table_name(const T* request) {
 	std::string table_name = request->table_name();
 	if (table_name.empty()) {
 		throw std::invalid_argument("Table name cannot be empty");
@@ -47,9 +47,9 @@ std::string get_table_name(const T *request) {
 }
 
 std::vector<column_def>
-get_duckdb_columns(const google::protobuf::RepeatedPtrField<fivetran_sdk::v2::Column> &fivetran_columns) {
+get_duckdb_columns(const google::protobuf::RepeatedPtrField<fivetran_sdk::v2::Column>& fivetran_columns) {
 	std::vector<column_def> duckdb_columns;
-	for (auto &col : fivetran_columns) {
+	for (auto& col : fivetran_columns) {
 		const duckdb::LogicalTypeId duckdb_type = get_duckdb_type(col.type());
 		if (duckdb_type == duckdb::LogicalTypeId::INVALID) {
 			throw std::invalid_argument("Cannot convert Fivetran type <" + DataType_Name(col.type()) +
@@ -91,7 +91,7 @@ get_duckdb_columns(const google::protobuf::RepeatedPtrField<fivetran_sdk::v2::Co
 	return duckdb_columns;
 }
 
-std::string get_decryption_key(const std::string &filename, const google::protobuf::Map<std::string, std::string> &keys,
+std::string get_decryption_key(const std::string& filename, const google::protobuf::Map<std::string, std::string>& keys,
                                const ::fivetran_sdk::v2::Encryption encryption) {
 	if (encryption == ::fivetran_sdk::v2::Encryption::NONE) {
 		return "";
@@ -106,9 +106,9 @@ std::string get_decryption_key(const std::string &filename, const google::protob
 }
 } // namespace
 
-grpc::Status DestinationSdkImpl::ConfigurationForm(::grpc::ServerContext *,
-                                                   const ::fivetran_sdk::v2::ConfigurationFormRequest *,
-                                                   ::fivetran_sdk::v2::ConfigurationFormResponse *response) {
+grpc::Status DestinationSdkImpl::ConfigurationForm(::grpc::ServerContext*,
+                                                   const ::fivetran_sdk::v2::ConfigurationFormRequest*,
+                                                   ::fivetran_sdk::v2::ConfigurationFormResponse* response) {
 
 	response->set_schema_selection_supported(true);
 	response->set_table_selection_supported(true);
@@ -130,7 +130,7 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(::grpc::ServerContext *,
 	db_field.set_required(true);
 	response->add_fields()->CopyFrom(db_field);
 
-	for (const auto &test_case : config_tester::get_test_cases()) {
+	for (const auto& test_case : config_tester::get_test_cases()) {
 		auto connection_test = response->add_tests();
 		connection_test->set_name(test_case.name);
 		connection_test->set_label(test_case.description);
@@ -139,23 +139,23 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(::grpc::ServerContext *,
 	return ::grpc::Status::OK;
 }
 
-grpc::Status DestinationSdkImpl::Capabilities(::grpc::ServerContext *, const ::fivetran_sdk::v2::CapabilitiesRequest *,
-                                              ::fivetran_sdk::v2::CapabilitiesResponse *response) {
+grpc::Status DestinationSdkImpl::Capabilities(::grpc::ServerContext*, const ::fivetran_sdk::v2::CapabilitiesRequest*,
+                                              ::fivetran_sdk::v2::CapabilitiesResponse* response) {
 	response->set_batch_file_format(::fivetran_sdk::v2::CSV);
 	return ::grpc::Status::OK;
 }
 
-grpc::Status DestinationSdkImpl::DescribeTable(::grpc::ServerContext *,
-                                               const ::fivetran_sdk::v2::DescribeTableRequest *request,
-                                               ::fivetran_sdk::v2::DescribeTableResponse *response) {
+grpc::Status DestinationSdkImpl::DescribeTable(::grpc::ServerContext*,
+                                               const ::fivetran_sdk::v2::DescribeTableRequest* request,
+                                               ::fivetran_sdk::v2::DescribeTableResponse* response) {
 	std::optional<RequestContext> ctx;
 	try {
 		ctx.emplace("DescribeTable", connection_factory, request->configuration());
-	} catch (const std::exception &ex) {
+	} catch (const std::exception& ex) {
 		return create_grpc_status_from_exception(ex);
 	}
-	auto &con = ctx->GetConnection();
-	auto &logger = ctx->GetLogger();
+	auto& con = ctx->GetConnection();
+	auto& logger = ctx->GetLogger();
 
 	try {
 		std::string db_name = config::find_property(request->configuration(), config::PROP_DATABASE);
@@ -173,11 +173,11 @@ grpc::Status DestinationSdkImpl::DescribeTable(::grpc::ServerContext *,
 		auto duckdb_columns = sql_generator->describe_table(con, table_name);
 		logger.info("Endpoint <DescribeTable>: got " + std::to_string(duckdb_columns.size()) + " columns");
 
-		fivetran_sdk::v2::Table *table = response->mutable_table();
+		fivetran_sdk::v2::Table* table = response->mutable_table();
 		table->set_name(get_table_name(request));
 
-		for (auto &col : duckdb_columns) {
-			fivetran_sdk::v2::Column *ft_col = table->mutable_columns()->Add();
+		for (auto& col : duckdb_columns) {
+			fivetran_sdk::v2::Column* ft_col = table->mutable_columns()->Add();
 			ft_col->set_name(col.name);
 			const auto fivetran_type = get_fivetran_type(col.type);
 			ft_col->set_type(fivetran_type);
@@ -188,12 +188,12 @@ grpc::Status DestinationSdkImpl::DescribeTable(::grpc::ServerContext *,
 			}
 		}
 
-	} catch (const md_error::RecoverableError &mde) {
+	} catch (const md_error::RecoverableError& mde) {
 		logger.warning("DescribeTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
 		               request->table_name() + ">:" + std::string(mde.what()));
 		response->mutable_task()->set_message(mde.what());
 		return ::grpc::Status::OK;
-	} catch (const std::exception &ex) {
+	} catch (const std::exception& ex) {
 		logger.severe("DescribeTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
 		              request->table_name() + ">:" + std::string(ex.what()));
 		response->mutable_task()->set_message(ex.what());
@@ -203,17 +203,17 @@ grpc::Status DestinationSdkImpl::DescribeTable(::grpc::ServerContext *,
 	return ::grpc::Status::OK;
 }
 
-grpc::Status DestinationSdkImpl::CreateTable(::grpc::ServerContext *,
-                                             const ::fivetran_sdk::v2::CreateTableRequest *request,
-                                             ::fivetran_sdk::v2::CreateTableResponse *response) {
+grpc::Status DestinationSdkImpl::CreateTable(::grpc::ServerContext*,
+                                             const ::fivetran_sdk::v2::CreateTableRequest* request,
+                                             ::fivetran_sdk::v2::CreateTableResponse* response) {
 	std::optional<RequestContext> ctx;
 	try {
 		ctx.emplace("CreateTable", connection_factory, request->configuration());
-	} catch (const std::exception &ex) {
+	} catch (const std::exception& ex) {
 		return create_grpc_status_from_exception(ex);
 	}
-	auto &con = ctx->GetConnection();
-	auto &logger = ctx->GetLogger();
+	auto& con = ctx->GetConnection();
+	auto& logger = ctx->GetLogger();
 
 	try {
 		auto schema_name = get_schema_name(request);
@@ -229,12 +229,12 @@ grpc::Status DestinationSdkImpl::CreateTable(::grpc::ServerContext *,
 		const auto cols = get_duckdb_columns(request->table().columns());
 		sql_generator->create_table(con, table, cols, {});
 		response->set_success(true);
-	} catch (const md_error::RecoverableError &mde) {
+	} catch (const md_error::RecoverableError& mde) {
 		logger.warning("CreateTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
 		               request->table().name() + ">:" + std::string(mde.what()));
 		response->mutable_task()->set_message(mde.what());
 		return ::grpc::Status::OK;
-	} catch (const std::exception &ex) {
+	} catch (const std::exception& ex) {
 		logger.severe("CreateTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
 		              request->table().name() + ">:" + std::string(ex.what()));
 		response->mutable_task()->set_message(ex.what());
@@ -244,17 +244,17 @@ grpc::Status DestinationSdkImpl::CreateTable(::grpc::ServerContext *,
 	return ::grpc::Status::OK;
 }
 
-grpc::Status DestinationSdkImpl::AlterTable(::grpc::ServerContext *,
-                                            const ::fivetran_sdk::v2::AlterTableRequest *request,
-                                            ::fivetran_sdk::v2::AlterTableResponse *response) {
+grpc::Status DestinationSdkImpl::AlterTable(::grpc::ServerContext*,
+                                            const ::fivetran_sdk::v2::AlterTableRequest* request,
+                                            ::fivetran_sdk::v2::AlterTableResponse* response) {
 	std::optional<RequestContext> ctx;
 	try {
 		ctx.emplace("AlterTable", connection_factory, request->configuration());
-	} catch (const std::exception &ex) {
+	} catch (const std::exception& ex) {
 		return create_grpc_status_from_exception(ex);
 	}
-	auto &con = ctx->GetConnection();
-	auto &logger = ctx->GetLogger();
+	auto& con = ctx->GetConnection();
+	auto& logger = ctx->GetLogger();
 
 	try {
 		std::string db_name = config::find_property(request->configuration(), config::PROP_DATABASE);
@@ -264,12 +264,12 @@ grpc::Status DestinationSdkImpl::AlterTable(::grpc::ServerContext *,
 		sql_generator->alter_table(con, table_name, get_duckdb_columns(request->table().columns()),
 		                           request->drop_columns());
 		response->set_success(true);
-	} catch (const md_error::RecoverableError &mde) {
+	} catch (const md_error::RecoverableError& mde) {
 		logger.severe("AlterTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
 		              request->table().name() + ">:" + std::string(mde.what()));
 		response->mutable_task()->set_message(mde.what());
 		return ::grpc::Status::OK;
-	} catch (const std::exception &ex) {
+	} catch (const std::exception& ex) {
 		logger.severe("AlterTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
 		              request->table().name() + ">:" + std::string(ex.what()));
 		response->mutable_task()->set_message(ex.what());
@@ -279,16 +279,16 @@ grpc::Status DestinationSdkImpl::AlterTable(::grpc::ServerContext *,
 	return ::grpc::Status::OK;
 }
 
-grpc::Status DestinationSdkImpl::Truncate(::grpc::ServerContext *, const ::fivetran_sdk::v2::TruncateRequest *request,
-                                          ::fivetran_sdk::v2::TruncateResponse *response) {
+grpc::Status DestinationSdkImpl::Truncate(::grpc::ServerContext*, const ::fivetran_sdk::v2::TruncateRequest* request,
+                                          ::fivetran_sdk::v2::TruncateResponse* response) {
 	std::optional<RequestContext> ctx;
 	try {
 		ctx.emplace("Truncate", connection_factory, request->configuration());
-	} catch (const std::exception &ex) {
+	} catch (const std::exception& ex) {
 		return create_grpc_status_from_exception(ex);
 	}
-	auto &con = ctx->GetConnection();
-	auto &logger = ctx->GetLogger();
+	auto& con = ctx->GetConnection();
+	auto& logger = ctx->GetLogger();
 
 	try {
 		std::string db_name = config::find_property(request->configuration(), config::PROP_DATABASE);
@@ -309,12 +309,12 @@ grpc::Status DestinationSdkImpl::Truncate(::grpc::ServerContext *, const ::fivet
 			               ">; not truncated");
 		}
 
-	} catch (const md_error::RecoverableError &mde) {
+	} catch (const md_error::RecoverableError& mde) {
 		logger.warning("Truncate endpoint failed for schema <" + request->schema_name() + ">, table <" +
 		               request->table_name() + ">:" + std::string(mde.what()));
 		response->mutable_task()->set_message(mde.what());
 		return ::grpc::Status::OK;
-	} catch (const std::exception &ex) {
+	} catch (const std::exception& ex) {
 		logger.severe("Truncate endpoint failed for schema <" + request->schema_name() + ">, table <" +
 		              request->table_name() + ">:" + std::string(ex.what()));
 		response->mutable_task()->set_message(ex.what());
@@ -324,17 +324,17 @@ grpc::Status DestinationSdkImpl::Truncate(::grpc::ServerContext *, const ::fivet
 	return ::grpc::Status::OK;
 }
 
-grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext *,
-                                            const ::fivetran_sdk::v2::WriteBatchRequest *request,
-                                            ::fivetran_sdk::v2::WriteBatchResponse *response) {
+grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
+                                            const ::fivetran_sdk::v2::WriteBatchRequest* request,
+                                            ::fivetran_sdk::v2::WriteBatchResponse* response) {
 	std::optional<RequestContext> ctx;
 	try {
 		ctx.emplace("WriteBatch", connection_factory, request->configuration());
-	} catch (const std::exception &ex) {
+	} catch (const std::exception& ex) {
 		return create_grpc_status_from_exception(ex);
 	}
-	auto &con = ctx->GetConnection();
-	auto &logger = ctx->GetLogger();
+	auto& con = ctx->GetConnection();
+	auto& logger = ctx->GetLogger();
 
 	try {
 		auto schema_name = get_schema_name(request);
@@ -345,15 +345,15 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext *,
 		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
 		const auto cols = get_duckdb_columns(request->table().columns());
-		std::vector<const column_def *> columns_pk;
-		std::vector<const column_def *> columns_regular;
+		std::vector<const column_def*> columns_pk;
+		std::vector<const column_def*> columns_regular;
 		find_primary_keys(cols, columns_pk, &columns_regular);
 
 		if (columns_pk.empty()) {
 			throw std::invalid_argument("No primary keys found");
 		}
 
-		for (auto &filename : request->replace_files()) {
+		for (auto& filename : request->replace_files()) {
 			logger.info("Processing replace file " + filename);
 			const auto decryption_key =
 			    get_decryption_key(filename, request->keys(), request->file_params().encryption());
@@ -363,12 +363,12 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext *,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = false};
 
-			csv_processor::ProcessFile(con, props, logger, [&](const std::string &staging_table_name) {
+			csv_processor::ProcessFile(con, props, logger, [&](const std::string& staging_table_name) {
 				sql_generator->upsert(con, table_name, staging_table_name, columns_pk, columns_regular);
 			});
 		}
 
-		for (auto &filename : request->update_files()) {
+		for (auto& filename : request->update_files()) {
 			logger.info("Processing update file " + filename);
 			auto decryption_key = get_decryption_key(filename, request->keys(), request->file_params().encryption());
 			IngestProperties props {.filename = filename,
@@ -377,16 +377,16 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext *,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = true};
 
-			csv_processor::ProcessFile(con, props, logger, [&](const std::string &staging_table_name) {
+			csv_processor::ProcessFile(con, props, logger, [&](const std::string& staging_table_name) {
 				sql_generator->update_values(con, table_name, staging_table_name, columns_pk, columns_regular,
 				                             request->file_params().unmodified_string());
 			});
 		}
 
-		for (auto &filename : request->delete_files()) {
+		for (auto& filename : request->delete_files()) {
 			logger.info("Processing delete file " + filename);
 			std::vector<column_def> cols_to_read;
-			for (const auto &col : columns_pk) {
+			for (const auto& col : columns_pk) {
 				cols_to_read.push_back(*col);
 			}
 			auto decryption_key = get_decryption_key(filename, request->keys(), request->file_params().encryption());
@@ -396,18 +396,18 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext *,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = false};
 
-			csv_processor::ProcessFile(con, props, logger, [&](const std::string &staging_table_name) {
+			csv_processor::ProcessFile(con, props, logger, [&](const std::string& staging_table_name) {
 				sql_generator->delete_rows(con, table_name, staging_table_name, columns_pk);
 			});
 		}
 
-	} catch (const md_error::RecoverableError &mde) {
+	} catch (const md_error::RecoverableError& mde) {
 		auto const msg = "WriteBatch endpoint failed for schema <" + request->schema_name() + ">, table <" +
 		                 request->table().name() + ">:" + std::string(mde.what());
 		logger.warning(msg);
 		response->mutable_task()->set_message(msg);
 		return ::grpc::Status::OK;
-	} catch (const std::exception &ex) {
+	} catch (const std::exception& ex) {
 		const std::string error_prefix = "WriteBatch endpoint failed for schema <" + request->schema_name() +
 		                                 ">, table <" + request->table().name() + ">: ";
 		const auto error_msg = error_prefix + ex.what();
@@ -419,17 +419,17 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext *,
 	return ::grpc::Status::OK;
 }
 
-::grpc::Status DestinationSdkImpl::WriteHistoryBatch(::grpc::ServerContext *,
-                                                     const ::fivetran_sdk::v2::WriteHistoryBatchRequest *request,
-                                                     ::fivetran_sdk::v2::WriteBatchResponse *response) {
+::grpc::Status DestinationSdkImpl::WriteHistoryBatch(::grpc::ServerContext*,
+                                                     const ::fivetran_sdk::v2::WriteHistoryBatchRequest* request,
+                                                     ::fivetran_sdk::v2::WriteBatchResponse* response) {
 	std::optional<RequestContext> ctx;
 	try {
 		ctx.emplace("WriteHistoryBatch", connection_factory, request->configuration());
-	} catch (const std::exception &ex) {
+	} catch (const std::exception& ex) {
 		return create_grpc_status_from_exception(ex);
 	}
-	auto &con = ctx->GetConnection();
-	auto &logger = ctx->GetLogger();
+	auto& con = ctx->GetConnection();
+	auto& logger = ctx->GetLogger();
 	auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 	// We keep the table name in the outer scope to be able to drop the LAR table
 	// in the catch block
@@ -443,8 +443,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext *,
 		table_def table_name {db_name, get_schema_name(request), request->table().name()};
 
 		const auto cols = get_duckdb_columns(request->table().columns());
-		std::vector<const column_def *> columns_pk;
-		std::vector<const column_def *> columns_regular;
+		std::vector<const column_def*> columns_pk;
+		std::vector<const column_def*> columns_regular;
 		find_primary_keys(cols, columns_pk, &columns_regular, "_fivetran_start");
 		if (columns_pk.empty()) {
 			throw std::invalid_argument("No primary keys found");
@@ -462,13 +462,13 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext *,
 		lar_table_name = sql_generator->create_latest_active_records_table(con, table_name);
 
 		// delete overlapping records
-		for (auto &filename : request->earliest_start_files()) {
+		for (auto& filename : request->earliest_start_files()) {
 			logger.info("Processing earliest start file " + filename);
 			// "This file contains a single record for each primary key in the
 			// incoming batch, with the earliest _fivetran_start"
 			std::vector<column_def> earliest_start_cols;
 			earliest_start_cols.reserve(columns_pk.size() + 1);
-			for (const auto &col : columns_pk) {
+			for (const auto& col : columns_pk) {
 				earliest_start_cols.push_back(*col);
 			}
 			earliest_start_cols.push_back({.name = "_fivetran_start", .type = duckdb::LogicalTypeId::TIMESTAMP_TZ});
@@ -481,13 +481,13 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext *,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = false};
 
-			csv_processor::ProcessFile(con, props, logger, [&](const std::string &staging_table_name) {
+			csv_processor::ProcessFile(con, props, logger, [&](const std::string& staging_table_name) {
 				sql_generator->deactivate_historical_records(con, table_name, staging_table_name, lar_table_name,
 				                                             columns_pk);
 			});
 		}
 
-		for (auto &filename : request->update_files()) {
+		for (auto& filename : request->update_files()) {
 			logger.info("update file " + filename);
 			const std::string decryption_key =
 			    get_decryption_key(filename, request->keys(), request->file_params().encryption());
@@ -497,7 +497,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext *,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = true};
 
-			csv_processor::ProcessFile(con, props, logger, [&](const std::string &staging_table_name) {
+			csv_processor::ProcessFile(con, props, logger, [&](const std::string& staging_table_name) {
 				sql_generator->add_partial_historical_values(con, table_name, staging_table_name, lar_table_name,
 				                                             columns_pk, columns_regular,
 				                                             request->file_params().unmodified_string());
@@ -508,7 +508,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext *,
 		sql_generator->drop_latest_active_records_table(con, lar_table_name);
 
 		// upsert files
-		for (auto &filename : request->replace_files()) {
+		for (auto& filename : request->replace_files()) {
 			logger.info("replace/upsert file " + filename);
 			const std::string decryption_key =
 			    get_decryption_key(filename, request->keys(), request->file_params().encryption());
@@ -518,12 +518,12 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext *,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = false};
 
-			csv_processor::ProcessFile(con, props, logger, [&](const std::string &staging_table_name) {
+			csv_processor::ProcessFile(con, props, logger, [&](const std::string& staging_table_name) {
 				sql_generator->insert(con, table_name, staging_table_name, columns_pk, columns_regular);
 			});
 		}
 
-		for (auto &filename : request->delete_files()) {
+		for (auto& filename : request->delete_files()) {
 			logger.info("delete file " + filename);
 			// Fivetran delete files won't contain all the columns in the request
 			// proto. Only primary keys and _fivetran_end are useful for the soft
@@ -531,7 +531,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext *,
 			// primary key.
 			std::vector<column_def> cols_to_read;
 			cols_to_read.reserve(columns_pk.size() + 1);
-			for (const auto &col : cols) {
+			for (const auto& col : cols) {
 				if ((col.primary_key && col.name != "_fivetran_start") || col.name == "_fivetran_end") {
 					cols_to_read.push_back(col);
 				}
@@ -545,12 +545,12 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext *,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = false};
 
-			csv_processor::ProcessFile(con, props, logger, [&](const std::string &staging_table_name) {
+			csv_processor::ProcessFile(con, props, logger, [&](const std::string& staging_table_name) {
 				sql_generator->delete_historical_rows(con, table_name, staging_table_name, columns_pk);
 			});
 		}
 
-	} catch (const md_error::RecoverableError &mde) {
+	} catch (const md_error::RecoverableError& mde) {
 		// Clean up bookkeeping table. The function uses IF EXISTS. Ignore any
 		// errors here.
 		sql_generator->drop_latest_active_records_table(con, lar_table_name);
@@ -559,7 +559,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext *,
 		                 request->table().name() + ">: " + std::string(mde.what());
 		response->mutable_task()->set_message(mde.what());
 		return ::grpc::Status::OK;
-	} catch (const std::exception &ex) {
+	} catch (const std::exception& ex) {
 		const std::string error_prefix = "WriteHistoryBatch endpoint failed for schema <" + request->schema_name() +
 		                                 ">, table <" + request->table().name() + ">: ";
 		const auto msg = error_prefix + ex.what();
@@ -576,7 +576,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext *,
 	return ::grpc::Status::OK;
 }
 
-std::string extract_readable_error(const std::exception &ex) {
+std::string extract_readable_error(const std::exception& ex) {
 	// DuckDB errors are JSON strings. Converting it to ErrorData to extract the
 	// message.
 	duckdb::ErrorData error(ex.what());
@@ -608,29 +608,29 @@ std::string extract_readable_error(const std::exception &ex) {
 	return error_message;
 }
 
-std::string get_migration_schema_name(const fivetran_sdk::v2::MigrationDetails &details) {
-	const std::string &schema_name = details.schema();
+std::string get_migration_schema_name(const fivetran_sdk::v2::MigrationDetails& details) {
+	const std::string& schema_name = details.schema();
 	if (schema_name.empty()) {
 		return "main";
 	}
 	return schema_name;
 }
 
-grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext *, const ::fivetran_sdk::v2::MigrateRequest *request,
-                                         ::fivetran_sdk::v2::MigrateResponse *response) {
+grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetran_sdk::v2::MigrateRequest* request,
+                                         ::fivetran_sdk::v2::MigrateResponse* response) {
 	std::optional<RequestContext> ctx;
 	try {
 		ctx.emplace("Migrate", connection_factory, request->configuration());
-	} catch (const std::exception &e) {
+	} catch (const std::exception& e) {
 		return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
 	}
-	auto &con = ctx->GetConnection();
-	auto &logger = ctx->GetLogger();
+	auto& con = ctx->GetConnection();
+	auto& logger = ctx->GetLogger();
 
 	try {
-		const auto &details = request->details();
+		const auto& details = request->details();
 		const std::string schema_name = get_migration_schema_name(details);
-		const std::string &table_name = details.table();
+		const std::string& table_name = details.table();
 
 		if (table_name.empty()) {
 			throw std::invalid_argument("Table name cannot be empty");
@@ -644,7 +644,7 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext *, const ::fivetr
 
 		switch (details.operation_case()) {
 		case fivetran_sdk::v2::MigrationDetails::kDrop: {
-			const auto &drop = details.drop();
+			const auto& drop = details.drop();
 			switch (drop.entity_case()) {
 			case fivetran_sdk::v2::DropOperation::EntityCase::kDropTable: {
 				logger.info("Endpoint <Migrate>: DROP_TABLE");
@@ -653,7 +653,7 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext *, const ::fivetr
 			}
 			case fivetran_sdk::v2::DropOperation::EntityCase::kDropColumnInHistoryMode: {
 				logger.info("Endpoint <Migrate>: DROP_COLUMN_IN_HISTORY_MODE");
-				const auto &drop_col = drop.drop_column_in_history_mode();
+				const auto& drop_col = drop.drop_column_in_history_mode();
 				sql_generator->drop_column_in_history_mode(con, table, drop_col.column(),
 				                                           drop_col.operation_timestamp());
 				break;
@@ -668,11 +668,11 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext *, const ::fivetr
 			break;
 		}
 		case fivetran_sdk::v2::MigrationDetails::kCopy: {
-			const auto &copy = details.copy();
+			const auto& copy = details.copy();
 			switch (copy.entity_case()) {
 			case fivetran_sdk::v2::CopyOperation::EntityCase::kCopyTable: {
 				logger.info("Endpoint <Migrate>: COPY_TABLE");
-				const auto &copy_table = copy.copy_table();
+				const auto& copy_table = copy.copy_table();
 				table_def from_table {db_name, schema_name, copy_table.from_table()};
 				table_def to_table {db_name, schema_name, copy_table.to_table()};
 				sql_generator->copy_table(con, from_table, to_table, "copy_table");
@@ -680,7 +680,7 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext *, const ::fivetr
 			}
 			case fivetran_sdk::v2::CopyOperation::EntityCase::kCopyColumn: {
 				logger.info("Endpoint <Migrate>: COPY_COLUMN");
-				const auto &copy_col = copy.copy_column();
+				const auto& copy_col = copy.copy_column();
 				if (is_fivetran_system_column(copy_col.to_column())) {
 					throw std::invalid_argument("Cannot copy column to reserved name <" + copy_col.to_column() +
 					                            ">. Please contact Fivetran support.");
@@ -691,7 +691,7 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext *, const ::fivetr
 			}
 			case fivetran_sdk::v2::CopyOperation::EntityCase::kCopyTableToHistoryMode: {
 				logger.info("Endpoint <Migrate>: COPY_TABLE_TO_HISTORY_MODE");
-				const auto &copy_hist = copy.copy_table_to_history_mode();
+				const auto& copy_hist = copy.copy_table_to_history_mode();
 				table_def from_table {db_name, schema_name, copy_hist.from_table()};
 				table_def to_table {db_name, schema_name, copy_hist.to_table()};
 				sql_generator->copy_table_to_history_mode(con, from_table, to_table, copy_hist.soft_deleted_column());
@@ -705,18 +705,18 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext *, const ::fivetr
 			break;
 		}
 		case fivetran_sdk::v2::MigrationDetails::kRename: {
-			const auto &rename = details.rename();
+			const auto& rename = details.rename();
 			switch (rename.entity_case()) {
 			case fivetran_sdk::v2::RenameOperation::EntityCase::kRenameTable: {
 				logger.info("Endpoint <Migrate>: RENAME_TABLE");
-				const auto &rename_tbl = rename.rename_table();
+				const auto& rename_tbl = rename.rename_table();
 				table_def from_table {db_name, schema_name, rename_tbl.from_table()};
 				sql_generator->rename_table(con, from_table, rename_tbl.to_table(), "rename_table");
 				break;
 			}
 			case fivetran_sdk::v2::RenameOperation::EntityCase::kRenameColumn: {
 				logger.info("Endpoint <Migrate>: RENAME_COLUMN");
-				const auto &rename_col = rename.rename_column();
+				const auto& rename_col = rename.rename_column();
 
 				if (is_fivetran_system_column(rename_col.to_column())) {
 					throw std::invalid_argument("Cannot rename column to reserved name <" + rename_col.to_column() +
@@ -733,11 +733,11 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext *, const ::fivetr
 			break;
 		}
 		case fivetran_sdk::v2::MigrationDetails::kAdd: {
-			const auto &add = details.add();
+			const auto& add = details.add();
 			switch (add.entity_case()) {
 			case fivetran_sdk::v2::AddOperation::EntityCase::kAddColumnWithDefaultValue: {
 				logger.info("Endpoint <Migrate>: ADD_COLUMN_WITH_DEFAULT_VALUE");
-				const auto &add_col = add.add_column_with_default_value();
+				const auto& add_col = add.add_column_with_default_value();
 
 				column_def column {
 				    .name = add_col.column(),
@@ -756,7 +756,7 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext *, const ::fivetr
 			}
 			case fivetran_sdk::v2::AddOperation::EntityCase::kAddColumnInHistoryMode: {
 				logger.info("Endpoint <Migrate>: ADD_COLUMN_IN_HISTORY_MODE");
-				const auto &add_col = add.add_column_in_history_mode();
+				const auto& add_col = add.add_column_in_history_mode();
 
 				// The default value should not be a DDL level default, because NULLs in
 				// history mode can signify the column not existing in the past.
@@ -778,12 +778,12 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext *, const ::fivetr
 		}
 		case fivetran_sdk::v2::MigrationDetails::kUpdateColumnValue: {
 			logger.info("Endpoint <Migrate>: UpdateColumnValueOperation");
-			const auto &update = details.update_column_value();
+			const auto& update = details.update_column_value();
 			sql_generator->update_column_value(con, table, update.column(), update.value());
 			break;
 		}
 		case fivetran_sdk::v2::MigrationDetails::kTableSyncModeMigration: {
-			const auto &sync_mode = details.table_sync_mode_migration();
+			const auto& sync_mode = details.table_sync_mode_migration();
 			const std::string soft_deleted_column =
 			    sync_mode.has_soft_deleted_column() ? sync_mode.soft_deleted_column() : "_fivetran_deleted";
 			const bool keep_deleted_rows = sync_mode.has_keep_deleted_rows() ? sync_mode.keep_deleted_rows() : false;
@@ -831,7 +831,7 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext *, const ::fivetr
 		}
 
 		response->set_success(true);
-	} catch (const std::exception &e) {
+	} catch (const std::exception& e) {
 		const std::string schema = request->details().schema();
 		const std::string table = request->details().table();
 		logger.severe("Migrate endpoint failed for schema <" + schema + ">, table <" + table +
@@ -843,8 +843,8 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext *, const ::fivetr
 	return ::grpc::Status(::grpc::StatusCode::OK, "");
 }
 
-grpc::Status DestinationSdkImpl::Test(::grpc::ServerContext *, const ::fivetran_sdk::v2::TestRequest *request,
-                                      ::fivetran_sdk::v2::TestResponse *response) {
+grpc::Status DestinationSdkImpl::Test(::grpc::ServerContext*, const ::fivetran_sdk::v2::TestRequest* request,
+                                      ::fivetran_sdk::v2::TestResponse* response) {
 	const std::string test_name = request->name();
 	const std::string error_prefix = "Test <" + test_name + "> failed: ";
 	const auto user_config = request->configuration();
@@ -861,7 +861,7 @@ grpc::Status DestinationSdkImpl::Test(::grpc::ServerContext *, const ::fivetran_
 		} else {
 			response->set_failure(error_prefix + test_result.failure_message);
 		}
-	} catch (const std::exception &ex) {
+	} catch (const std::exception& ex) {
 		const auto error_message = extract_readable_error(ex);
 		response->set_failure(error_prefix + error_message);
 	}

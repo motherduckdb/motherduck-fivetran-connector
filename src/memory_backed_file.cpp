@@ -59,11 +59,11 @@ MemoryBackedFile MemoryBackedFile::Create(const size_t file_size) {
 	return MemoryBackedFile(fd);
 }
 
-MemoryBackedFile::MemoryBackedFile(MemoryBackedFile &&other) noexcept : fd(other.fd), path(std::move(other.path)) {
+MemoryBackedFile::MemoryBackedFile(MemoryBackedFile&& other) noexcept : fd(other.fd), path(std::move(other.path)) {
 	other.fd = -1;
 }
 
-MemoryBackedFile &MemoryBackedFile::operator=(MemoryBackedFile &&other) noexcept {
+MemoryBackedFile& MemoryBackedFile::operator=(MemoryBackedFile&& other) noexcept {
 	if (this != &other) {
 		if (fd >= 0) {
 			close(fd);

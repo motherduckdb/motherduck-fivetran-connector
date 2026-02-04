@@ -6,7 +6,7 @@
 #include <cstdlib>
 #include <iostream>
 
-int main(const int argc, char *argv[]) {
+int main(const int argc, char* argv[]) {
 	// Disable DuckDB logging in tests
 	setenv("MD_DISABLE_DUCKDB_LOGGING", "1", 0);
 
@@ -53,7 +53,7 @@ int main(const int argc, char *argv[]) {
 }
 
 #ifndef NDEBUG
-extern "C" const char *__asan_default_options() {
+extern "C" const char* __asan_default_options() {
 	return "detect_container_overflow=0:check_initialization_order=1";
 }
 #endif

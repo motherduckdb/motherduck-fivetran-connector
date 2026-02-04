@@ -10,9 +10,9 @@
 #include <string>
 
 namespace {
-void maybe_rewrite_error(const std::exception &ex, const std::string &db_name) {
+void maybe_rewrite_error(const std::exception& ex, const std::string& db_name) {
 	const duckdb::ErrorData error(ex);
-	const auto &msg = error.Message();
+	const auto& msg = error.Message();
 
 	if (msg.find("Jwt is expired") != std::string::npos) {
 		throw md_error::RecoverableError("Failed to connect to MotherDuck database \"" + db_name +
@@ -31,7 +31,7 @@ void maybe_rewrite_error(const std::exception &ex, const std::string &db_name) {
 }
 } // namespace
 
-duckdb::DuckDB &ConnectionFactory::get_duckdb(const std::string &md_auth_token, const std::string &db_name) {
+duckdb::DuckDB& ConnectionFactory::get_duckdb(const std::string& md_auth_token, const std::string& db_name) {
 	auto initialize_db = [this, &md_auth_token, &db_name]() {
 		duckdb::DBConfig config;
 		config.SetOptionByName(config::PROP_TOKEN, md_auth_token);
@@ -42,7 +42,7 @@ duckdb::DuckDB &ConnectionFactory::get_duckdb(const std::string &md_auth_token, 
 		try {
 			stdout_logger.info("get_duckdb: creating database instance");
 			db = duckdb::DuckDB("md:" + db_name, &config);
-		} catch (std::exception &ex) {
+		} catch (std::exception& ex) {
 			maybe_rewrite_error(ex, db_name);
 			throw;
 		}
@@ -75,9 +75,9 @@ duckdb::DuckDB &ConnectionFactory::get_duckdb(const std::string &md_auth_token, 
 	return db;
 }
 
-duckdb::Connection ConnectionFactory::CreateConnection(const std::string &md_auth_token, const std::string &db_name) {
+duckdb::Connection ConnectionFactory::CreateConnection(const std::string& md_auth_token, const std::string& db_name) {
 	stdout_logger.info("create_connection: start");
-	duckdb::DuckDB &db = get_duckdb(md_auth_token, db_name);
+	duckdb::DuckDB& db = get_duckdb(md_auth_token, db_name);
 	auto con = duckdb::Connection(db);
 
 	// Set default_collation to a connection-specific default value which

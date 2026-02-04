@@ -13,9 +13,9 @@ class Map;
 }
 
 namespace config_tester {
-inline constexpr const char *TEST_AUTHENTICATE = "test_authentication";
-inline constexpr const char *TEST_DATABASE_TYPE = "test_database_type";
-inline constexpr const char *TEST_WRITE_PERMISSIONS = "test_write_permissions";
+inline constexpr const char* TEST_AUTHENTICATE = "test_authentication";
+inline constexpr const char* TEST_DATABASE_TYPE = "test_database_type";
+inline constexpr const char* TEST_WRITE_PERMISSIONS = "test_write_permissions";
 
 struct TestCase {
 	explicit TestCase(std::string name_, std::string description_)
@@ -38,5 +38,5 @@ struct TestResult {
 
 std::array<TestCase, 3> get_test_cases();
 
-TestResult run_test(const std::string &test_name, duckdb::Connection &con);
+TestResult run_test(const std::string& test_name, duckdb::Connection& con);
 } // namespace config_tester

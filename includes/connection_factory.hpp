@@ -16,10 +16,10 @@ public:
 	explicit ConnectionFactory() : stdout_logger(mdlog::Logger::CreateStdoutLogger()) {
 	}
 
-	duckdb::Connection CreateConnection(const std::string &md_auth_token, const std::string &db_name);
+	duckdb::Connection CreateConnection(const std::string& md_auth_token, const std::string& db_name);
 
 private:
-	duckdb::DuckDB &get_duckdb(const std::string &md_auth_token, const std::string &db_name);
+	duckdb::DuckDB& get_duckdb(const std::string& md_auth_token, const std::string& db_name);
 
 	// Only logs to stdout because there is no duckdb::Connection yet for
 	// SQL-based logging

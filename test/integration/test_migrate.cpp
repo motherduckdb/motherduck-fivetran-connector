@@ -536,7 +536,7 @@ TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration
 		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
 		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
 		request.mutable_details()->set_table(source_table);
-		auto *copy_hist = request.mutable_details()->mutable_copy()->mutable_copy_table_to_history_mode();
+		auto* copy_hist = request.mutable_details()->mutable_copy()->mutable_copy_table_to_history_mode();
 		copy_hist->set_from_table(source_table);
 		copy_hist->set_to_table(dest_table);
 		copy_hist->set_soft_deleted_column(soft_deleted_column);
@@ -650,7 +650,7 @@ TEST_CASE("Migrate - copy table to history mode from live", "[integration][migra
 		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
 		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
 		request.mutable_details()->set_table(source_table);
-		auto *copy_hist = request.mutable_details()->mutable_copy()->mutable_copy_table_to_history_mode();
+		auto* copy_hist = request.mutable_details()->mutable_copy()->mutable_copy_table_to_history_mode();
 		copy_hist->set_from_table(source_table);
 		copy_hist->set_to_table(dest_table);
 		// No soft_deleted_column set - this is a live table
@@ -917,7 +917,7 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
 		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
 		request.mutable_details()->set_table(table_name);
-		auto *add_col = request.mutable_details()->mutable_add()->mutable_add_column_in_history_mode();
+		auto* add_col = request.mutable_details()->mutable_add()->mutable_add_column_in_history_mode();
 		add_col->set_column("age");
 		add_col->set_column_type(::fivetran_sdk::v2::DataType::INT);
 		add_col->set_default_value("25");
@@ -934,7 +934,7 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
 		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
 		request.mutable_details()->set_table(table_name);
-		auto *add_col = request.mutable_details()->mutable_add()->mutable_add_column_in_history_mode();
+		auto* add_col = request.mutable_details()->mutable_add()->mutable_add_column_in_history_mode();
 		add_col->set_column("switch");
 		add_col->set_column_type(::fivetran_sdk::v2::DataType::BOOLEAN);
 		add_col->set_default_value("false");
@@ -952,7 +952,7 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
 		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
 		request.mutable_details()->set_table(table_name);
-		auto *add_col = request.mutable_details()->mutable_add()->mutable_add_column_in_history_mode();
+		auto* add_col = request.mutable_details()->mutable_add()->mutable_add_column_in_history_mode();
 		add_col->set_column("last");
 		add_col->set_column_type(::fivetran_sdk::v2::DataType::BOOLEAN);
 		add_col->set_default_value("false");
@@ -969,7 +969,7 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
 		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
 		request.mutable_details()->set_table(table_name);
-		auto *add_col = request.mutable_details()->mutable_add()->mutable_add_column_in_history_mode();
+		auto* add_col = request.mutable_details()->mutable_add()->mutable_add_column_in_history_mode();
 		add_col->set_column("final");
 		add_col->set_column_type(::fivetran_sdk::v2::DataType::STRING);
 		add_col->set_default_value("NULL");
@@ -1035,7 +1035,7 @@ TEST_CASE("Migrate - add/drop column in history mode to empty table", "[integrat
 		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
 		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
 		request.mutable_details()->set_table(table_name);
-		auto *add_col = request.mutable_details()->mutable_add()->mutable_add_column_in_history_mode();
+		auto* add_col = request.mutable_details()->mutable_add()->mutable_add_column_in_history_mode();
 		add_col->set_column("age");
 		add_col->set_column_type(::fivetran_sdk::v2::DataType::INT);
 		add_col->set_default_value("25");
@@ -1059,7 +1059,7 @@ TEST_CASE("Migrate - add/drop column in history mode to empty table", "[integrat
 		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
 		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
 		request.mutable_details()->set_table(table_name);
-		auto *drop_col = request.mutable_details()->mutable_drop()->mutable_drop_column_in_history_mode();
+		auto* drop_col = request.mutable_details()->mutable_drop()->mutable_drop_column_in_history_mode();
 		drop_col->set_column("name");
 		drop_col->set_operation_timestamp("2024-06-01T00:00:00Z");
 
@@ -1112,7 +1112,7 @@ TEST_CASE("Migrate - drop column in history mode", "[integration][migrate]") {
 		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
 		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
 		request.mutable_details()->set_table(table_name);
-		auto *drop_col = request.mutable_details()->mutable_drop()->mutable_drop_column_in_history_mode();
+		auto* drop_col = request.mutable_details()->mutable_drop()->mutable_drop_column_in_history_mode();
 		drop_col->set_column("email");
 		drop_col->set_operation_timestamp("2024-06-01T00:00:00Z");
 

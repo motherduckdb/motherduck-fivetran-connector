@@ -724,13 +724,13 @@ TEST_CASE("Parallel WriteBatch requests", "[integration][write-batch]") {
 		}));
 	}
 
-	for (auto &future : futures) {
+	for (auto& future : futures) {
 		auto status = future.get();
 		REQUIRE_NO_FAIL(status);
 	}
 
 	auto con = get_test_connection(MD_TOKEN);
-	for (const auto &table_name : table_names) {
+	for (const auto& table_name : table_names) {
 		auto res = con->Query("SELECT id, title FROM " + table_name + " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 3);
@@ -774,7 +774,7 @@ TEST_CASE("Parallel DescribeTable requests", "[integration][describe-table]") {
 		}
 	}
 
-	for (auto &future : futures) {
+	for (auto& future : futures) {
 		auto status = future.get();
 		REQUIRE_NO_FAIL(status);
 	}
@@ -796,7 +796,7 @@ TEST_CASE("Truncate nonexistent table should succeed", "[integration]") {
 	::fivetran_sdk::v2::TruncateResponse response;
 
 	std::stringstream buffer;
-	std::streambuf *real_cout = std::cout.rdbuf(buffer.rdbuf());
+	std::streambuf* real_cout = std::cout.rdbuf(buffer.rdbuf());
 	auto status = service.Truncate(nullptr, &request, &response);
 	std::cout.rdbuf(real_cout);
 
@@ -2189,7 +2189,7 @@ TEST_CASE("AlterTable decimal width change", "[integration]") {
 		REQUIRE(response.table().columns(1).params().decimal().scale() == expected_scale);
 	};
 
-	auto verify_data = [&](const std::string &expected_amount) {
+	auto verify_data = [&](const std::string& expected_amount) {
 		auto res = con->Query("SELECT id, amount FROM " + table_name);
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 1);

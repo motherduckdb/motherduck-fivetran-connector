@@ -20,22 +20,22 @@ namespace {
 std::string generate_random_string(const size_t length) {
 	std::string result(length, '\0');
 
-	if (RAND_bytes(reinterpret_cast<unsigned char *>(&result[0]), length) != 1) {
+	if (RAND_bytes(reinterpret_cast<unsigned char*>(&result[0]), length) != 1) {
 		throw std::runtime_error("Failed to generate random bytes");
 	}
 
 	return result;
 }
 
-void encrypt_stream(std::istream &input, std::ostream &output, const std::string &key) {
-	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+void encrypt_stream(std::istream& input, std::ostream& output, const std::string& key) {
+	EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
 	if (ctx == nullptr) {
 		openssl_helper::raise_openssl_error("Failed to create encryption cipher context");
 	}
 	openssl_helper::CipherCtxDeleter ctx_deleter(ctx);
 
-	constexpr const char *algorithm = "AES-256-CBC"; // Defined in EVP_CIPHER-AES
-	EVP_CIPHER *aes_impl =
+	constexpr const char* algorithm = "AES-256-CBC"; // Defined in EVP_CIPHER-AES
+	EVP_CIPHER* aes_impl =
 	    EVP_CIPHER_fetch(nullptr /* default library context */, algorithm, "provider=default" /* properties */);
 	if (aes_impl == nullptr) {
 		openssl_helper::raise_openssl_error("Failed to fetch encryption cipher implementation for " +
@@ -59,8 +59,8 @@ void encrypt_stream(std::istream &input, std::ostream &output, const std::string
 
 	// Sets up cipher context ctx for encryption with cipher type aes_impl.
 	// PKCS padding is enabled by default.
-	const auto init_result = EVP_EncryptInit_ex2(ctx, aes_impl, reinterpret_cast<const unsigned char *>(key.c_str()),
-	                                             reinterpret_cast<const unsigned char *>(iv.c_str()), nullptr);
+	const auto init_result = EVP_EncryptInit_ex2(ctx, aes_impl, reinterpret_cast<const unsigned char*>(key.c_str()),
+	                                             reinterpret_cast<const unsigned char*>(iv.c_str()), nullptr);
 	// Decrease reference count of aes_impl; EVP_EncryptInit_ex2 has incremented
 	// the reference count
 	EVP_CIPHER_free(aes_impl);
@@ -85,7 +85,7 @@ void encrypt_stream(std::istream &input, std::ostream &output, const std::string
 	// The istream bool operator evaluates to true if all requested bytes could be
 	// read and no error occurred. The gcount() function returns the number of
 	// bytes read by the last read operation.
-	while (input.read(reinterpret_cast<char *>(input_buffer.data()), buffer_size) || input.gcount() > 0) {
+	while (input.read(reinterpret_cast<char*>(input_buffer.data()), buffer_size) || input.gcount() > 0) {
 		// Stream is only allowed to fail if EOF has been reached
 		if (input.bad() || (input.fail() && !input.eof())) {
 			throw std::system_error(errno, std::iostream_category(), "Error when reading input stream");
@@ -96,13 +96,13 @@ void encrypt_stream(std::istream &input, std::ostream &output, const std::string
 		    EVP_EncryptUpdate(ctx, ciphertext_buffer.data(), &ciphertext_length, input_buffer.data(), bytes_read)) {
 			openssl_helper::raise_openssl_error("Error during encryption update");
 		}
-		output.write(reinterpret_cast<char *>(ciphertext_buffer.data()), ciphertext_length);
+		output.write(reinterpret_cast<char*>(ciphertext_buffer.data()), ciphertext_length);
 	}
 
 	if (!EVP_EncryptFinal_ex(ctx, ciphertext_buffer.data(), &ciphertext_length)) {
 		openssl_helper::raise_openssl_error("Error during encryption finalization");
 	}
-	output.write(reinterpret_cast<char *>(ciphertext_buffer.data()), ciphertext_length);
+	output.write(reinterpret_cast<char*>(ciphertext_buffer.data()), ciphertext_length);
 }
 } // namespace
 
@@ -117,7 +117,7 @@ TEST_CASE("Decrypt is inverse function of encrypt") {
 	encrypt_stream(plaintext_stream, ciphertext_stream, key);
 
 	auto result =
-	    decrypt_stream(ciphertext_stream, "<memory stream>", reinterpret_cast<const unsigned char *>(key.c_str()));
+	    decrypt_stream(ciphertext_stream, "<memory stream>", reinterpret_cast<const unsigned char*>(key.c_str()));
 	std::string result_str(result.begin(), result.end());
 
 	REQUIRE(result_str == plaintext);

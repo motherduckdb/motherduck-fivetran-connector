@@ -15,7 +15,7 @@ std::string get_randomized_test_database_name() {
 }
 
 std::string get_motherduck_auth_token() {
-	char *token = std::getenv("motherduck_token");
+	char* token = std::getenv("motherduck_token");
 	if (!token) {
 		token = std::getenv("MOTHERDUCK_TOKEN");
 	}

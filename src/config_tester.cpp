@@ -11,7 +11,7 @@ namespace config_tester {
 namespace {
 /// Checks that a simple connection to MotherDuck can be established and that
 /// the user is authenticated
-TestResult run_authentication_test(duckdb::Connection &con) {
+TestResult run_authentication_test(duckdb::Connection& con) {
 	// The "actual" test happens in DestinationSdkImpl::Test when establishing the
 	// connection. The authentication test runs first because they are executed in
 	// the order they are set in the ConfigurationForm response.
@@ -23,7 +23,7 @@ TestResult run_authentication_test(duckdb::Connection &con) {
 }
 
 /// Checks that the selected database can be written to
-TestResult run_database_type_test(duckdb::Connection &con) {
+TestResult run_database_type_test(duckdb::Connection& con) {
 	const auto current_db_res = con.Query("SELECT current_database()");
 	if (current_db_res->HasError()) {
 		return TestResult(false, "Failed to retrieve current database name: " + current_db_res->GetError());
@@ -47,7 +47,7 @@ TestResult run_database_type_test(duckdb::Connection &con) {
 
 	assert(result->type == duckdb::QueryResultType::MATERIALIZED_RESULT);
 	// We are allowed to do this cast because we disallow streaming results.
-	const auto materialized_result = dynamic_cast<duckdb::MaterializedQueryResult *>(result.get());
+	const auto materialized_result = dynamic_cast<duckdb::MaterializedQueryResult*>(result.get());
 
 	if (materialized_result->RowCount() == 0) {
 		// This case is not possible because we connect in single-attach mode and
@@ -80,7 +80,7 @@ TestResult run_database_type_test(duckdb::Connection &con) {
 }
 
 /// Checks that the account/authentication token has write permissions
-TestResult run_write_permissions_test(duckdb::Connection &con) {
+TestResult run_write_permissions_test(duckdb::Connection& con) {
 	const auto duckling_id_res = con.Query("FROM __md_duckling_id()");
 	if (duckling_id_res->HasError()) {
 		return TestResult(false, "Failed to retrieve duckling ID: " + duckling_id_res->GetError());
@@ -112,7 +112,7 @@ std::array<TestCase, 3> get_test_cases() {
 	        TestCase {TEST_WRITE_PERMISSIONS, "Test that auth token has write permissions"}};
 }
 
-TestResult run_test(const std::string &test_name, duckdb::Connection &con) {
+TestResult run_test(const std::string& test_name, duckdb::Connection& con) {
 	if (test_name == TEST_AUTHENTICATE) {
 		return run_authentication_test(con);
 	}

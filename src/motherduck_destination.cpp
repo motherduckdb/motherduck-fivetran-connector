@@ -7,7 +7,7 @@
 #include <grpcpp/grpcpp.h>
 #include <string>
 
-void RunServer(const std::string &port) {
+void RunServer(const std::string& port) {
 	std::string server_address = "0.0.0.0:" + port;
 	DestinationSdkImpl service;
 
@@ -30,7 +30,7 @@ void logCrash(int sig) {
 	std::exit(sig);
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
 	std::signal(SIGSEGV, logCrash);
 	std::signal(SIGABRT, logCrash);
 

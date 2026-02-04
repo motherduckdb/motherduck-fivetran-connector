@@ -69,7 +69,7 @@ TEST_CASE("Test truncate_for_grpc_header", "[md_error]") {
 		std::string utf8_message(7950 + offset, 'A');
 		for (std::uint8_t i = 0; i < 100; ++i) {
 			// Multi-byte characters
-			utf8_message += reinterpret_cast<const char *>(u8"😊");
+			utf8_message += reinterpret_cast<const char*>(u8"😊");
 		}
 
 		const std::string truncated_message = md_error::truncate_for_grpc_header(utf8_message);

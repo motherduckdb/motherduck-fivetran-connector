@@ -8,7 +8,7 @@
 /// queue, prefixed by message_prefix. message_prefix should not end with a
 /// punctuation mark. The OpenSSL error queue is thread-local, so this function
 /// retrieves errors for the current thread only.
-void openssl_helper::raise_openssl_error(const std::string &message_prefix) {
+void openssl_helper::raise_openssl_error(const std::string& message_prefix) {
 	std::ostringstream final_error_stream;
 	final_error_stream << message_prefix;
 
