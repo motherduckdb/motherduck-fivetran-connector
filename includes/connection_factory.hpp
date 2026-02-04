@@ -13,23 +13,21 @@
 /// gRPC request.
 class ConnectionFactory {
 public:
-  explicit ConnectionFactory()
-      : stdout_logger(mdlog::Logger::CreateStdoutLogger()) {}
+	explicit ConnectionFactory() : stdout_logger(mdlog::Logger::CreateStdoutLogger()) {
+	}
 
-  duckdb::Connection CreateConnection(const std::string &md_auth_token,
-                                      const std::string &db_name);
+	duckdb::Connection CreateConnection(const std::string &md_auth_token, const std::string &db_name);
 
 private:
-  duckdb::DuckDB &get_duckdb(const std::string &md_auth_token,
-                             const std::string &db_name);
+	duckdb::DuckDB &get_duckdb(const std::string &md_auth_token, const std::string &db_name);
 
-  // Only logs to stdout because there is no duckdb::Connection yet for
-  // SQL-based logging
-  mdlog::Logger stdout_logger;
-  std::once_flag db_init_flag;
-  duckdb::DuckDB db;
-  // Used to check that the same parameters are used on subsequent calls to
-  // GetConnection
-  std::string initial_md_token;
-  std::string initial_db_name;
+	// Only logs to stdout because there is no duckdb::Connection yet for
+	// SQL-based logging
+	mdlog::Logger stdout_logger;
+	std::once_flag db_init_flag;
+	duckdb::DuckDB db;
+	// Used to check that the same parameters are used on subsequent calls to
+	// GetConnection
+	std::string initial_md_token;
+	std::string initial_db_name;
 };
