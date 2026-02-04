@@ -228,12 +228,13 @@ std::string generate_read_csv_query(const std::string& filepath, const IngestPro
 	// that all allocate a buffer of buffer_size. The container memory limit is 1
 	// (or 2?) GiB. Assuming the worst case that all eight requests arrive at the
 	// same time, we need to limit the buffer size accordingly. We don't want to
-	// come too close to the limit, so we pick 512 MiB here.
+	// come too close to the limit, so we pick 768 MiB here. Originally, this was
+	// set to 512 MiB, but one user actually had a line size of over 20 MiB.
 	constexpr std::uint32_t max_parallel_requests = 8;
-	constexpr std::uint32_t buffer_size = 512 * 1024 * 1024 / max_parallel_requests; // 64 MiB
+	constexpr std::uint32_t buffer_size = 768 * 1024 * 1024 / max_parallel_requests; // 96 MiB
 	// We want at least four lines to always fit into the buffer (see
 	// duckdb::CSVBuffer::MIN_ROWS_PER_BUFFER).
-	constexpr std::uint32_t max_line_size = buffer_size / 4; // 16 MiB
+	constexpr std::uint32_t max_line_size = buffer_size / 4; // 24 MiB
 	query << ", max_line_size=" << std::to_string(max_line_size);
 	query << ", buffer_size=" << std::to_string(buffer_size);
 	query << ", compression=" << (compression == CompressionType::ZSTD ? "'zstd'" : "'none'");
