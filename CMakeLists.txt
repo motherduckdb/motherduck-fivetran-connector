@@ -48,11 +48,8 @@ else()
     set(USE_SANITIZERS OFF)
 endif()
 
-### DuckDB dependency ###
-message(STATUS "Fetching DuckDB...")
 set(FETCHCONTENT_TRY_FIND_PACKAGE_MODE NEVER)
 set(FETCHCONTENT_QUIET OFF)
-
 
 ### fmt dependency ###
 FetchContent_Declare(
@@ -64,6 +61,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(fmt)
 
+### DuckDB dependency ###
 FetchContent_Declare(
     duckdb
     GIT_REPOSITORY https://github.com/duckdb/duckdb.git
@@ -72,7 +70,6 @@ FetchContent_Declare(
     SYSTEM
 )
 
-# DuckDB options
 set(ENABLE_EXTENSION_AUTOINSTALL OFF)
 set(ENABLE_EXTENSION_AUTOLOADING OFF)
 set(BUILD_SHELL OFF)
