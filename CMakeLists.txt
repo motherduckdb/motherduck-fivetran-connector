@@ -60,6 +60,15 @@ FetchContent_Declare(
     SYSTEM
 )
 
+### fmt dependency ###
+FetchContent_Declare(
+        fmt
+        GIT_REPOSITORY https://github.com/fmtlib/fmt
+        GIT_TAG        407c905e45ad75fc29bf0f9bb7c5c2fd3475976f # 12.1.0
+        GIT_SHALLOW TRUE
+        SYSTEM
+)
+
 # DuckDB options
 set(ENABLE_EXTENSION_AUTOINSTALL OFF)
 set(ENABLE_EXTENSION_AUTOLOADING OFF)
@@ -77,13 +86,6 @@ set(ENABLE_UBSAN ${USE_SANITIZERS})
 set(CMAKE_BUILD_TYPE_BACKUP ${CMAKE_BUILD_TYPE})
 set(CMAKE_BUILD_TYPE Release)
 
-### fmt dependency ###
-FetchContent_Declare(
-    fmt
-    GIT_REPOSITORY https://github.com/fmtlib/fmt
-    GIT_TAG        407c905e45ad75fc29bf0f9bb7c5c2fd3475976f # 12.1.0
-    GIT_SHALLOW TRUE
-)
 FetchContent_MakeAvailable(duckdb fmt)
 
 # Restore build type
