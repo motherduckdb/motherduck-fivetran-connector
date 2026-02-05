@@ -60,6 +60,13 @@ FetchContent_Declare(
     SYSTEM
 )
 
+### fmt dependency ###
+FetchContent_Declare(
+        fmt
+        GIT_REPOSITORY https://github.com/fmtlib/fmt
+        GIT_TAG        e69e5f977d458f2650bb346dadf2ad30c5320281) # 10.2.1
+FetchContent_MakeAvailable(fmt)
+
 set(ENABLE_EXTENSION_AUTOINSTALL OFF)
 set(ENABLE_EXTENSION_AUTOLOADING OFF)
 set(BUILD_SHELL OFF)
@@ -160,6 +167,7 @@ target_link_libraries(motherduck_destination_sources PUBLIC
         duckdb_static
         fivetran_sdk
         OpenSSL::Crypto
+        fmt::fmt
 )
 
 # The short commit SHA of the latest commit is used as version number in the custom_user_agent
