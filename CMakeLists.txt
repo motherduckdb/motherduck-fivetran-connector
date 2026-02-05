@@ -52,13 +52,7 @@ endif()
 message(STATUS "Fetching DuckDB...")
 set(FETCHCONTENT_TRY_FIND_PACKAGE_MODE NEVER)
 set(FETCHCONTENT_QUIET OFF)
-FetchContent_Declare(
-    duckdb
-    GIT_REPOSITORY https://github.com/duckdb/duckdb.git
-    GIT_TAG v1.4.3
-    GIT_SHALLOW TRUE
-    SYSTEM
-)
+
 
 ### fmt dependency ###
 FetchContent_Declare(
@@ -67,6 +61,15 @@ FetchContent_Declare(
         GIT_TAG        407c905e45ad75fc29bf0f9bb7c5c2fd3475976f # 12.1.0
         GIT_SHALLOW TRUE
         SYSTEM
+)
+FetchContent_MakeAvailable(fmt)
+
+FetchContent_Declare(
+    duckdb
+    GIT_REPOSITORY https://github.com/duckdb/duckdb.git
+    GIT_TAG v1.4.3
+    GIT_SHALLOW TRUE
+    SYSTEM
 )
 
 # DuckDB options
@@ -86,7 +89,7 @@ set(ENABLE_UBSAN ${USE_SANITIZERS})
 set(CMAKE_BUILD_TYPE_BACKUP ${CMAKE_BUILD_TYPE})
 set(CMAKE_BUILD_TYPE Release)
 
-FetchContent_MakeAvailable(duckdb fmt)
+FetchContent_MakeAvailable(duckdb)
 
 # Restore build type
 set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE_BACKUP})
