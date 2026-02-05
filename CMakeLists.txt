@@ -83,7 +83,6 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/fmtlib/fmt
     GIT_TAG        407c905e45ad75fc29bf0f9bb7c5c2fd3475976f # 12.1.0
     GIT_SHALLOW TRUE
-    SYSTEM
 )
 FetchContent_MakeAvailable(duckdb fmt)
 
