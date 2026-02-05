@@ -76,7 +76,6 @@ set(ENABLE_UBSAN ${USE_SANITIZERS})
 # Set build type to RELEASE for DuckDB because we use the release build of the MotherDuck extension
 set(CMAKE_BUILD_TYPE_BACKUP ${CMAKE_BUILD_TYPE})
 set(CMAKE_BUILD_TYPE Release)
-FetchContent_MakeAvailable(duckdb)
 
 ### fmt dependency ###
 FetchContent_Declare(
@@ -86,7 +85,7 @@ FetchContent_Declare(
     GIT_SHALLOW TRUE
     SYSTEM
 )
-FetchContent_MakeAvailable(fmt)
+FetchContent_MakeAvailable(duckdb fmt)
 
 # Restore build type
 set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE_BACKUP})
