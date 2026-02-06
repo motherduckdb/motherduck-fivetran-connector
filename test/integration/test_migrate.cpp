@@ -1324,15 +1324,14 @@ TEST_CASE("Migrate - history to live", "[integration][migrate]") {
 
 	auto con = get_test_connection(MD_TOKEN);
 
-	// Drop and create a history table manually (no primary key to allow duplicate
-	// ids)
+	// Drop and create a history table manually (no primary key to allow duplicate ids)
 	con->Query("DROP TABLE IF EXISTS " + table_name);
 	{
 		auto res = con->Query("CREATE TABLE " + table_name +
 		                      " (id INT, value VARCHAR, "
 		                      "_fivetran_start TIMESTAMPTZ, "
 		                      "_fivetran_end TIMESTAMPTZ, "
-		                      "_fivetran_active BOOLEAN, "
+		                      "_fivetran_active BOOLEAN default true, "
 		                      "primary key (id, _fivetran_start))");
 		REQUIRE_NO_FAIL(res);
 	}
@@ -1396,7 +1395,7 @@ TEST_CASE("Migrate - history to soft delete", "[integration][migrate]") {
 		                      " (id INT, id2 INT, value VARCHAR default 'abc', "
 		                      "_fivetran_start TIMESTAMPTZ, "
 		                      "_fivetran_end TIMESTAMPTZ, "
-		                      "_fivetran_active BOOLEAN,"
+		                      "_fivetran_active BOOLEAN default true,"
 		                      "primary key (id, id2, _fivetran_start))");
 		REQUIRE_NO_FAIL(res);
 	}
