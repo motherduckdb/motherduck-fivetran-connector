@@ -1332,7 +1332,7 @@ TEST_CASE("Migrate - history to live", "[integration][migrate]") {
 		                      " (id INT, value VARCHAR, "
 		                      "_fivetran_start TIMESTAMPTZ, "
 		                      "_fivetran_end TIMESTAMPTZ, "
-		                      "_fivetran_active BOOLEAN, "
+		                      "_fivetran_active BOOLEAN default true, "
 		                      "primary key (id, _fivetran_start))");
 		REQUIRE_NO_FAIL(res);
 	}
@@ -1396,7 +1396,7 @@ TEST_CASE("Migrate - history to soft delete", "[integration][migrate]") {
 		                      " (id INT, id2 INT, value VARCHAR default 'abc', "
 		                      "_fivetran_start TIMESTAMPTZ, "
 		                      "_fivetran_end TIMESTAMPTZ, "
-		                      "_fivetran_active BOOLEAN,"
+		                      "_fivetran_active BOOLEAN default true,"
 		                      "primary key (id, id2, _fivetran_start))");
 		REQUIRE_NO_FAIL(res);
 	}
