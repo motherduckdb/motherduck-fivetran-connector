@@ -130,6 +130,14 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(
   db_field.set_required(true);
   response->add_fields()->CopyFrom(db_field);
 
+  fivetran_sdk::v2::FormField max_line_size_field;
+  max_line_size_field.set_name(config::PROP_CSV_MAX_LINE_SIZE);
+  max_line_size_field.set_label("Maximum CSV Line Size (MiB)");
+  max_line_size_field.set_description("The maximum size of a single line in the CSV file used for data interchange in Fivetran. Overwrite this property only if your data contains very large fields. Default is 24 MiB.");
+  max_line_size_field.set_text_field(fivetran_sdk::v2::PlainText);
+  max_line_size_field.set_required(false);
+  response->add_fields()->CopyFrom(max_line_size_field);
+
   for (const auto &test_case : config_tester::get_test_cases()) {
     auto connection_test = response->add_tests();
     connection_test->set_name(test_case.name);
@@ -384,6 +392,11 @@ grpc::Status DestinationSdkImpl::WriteBatch(
     if (columns_pk.empty()) {
       throw std::invalid_argument("No primary keys found");
     }
+
+    auto csv_max_line_size = ctx->GetConfiguration().csv_max_line_size.has_value() &&
+                             ctx->GetConfiguration().csv_max_line_size.value() > IngestProperties::DEFAULT_CSV_MAX_LINE_SIZE_BYTES
+                             ? ctx->GetConfiguration().csv_max_line_size.value()
+                             : IngestProperties::DEFAULT_CSV_MAX_LINE_SIZE_MIB;
 
     for (auto &filename : request->replace_files()) {
       logger.info("Processing replace file " + filename);

@@ -14,6 +14,7 @@ namespace config_tester {
 inline constexpr const char *TEST_AUTHENTICATE = "test_authentication";
 inline constexpr const char *TEST_DATABASE_TYPE = "test_database_type";
 inline constexpr const char *TEST_WRITE_PERMISSIONS = "test_write_permissions";
+inline constexpr const char *TEST_CSV_MAX_LINE_SIZE = "test_csv_max_line_size";
 
 struct TestCase {
   explicit TestCase(std::string name_, std::string description_)
