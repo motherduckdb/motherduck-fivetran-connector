@@ -1329,9 +1329,9 @@ void MdSqlGenerator::migrate_history_to_soft_delete(duckdb::Connection& con, con
 
 	// _fivetran_start, _fivetran_end and _fivetran_active are not present in temp_table.
 	std::vector<column_def> new_columns;
-	for (auto col = columns.begin(); col != columns.end();) {
-		if (col->name != "_fivetran_start" && col->name != "_fivetran_end" && col->name != "_fivetran_active") {
-			new_columns.push_back(*col);
+	for (auto& col : columns) {
+		if (col.name != "_fivetran_start" && col.name != "_fivetran_end" && col.name != "_fivetran_active") {
+			new_columns.push_back(col);
 		}
 	}
 	add_defaults(con, new_columns, temp_table_name, "migrate_history_to_soft_delete set_default");
@@ -1381,9 +1381,9 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection& con, const tabl
 
 	// _fivetran_start, _fivetran_end and _fivetran_active are not present in temp_table.
 	std::vector<column_def> new_columns;
-	for (auto col = columns.begin(); col != columns.end();) {
-		if (col->name != "_fivetran_start" && col->name != "_fivetran_end" && col->name != "_fivetran_active") {
-			new_columns.push_back(*col);
+	for (auto& col : columns) {
+		if (col.name != "_fivetran_start" && col.name != "_fivetran_end" && col.name != "_fivetran_active") {
+			new_columns.push_back(col);
 		}
 	}
 	add_defaults(con, new_columns, temp_table_name, "migrate_history_to_live set_default");
