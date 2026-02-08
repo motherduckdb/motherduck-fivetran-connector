@@ -1,11 +1,13 @@
 #pragma once
 
+#include <optional>
 #include <stdexcept>
 #include <string>
 
 namespace config {
 inline constexpr const char* PROP_DATABASE = "motherduck_database";
 inline constexpr const char* PROP_TOKEN = "motherduck_token";
+inline constexpr const char* PROP_MAX_LINE_SIZE = "max_line_size";
 
 template <typename MapLike>
 std::string find_property(const MapLike& config, const std::string& property_name) {

@@ -3,6 +3,7 @@
 #include "decryption.hpp"
 #include "duckdb.hpp"
 #include "ingest_properties.hpp"
+#include "md_error.hpp"
 #include "md_logging.hpp"
 #include "memory_backed_file.hpp"
 #include "schema_types.hpp"
@@ -224,18 +225,11 @@ std::string generate_read_csv_query(const std::string& filepath, const IngestPro
 		query << ", allow_quoted_nulls=true";
 	}
 
-	// We have to at some point handle up to eight parallel WriteBatch requests
-	// that all allocate a buffer of buffer_size. The container memory limit is 1
-	// (or 2?) GiB. Assuming the worst case that all eight requests arrive at the
-	// same time, we need to limit the buffer size accordingly. We don't want to
-	// come too close to the limit, so we pick 768 MiB here. Originally, this was
-	// set to 512 MiB, but one user actually had a line size of over 20 MiB.
-	constexpr std::uint32_t max_parallel_requests = 8;
-	constexpr std::uint32_t buffer_size = 768 * 1024 * 1024 / max_parallel_requests; // 96 MiB
-	// We want at least four lines to always fit into the buffer (see
-	// duckdb::CSVBuffer::MIN_ROWS_PER_BUFFER).
-	constexpr std::uint32_t max_line_size = buffer_size / 4; // 24 MiB
-	query << ", max_line_size=" << std::to_string(max_line_size);
+	const std::uint32_t max_line_size_bytes = props.max_line_size * 1024 * 1024;
+	// We want at least four lines to always fit into the buffer (see duckdb::CSVBuffer::MIN_ROWS_PER_BUFFER)
+	const std::uint32_t buffer_size = max_line_size_bytes * 4;
+
+	query << ", max_line_size=" << std::to_string(max_line_size_bytes);
 	query << ", buffer_size=" << std::to_string(buffer_size);
 	query << ", compression=" << (compression == CompressionType::ZSTD ? "'zstd'" : "'none'");
 
@@ -305,6 +299,11 @@ void ProcessFile(duckdb::Connection& con, const IngestProperties& props, mdlog::
 	logger.info("    creating staging table: " + final_query);
 	const auto create_staging_table_res = con.Query(final_query);
 	if (create_staging_table_res->HasError()) {
+		const auto& error_msg = create_staging_table_res->GetError();
+		if (error_msg.find("Change the maximum length size, e.g., max_line_size=") != std::string::npos) {
+			throw md_error::RecoverableError(
+			    "Consider increasing the \"Max Line Size (MiB)\" option in the connector configuration. " + error_msg);
+		}
 		create_staging_table_res->ThrowError("Failed to create staging table for CSV file <" + props.filename + ">: ");
 	}
 	logger.info("    staging table created for file " + props.filename);
