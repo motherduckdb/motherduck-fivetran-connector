@@ -106,9 +106,13 @@ std::string get_decryption_key(const std::string& filename, const google::protob
 }
 
 std::uint32_t get_max_line_size(const google::protobuf::Map<std::string, std::string>& configuration) {
-	const auto value = config::find_property(configuration, config::PROP_MAX_LINE_SIZE);
+	const auto value = config::find_optional_property(configuration, config::PROP_MAX_LINE_SIZE);
 
-	return static_cast<std::uint32_t>(std::stoul(value));
+	if (value.has_value()) {
+		return static_cast<std::uint32_t>(std::stoul(value.value()));
+	}
+
+	return MAX_LINE_SIZE_DEFAULT;
 }
 } // namespace
 
@@ -141,7 +145,7 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(::grpc::ServerContext*,
 	max_line_size_field.set_label("Max Line Size (MiB)");
 	max_line_size_field.set_description(
 	    "Maximum line size in MiB for reading CSV files. Leave empty to use the default (24 MiB). "
-	 "Increase this if the ingest fails and the error suggests to increase the \"Max Line Size (MiB)\" option.");
+	    "Increase this if the ingest fails and the error suggests to increase the \"Max Line Size (MiB)\" option.");
 	max_line_size_field.set_text_field(fivetran_sdk::v2::PlainText);
 	max_line_size_field.set_required(false);
 	response->add_fields()->CopyFrom(max_line_size_field);

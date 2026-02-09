@@ -17,4 +17,13 @@ std::string find_property(const MapLike& config, const std::string& property_nam
 	}
 	return token_it->second;
 }
+
+template <typename MapLike>
+std::optional<std::string> find_optional_property(const MapLike& config, const std::string& property_name) {
+	const auto token_it = config.find(property_name);
+	if (token_it == config.end()) {
+		return std::nullopt;
+	}
+	return std::make_optional(token_it->second);
+}
 } // namespace config
