@@ -18,6 +18,8 @@ RequestContext::RequestContext(const std::string& endpoint_name_, ConnectionFact
 }
 
 RequestContext::~RequestContext() {
+	// At this point, this is defensive programming since in theory the transaction contexts manage rollbacks in case of
+	// an exception.
 	if (con.HasActiveTransaction() && !con.IsAutoCommit()) {
 		con.Rollback();
 	}
