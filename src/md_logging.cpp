@@ -17,13 +17,6 @@ Logger::SinkType operator|(Logger::SinkType lhs, Logger::SinkType rhs) {
 bool HasFlag(const Logger::SinkType value, const Logger::SinkType flag) {
 	return static_cast<Logger::SinkType>(static_cast<int>(value) & static_cast<int>(flag)) != Logger::SinkType::NONE;
 }
-
-void initialize_duckdb_logging(duckdb::Connection& con) {
-	con.Query("CALL enable_logging()");
-	con.Query("SET logging_storage='motherduck_log_storage'");
-	con.Query("SET logging_level='INFO'");
-}
-
 } // namespace
 
 Logger::Logger(const SinkType sinks) : enabled_sinks(sinks) {
@@ -87,7 +80,7 @@ void Logger::log(const std::string& level, const std::string& message) const {
 		// enable_logging is a global setting, so it only needs to be called once
 		// per DuckDB instance. And the DuckDB instance is a singleton.
 		std::call_once(
-		    initialize_duckdb_logging_flag, [](duckdb::Connection& con) { initialize_duckdb_logging(con); }, *con);
+		    initialize_duckdb_logging_flag, [](duckdb::Connection& con) { icon.Query("CALL enable_logging('Fivetran', storage='motherduck_log_storage', level='INFO')"); }, *con);
 		log_to_duckdb(level, message);
 	}
 }
