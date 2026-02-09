@@ -1219,8 +1219,7 @@ void MdSqlGenerator::migrate_soft_delete_to_history(duckdb::Connection& con, con
 	}
 
 	{
-		// See duckdb issue #20570: we can only start the transaction here at this
-		// point.
+		// See duckdb issue #20570: we can only start the transaction here at this point.
 		TransactionContext transaction_context(con);
 
 		// Always drop the _fivetran_deleted column, with IF EXISTS as a safeguard

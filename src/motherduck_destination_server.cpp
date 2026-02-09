@@ -645,7 +645,6 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 	auto& logger = ctx->GetLogger();
 
 	try {
-		TransactionContext transaction_context(con);
 		const auto& details = request->details();
 		const std::string schema_name = get_migration_schema_name(details);
 		const std::string& table_name = details.table();
@@ -847,7 +846,6 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 			response->set_unsupported(true);
 			return ::grpc::Status::OK;
 		}
-		transaction_context.Commit();
 		response->set_success(true);
 	} catch (const std::exception& e) {
 		const std::string schema = request->details().schema();
