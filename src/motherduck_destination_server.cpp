@@ -140,8 +140,8 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(::grpc::ServerContext*,
 	max_line_size_field.set_name(config::PROP_MAX_LINE_SIZE);
 	max_line_size_field.set_label("Max Line Size (MiB)");
 	max_line_size_field.set_description(
-	    "Maximum line size in MiB for reading CSV files. "
-	    "Leave empty to use the default (24 MiB). Increase this if you have very long lines.");
+	    "Maximum line size in MiB for reading CSV files. Leave empty to use the default (24 MiB). "
+	 "Increase this if the ingest fails and the error suggests to increase the \"Max Line Size (MiB)\" option.");
 	max_line_size_field.set_text_field(fivetran_sdk::v2::PlainText);
 	max_line_size_field.set_required(false);
 	response->add_fields()->CopyFrom(max_line_size_field);
