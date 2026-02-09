@@ -645,6 +645,8 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 	auto& logger = ctx->GetLogger();
 
 	try {
+		// The SQL generator needs to manage transactions, so we don't create a transaction context here, also see
+		// duckdb issue #20570.
 		const auto& details = request->details();
 		const std::string schema_name = get_migration_schema_name(details);
 		const std::string& table_name = details.table();
