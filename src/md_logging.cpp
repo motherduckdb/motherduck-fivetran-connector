@@ -80,7 +80,11 @@ void Logger::log(const std::string& level, const std::string& message) const {
 		// enable_logging is a global setting, so it only needs to be called once
 		// per DuckDB instance. And the DuckDB instance is a singleton.
 		std::call_once(
-		    initialize_duckdb_logging_flag, [](duckdb::Connection& con) { icon.Query("CALL enable_logging('Fivetran', storage='motherduck_log_storage', level='INFO')"); }, *con);
+		    initialize_duckdb_logging_flag,
+		    [](duckdb::Connection& con) {
+			    con.Query("CALL enable_logging('Fivetran', storage='motherduck_log_storage', level='INFO')");
+		    },
+		    *con);
 		log_to_duckdb(level, message);
 	}
 }
