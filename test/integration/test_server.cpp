@@ -46,9 +46,7 @@ TEST_CASE("DescribeTable on nonexistent table", "[integration][describe-table]")
 	DestinationSdkImpl service;
 
 	::fivetran_sdk::v2::DescribeTableRequest request;
-	(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-	(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-	request.set_table_name("nonexistent_table");
+	add_config(request, MD_TOKEN, TEST_DATABASE_NAME, "nonexistent_table");
 	::fivetran_sdk::v2::DescribeTableResponse response;
 
 	auto status = service.DescribeTable(nullptr, &request, &response);
@@ -65,10 +63,8 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable", "[integra
 	{
 		// Create Table
 		::fivetran_sdk::v2::CreateTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.set_schema_name(schema_name);
-		request.mutable_table()->set_name(table_name);
 		auto col1 = request.mutable_table()->add_columns();
 		col1->set_name("id");
 		col1->set_type(::fivetran_sdk::v2::DataType::STRING);
@@ -81,9 +77,7 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable", "[integra
 	{
 		// Describe the created table
 		::fivetran_sdk::v2::DescribeTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.set_table_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 
 		{
 			// table not found in default "main" schema
@@ -114,10 +108,9 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable", "[integra
 		// Alter Table
 		::fivetran_sdk::v2::AlterTableRequest request;
 
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+
 		request.set_schema_name(schema_name);
-		request.mutable_table()->set_name(table_name);
 		::fivetran_sdk::v2::Column col1;
 		col1.set_name("id");
 		col1.set_type(::fivetran_sdk::v2::DataType::INT);
@@ -131,9 +124,7 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable", "[integra
 	{
 		// Describe the altered table
 		::fivetran_sdk::v2::DescribeTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.set_table_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 
 		// table found in the correct schema
 		request.set_schema_name(schema_name);
@@ -197,8 +188,7 @@ TEST_CASE("Test endpoint authentication test succeeds when everything is in orde
 
 	::fivetran_sdk::v2::TestRequest request;
 	request.set_name(config_tester::TEST_AUTHENTICATE);
-	(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-	(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+	add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 
 	::fivetran_sdk::v2::TestResponse response;
 
@@ -253,8 +243,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 	{
 		// Create Table
 		::fivetran_sdk::v2::CreateTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		define_test_table(request, table_name);
 
 		::fivetran_sdk::v2::CreateTableResponse response;
@@ -266,8 +255,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 	{
 		// insert rows from encrypted / compressed file
 		::fivetran_sdk::v2::WriteBatchRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		request.mutable_file_params()->set_encryption(::fivetran_sdk::v2::Encryption::AES);
 		request.mutable_file_params()->set_compression(::fivetran_sdk::v2::Compression::ZSTD);
 		define_test_table(request, table_name);
@@ -304,8 +292,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 	{
 		// upsert
 		::fivetran_sdk::v2::WriteBatchRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		define_test_table(request, table_name);
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 		const std::string filename = "books_upsert.csv";
@@ -347,8 +334,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 	{
 		// delete
 		::fivetran_sdk::v2::WriteBatchRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		define_test_table(request, table_name);
 		const std::string filename = "books_delete.csv";
 		const std::string filepath = TEST_RESOURCES_DIR + filename;
@@ -383,8 +369,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 	{
 		// update
 		::fivetran_sdk::v2::WriteBatchRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 		define_test_table(request, table_name);
@@ -421,9 +406,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 	{
 		// truncate data before Jan 9 2024
 		::fivetran_sdk::v2::TruncateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.set_table_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.set_synced_column("_fivetran_synced");
 		request.mutable_soft()->set_deleted_column("_fivetran_deleted");
 
@@ -458,9 +441,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 	{
 		// truncate table does nothing if there is no utc_delete_before field set
 		::fivetran_sdk::v2::TruncateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.set_table_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.set_synced_column("_fivetran_synced");
 		request.mutable_soft()->set_deleted_column("_fivetran_deleted");
 
@@ -487,9 +468,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 	{
 		// hard truncate all data (deleted_column not set in request)
 		::fivetran_sdk::v2::TruncateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.set_table_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.set_synced_column("_fivetran_synced");
 
 		const auto cutoff_datetime = 1893456000; // delete everything before 2030-01-01
@@ -516,8 +495,7 @@ TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
 	{
 		// Create Table
 		::fivetran_sdk::v2::CreateTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		define_test_multikey_table(request, table_name);
 
 		::fivetran_sdk::v2::CreateTableResponse response;
@@ -528,9 +506,7 @@ TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
 	{
 		// Describe the created table
 		::fivetran_sdk::v2::DescribeTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.set_table_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 
 		{
 			::fivetran_sdk::v2::DescribeTableResponse response;
@@ -552,8 +528,7 @@ TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
 	{
 		// insert rows
 		::fivetran_sdk::v2::WriteBatchRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		define_test_multikey_table(request, table_name);
 		const std::string filename = "multikey_table_upsert.csv";
 		const std::string filepath = TEST_RESOURCES_DIR + filename;
@@ -586,8 +561,7 @@ TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
 	{
 		// update
 		::fivetran_sdk::v2::WriteBatchRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		request.mutable_file_params()->set_unmodified_string("magic-unmodified-value");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 		define_test_multikey_table(request, table_name);
@@ -625,8 +599,7 @@ TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
 	{
 		// delete
 		::fivetran_sdk::v2::WriteBatchRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		define_test_multikey_table(request, table_name);
 		const std::string filename = "multikey_table_delete.csv";
 		const std::string filepath = TEST_RESOURCES_DIR + filename;
@@ -658,9 +631,8 @@ TEST_CASE("CreateTable with JSON column", "[integration]") {
 	{
 		// Create Table
 		::fivetran_sdk::v2::CreateTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_table()->set_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+
 		auto col1 = request.mutable_table()->add_columns();
 		col1->set_name("data");
 		col1->set_type(::fivetran_sdk::v2::DataType::JSON);
@@ -673,9 +645,7 @@ TEST_CASE("CreateTable with JSON column", "[integration]") {
 	{
 		// Describe the created table
 		::fivetran_sdk::v2::DescribeTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.set_table_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 
 		{
 			::fivetran_sdk::v2::DescribeTableResponse response;
@@ -698,8 +668,7 @@ TEST_CASE("Parallel WriteBatch requests", "[integration][write-batch]") {
 		table_names.push_back(table_name);
 
 		::fivetran_sdk::v2::CreateTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		define_test_table(request, table_name);
 
 		::fivetran_sdk::v2::CreateTableResponse response;
@@ -713,8 +682,7 @@ TEST_CASE("Parallel WriteBatch requests", "[integration][write-batch]") {
 	for (unsigned int i = 0; i < num_tables; i++) {
 		futures.push_back(std::async(std::launch::async, [&service, &table_names, i]() {
 			::fivetran_sdk::v2::WriteBatchRequest request;
-			(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-			(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+			add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 			define_test_table(request, table_names[i]);
 			request.mutable_file_params()->set_null_string("magic-nullvalue");
 			request.add_replace_files(TEST_RESOURCES_DIR + "books_upsert.csv");
@@ -749,8 +717,7 @@ TEST_CASE("Parallel DescribeTable requests", "[integration][describe-table]") {
 		table_names.push_back(table_name);
 
 		::fivetran_sdk::v2::CreateTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		define_test_table(request, table_name);
 
 		::fivetran_sdk::v2::CreateTableResponse response;
@@ -852,9 +819,8 @@ TEST_CASE("Test all types with create and describe table") {
 	{
 		// Create Table
 		::fivetran_sdk::v2::CreateTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_table()->set_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+
 		auto col1 = request.mutable_table()->add_columns();
 		col1->set_name("col_string");
 		col1->set_type(::fivetran_sdk::v2::DataType::STRING);
@@ -906,9 +872,7 @@ TEST_CASE("Test all types with create and describe table") {
 	{
 		// Describe table
 		::fivetran_sdk::v2::DescribeTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.set_table_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 
 		::fivetran_sdk::v2::DescribeTableResponse response;
 		auto status = service.DescribeTable(nullptr, &request, &response);
@@ -1039,9 +1003,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 	{
 		// Describe the altered table
 		::fivetran_sdk::v2::DescribeTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.set_table_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 
 		::fivetran_sdk::v2::DescribeTableResponse response;
 		auto status = service.DescribeTable(nullptr, &request, &response);
@@ -1089,9 +1051,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 	{
 		// Describe the altered table
 		::fivetran_sdk::v2::DescribeTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.set_table_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 
 		::fivetran_sdk::v2::DescribeTableResponse response;
 		auto status = service.DescribeTable(nullptr, &request, &response);
@@ -1143,9 +1103,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 	{
 		// Describe the altered table
 		::fivetran_sdk::v2::DescribeTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.set_table_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 
 		::fivetran_sdk::v2::DescribeTableResponse response;
 		auto status = service.DescribeTable(nullptr, &request, &response);
@@ -1232,9 +1190,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 	{
 		// Describe the altered table
 		::fivetran_sdk::v2::DescribeTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.set_table_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 
 		::fivetran_sdk::v2::DescribeTableResponse response;
 		auto status = service.DescribeTable(nullptr, &request, &response);
@@ -1295,9 +1251,8 @@ TEST_CASE("Invalid truncate with nonexisting delete column", "[integration][curr
 	{
 		// Create Table that is missing the _fivetran_deleted column
 		::fivetran_sdk::v2::CreateTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_table()->set_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+
 		auto col1 = request.mutable_table()->add_columns();
 		col1->set_name("something");
 		col1->set_type(::fivetran_sdk::v2::DataType::STRING);
@@ -1311,9 +1266,7 @@ TEST_CASE("Invalid truncate with nonexisting delete column", "[integration][curr
 		// Attempt to truncate the table using a nonexisting _fivetran_deleted
 		// column
 		::fivetran_sdk::v2::TruncateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.set_table_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.set_synced_column("_fivetran_synced"); // also does not exist although that does not
 		                                               // matter
 		request.mutable_soft()->set_deleted_column("_fivetran_deleted");
@@ -1345,17 +1298,7 @@ TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
 
 	// Schema will be main
 	const std::string table_name = "books" + std::to_string(Catch::rngSeed());
-
-	{
-		// Create Table
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
-		define_history_test_table(request, table_name);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
+	create_history_table(service, table_name);
 
 	{
 		// upsert some data, so that delete-earliest has something to delete
@@ -1516,17 +1459,7 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 
 	// Schema will be main
 	const std::string table_name = "books" + std::to_string(Catch::rngSeed());
-
-	{
-		// Create Table
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
-		define_history_test_table(request, table_name);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
+	create_history_table(service, table_name);
 
 	{
 		// history write with the earliest file (that does not affect anything
@@ -1647,17 +1580,7 @@ TEST_CASE("WriteHistoryBatch should delete overlapping records", "[integration][
 	DestinationSdkImpl service;
 
 	const std::string table_name = "books" + std::to_string(Catch::rngSeed());
-
-	{
-		// Create Table
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
-		define_history_test_table(request, table_name);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
+	create_history_table(service, table_name);
 
 	{
 		// Initial batch
@@ -1711,19 +1634,10 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with reordered CSV columns", "[integ
 	DestinationSdkImpl service;
 
 	const std::string table_name = "books_reordered" + std::to_string(Catch::rngSeed());
-
-	{
-		// Create Table with columns in a specific order:
-		// id, title, magic_number, _fivetran_deleted, _fivetran_synced,
-		// _fivetran_active, _fivetran_start, _fivetran_end
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
-		define_history_test_table(request, table_name);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
+	// Create Table with columns in a specific order:
+	// id, title, magic_number, _fivetran_deleted, _fivetran_synced,
+	// _fivetran_active, _fivetran_start, _fivetran_end
+	create_history_table(service, table_name);
 
 	{
 		// Insert initial data using a CSV file where columns are in a DIFFERENT
@@ -1940,9 +1854,7 @@ TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") 
 	auto verifyTableStructure = [&](bool id_is_primary_key) {
 		// Describe the altered table
 		::fivetran_sdk::v2::DescribeTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.set_table_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 
 		::fivetran_sdk::v2::DescribeTableResponse response;
 		auto status = service.DescribeTable(nullptr, &request, &response);
@@ -2018,9 +1930,7 @@ TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") 
 	{
 		// Describe the altered table
 		::fivetran_sdk::v2::DescribeTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.set_table_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 
 		::fivetran_sdk::v2::DescribeTableResponse response;
 		auto status = service.DescribeTable(nullptr, &request, &response);
@@ -2068,9 +1978,7 @@ TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") 
 	{
 		// Describe the altered table
 		::fivetran_sdk::v2::DescribeTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.set_table_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 
 		::fivetran_sdk::v2::DescribeTableResponse response;
 		auto status = service.DescribeTable(nullptr, &request, &response);
@@ -2142,9 +2050,7 @@ TEST_CASE("AlterTable must drop columns when specified", "[integration]") {
 
 	{
 		::fivetran_sdk::v2::DescribeTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.set_table_name(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 
 		::fivetran_sdk::v2::DescribeTableResponse response;
 		auto status = service.DescribeTable(nullptr, &request, &response);

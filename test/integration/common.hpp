@@ -68,150 +68,74 @@ std::unique_ptr<duckdb::Connection> get_test_connection(const std::string &token
 void check_row(duckdb::unique_ptr<duckdb::MaterializedQueryResult> &res,
                idx_t row, std::initializer_list<duckdb::Value> expected);
 
+
+template <typename T>
+void add_col(T &request, const std::string &name,
+			 ::fivetran_sdk::v2::DataType type, bool is_primary_key) {
+	auto col = request.mutable_table()->add_columns();
+	col->set_name(name);
+	col->set_type(type);
+	col->set_primary_key(is_primary_key);
+}
+
 template <typename T>
 void define_test_table(T &request, const std::string &table_name) {
   request.mutable_table()->set_name(table_name);
-  auto col1 = request.mutable_table()->add_columns();
-  col1->set_name("id");
-  col1->set_type(::fivetran_sdk::v2::DataType::INT);
-  col1->set_primary_key(true);
-
-  auto col2 = request.mutable_table()->add_columns();
-  col2->set_name("title");
-  col2->set_type(::fivetran_sdk::v2::DataType::STRING);
-
-  auto col3 = request.mutable_table()->add_columns();
-  col3->set_name("magic_number");
-  col3->set_type(::fivetran_sdk::v2::DataType::INT);
-
-  auto col4 = request.mutable_table()->add_columns();
-  col4->set_name("_fivetran_deleted");
-  col4->set_type(::fivetran_sdk::v2::DataType::BOOLEAN);
-
-  auto col5 = request.mutable_table()->add_columns();
-  col5->set_name("_fivetran_synced");
-  col5->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
+	add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
+	add_col(request, "title", ::fivetran_sdk::v2::DataType::STRING, false);
+	add_col(request, "magic_number", ::fivetran_sdk::v2::DataType::INT, false);
+	add_col(request, "_fivetran_deleted", ::fivetran_sdk::v2::DataType::BOOLEAN, false);
+	add_col(request, "_fivetran_synced", ::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
 }
+
+constexpr std::array HISTORY_COLUMNS = {
+	column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
+	column_def {.name = "title", .type = duckdb::LogicalTypeId::VARCHAR},
+	column_def {.name = "magic_number", .type = duckdb::LogicalTypeId::INTEGER},
+	column_def {.name = "_fivetran_synced", .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
+	column_def {.name = "_fivetran_active", .type = duckdb::LogicalTypeId::BOOLEAN},
+	column_def {.name = "_fivetran_start", .type = duckdb::LogicalTypeId::TIMESTAMP_TZ, .primary_key = true},
+	column_def {.name = "_fivetran_end", .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
+};
 
 template <typename T>
 void define_history_test_table(T &request, const std::string &table_name) {
   request.mutable_table()->set_name(table_name);
-  auto col1 = request.mutable_table()->add_columns();
-  col1->set_name("id");
-  col1->set_type(::fivetran_sdk::v2::DataType::INT);
-  col1->set_primary_key(true);
-
-  auto col2 = request.mutable_table()->add_columns();
-  col2->set_name("title");
-  col2->set_type(::fivetran_sdk::v2::DataType::STRING);
-
-  auto col3 = request.mutable_table()->add_columns();
-  col3->set_name("magic_number");
-  col3->set_type(::fivetran_sdk::v2::DataType::INT);
-
-  auto col4 = request.mutable_table()->add_columns();
-  col4->set_name("_fivetran_deleted");
-  col4->set_type(::fivetran_sdk::v2::DataType::BOOLEAN);
-
-  auto col5 = request.mutable_table()->add_columns();
-  col5->set_name("_fivetran_synced");
-  col5->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
-
-  auto col6 = request.mutable_table()->add_columns();
-  col6->set_name("_fivetran_active");
-  col6->set_type(::fivetran_sdk::v2::DataType::BOOLEAN);
-
-  auto col7 = request.mutable_table()->add_columns();
-  col7->set_name("_fivetran_start");
-  col7->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
-  col7->set_primary_key(true);
-
-  auto col8 = request.mutable_table()->add_columns();
-  col8->set_name("_fivetran_end");
-  col8->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
+	for (auto column : HISTORY_COLUMNS) {
+		add_col(request, column.name, get_fivetran_type(column.type), column.primary_key);
+	}
 }
 
 template <typename T>
 void define_transaction_test_table(T &request, const std::string &table_name) {
-  request.mutable_table()->set_name(table_name);
-
-  auto col1 = request.mutable_table()->add_columns();
-  col1->set_name("amount");
-  col1->set_type(::fivetran_sdk::v2::DataType::INT);
-
-  auto col2 = request.mutable_table()->add_columns();
-  col2->set_name("_fivetran_synced");
-  col2->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
-
-  auto col3 = request.mutable_table()->add_columns();
-  col3->set_name("id");
-  col3->set_type(::fivetran_sdk::v2::DataType::INT);
-  col3->set_primary_key(true);
-
-  auto col4 = request.mutable_table()->add_columns();
-  col4->set_name("desc");
-  col4->set_type(::fivetran_sdk::v2::DataType::STRING);
+    request.mutable_table()->set_name(table_name);
+	add_col(request, "amount", ::fivetran_sdk::v2::DataType::STRING, false);
+	add_col(request, "_fivetran_synced", ::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
+	add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
+	add_col(request, "desc", ::fivetran_sdk::v2::DataType::STRING, false);
 }
 
 template <typename T>
 void define_transaction_history_test_table(T &request,
                                            const std::string &table_name) {
   request.mutable_table()->set_name(table_name);
-  auto col1 = request.mutable_table()->add_columns();
-  col1->set_name("amount");
-  col1->set_type(::fivetran_sdk::v2::DataType::INT);
-
-  auto col2 = request.mutable_table()->add_columns();
-  col2->set_name("_fivetran_synced");
-  col2->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
-
-  auto col3 = request.mutable_table()->add_columns();
-  col3->set_name("_fivetran_end");
-  col3->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
-
-  auto col4 = request.mutable_table()->add_columns();
-  col4->set_name("_fivetran_active");
-  col4->set_type(::fivetran_sdk::v2::DataType::BOOLEAN);
-
-  auto col5 = request.mutable_table()->add_columns();
-  col5->set_name("desc");
-  col5->set_type(::fivetran_sdk::v2::DataType::STRING);
-
-  auto col6 = request.mutable_table()->add_columns();
-  col6->set_name("_fivetran_start");
-  col6->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
-  col6->set_primary_key(true);
-
-  auto col7 = request.mutable_table()->add_columns();
-  col7->set_name("id");
-  col7->set_type(::fivetran_sdk::v2::DataType::INT);
-  col7->set_primary_key(true);
+	add_col(request, "amount",::fivetran_sdk::v2::DataType::INT, false);
+	add_col(request, "_fivetran_synced",::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
+	add_col(request, "_fivetran_end",::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
+	add_col(request, "_fivetran_active",::fivetran_sdk::v2::DataType::BOOLEAN, false);
+	add_col(request, "desc",::fivetran_sdk::v2::DataType::STRING, false);
+	add_col(request, "_fivetran_start",::fivetran_sdk::v2::DataType::UTC_DATETIME, true);
+	add_col(request, "id",::fivetran_sdk::v2::DataType::INT, true);
 }
 
 template <typename T>
 void define_test_multikey_table(T &request, const std::string &table_name) {
   request.mutable_table()->set_name(table_name);
-  auto col1 = request.mutable_table()->add_columns();
-  col1->set_name("id1");
-  col1->set_type(::fivetran_sdk::v2::DataType::INT);
-  col1->set_primary_key(true);
-
-  auto col2 = request.mutable_table()->add_columns();
-  col2->set_name("id2");
-  col2->set_type(::fivetran_sdk::v2::DataType::INT);
-  col2->set_primary_key(true);
-
-  auto col3 = request.mutable_table()->add_columns();
-  col3->set_name("text");
-  col3->set_type(::fivetran_sdk::v2::DataType::STRING);
-
-  auto col4 = request.mutable_table()->add_columns();
-  col4->set_name("_fivetran_deleted");
-  col4->set_type(::fivetran_sdk::v2::DataType::BOOLEAN);
-
-  auto col5 = request.mutable_table()->add_columns();
-  col5->set_name("_fivetran_synced");
-  col5->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
+	add_col(request, "id1",::fivetran_sdk::v2::DataType::INT, true);
+	add_col(request, "id2",::fivetran_sdk::v2::DataType::INT, true);
+	add_col(request, "text",::fivetran_sdk::v2::DataType::STRING, false);
+	add_col(request, "_fivetran_deleted",::fivetran_sdk::v2::DataType::BOOLEAN, false);
+	add_col(request, "_fivetran_synced",::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
 }
 
 /* compression and encryption are off/none by default */
@@ -231,20 +155,26 @@ inline void add_config(fivetran_sdk::v2::MigrateRequest &request, const std::str
   request.mutable_details()->set_table(table);
 }
 
+inline void add_config(fivetran_sdk::v2::DescribeTableRequest &request, const std::string &token,
+					   const std::string &database, const std::string &table) {
+	(*request.mutable_configuration())["motherduck_token"] = token;
+	(*request.mutable_configuration())["motherduck_database"] = database;
+	request.set_table_name(table);
+}
+
+inline void add_config(fivetran_sdk::v2::TruncateRequest &request, const std::string &token,
+					   const std::string &database, const std::string &table) {
+	(*request.mutable_configuration())["motherduck_token"] = token;
+	(*request.mutable_configuration())["motherduck_database"] = database;
+	request.set_table_name(table);
+}
+
 template <typename T>
 void add_config(T &request, const std::string &token, const std::string &database) {
   (*request.mutable_configuration())["motherduck_token"] = token;
   (*request.mutable_configuration())["motherduck_database"] = database;
 }
 
-template <typename T>
-void add_col(T &request, const std::string &name,
-             ::fivetran_sdk::v2::DataType type, bool is_primary_key) {
-  auto col = request.mutable_table()->add_columns();
-  col->set_name(name);
-  col->set_type(type);
-  col->set_primary_key(is_primary_key);
-}
 
 template <typename T>
 void add_decimal_col(T &request, const std::string &name, bool is_primary_key,
@@ -263,18 +193,12 @@ template <typename T>
 void define_history_test_table_reordered(T &request,
                                          const std::string &table_name) {
   request.mutable_table()->set_name(table_name);
-  add_col(request, "_fivetran_end", ::fivetran_sdk::v2::DataType::UTC_DATETIME,
-          false);
+  add_col(request, "_fivetran_end", ::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
   add_col(request, "magic_number", ::fivetran_sdk::v2::DataType::INT, false);
-  add_col(request, "_fivetran_active", ::fivetran_sdk::v2::DataType::BOOLEAN,
-          false);
+  add_col(request, "_fivetran_active", ::fivetran_sdk::v2::DataType::BOOLEAN, false);
   add_col(request, "title", ::fivetran_sdk::v2::DataType::STRING, false);
-  add_col(request, "_fivetran_synced",
-          ::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
-  add_col(request, "_fivetran_start",
-          ::fivetran_sdk::v2::DataType::UTC_DATETIME, true);
-  add_col(request, "_fivetran_deleted", ::fivetran_sdk::v2::DataType::BOOLEAN,
-          false);
+  add_col(request, "_fivetran_synced", ::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
+  add_col(request, "_fivetran_start", ::fivetran_sdk::v2::DataType::UTC_DATETIME, true);
   add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
 }
 
@@ -300,3 +224,6 @@ void create_table_basic(DestinationSdkImpl &service,
 void create_table_with_varchar_col(DestinationSdkImpl &service,
                                    const std::string &table_name,
                                    const std::string &col_name);
+
+void create_history_table(DestinationSdkImpl &service,
+                                   const std::string &table_name);
