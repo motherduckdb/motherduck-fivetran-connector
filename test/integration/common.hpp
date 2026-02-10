@@ -226,6 +226,13 @@ void add_config(T &request, const std::string &token,
   request.mutable_table()->set_name(table);
 }
 
+inline void add_config(fivetran_sdk::v2::MigrateRequest &request, const std::string &token,
+                       const std::string &database, const std::string &table) {
+  (*request.mutable_configuration())["motherduck_token"] = token;
+  (*request.mutable_configuration())["motherduck_database"] = database;
+  request.mutable_details()->set_table(table);
+}
+
 template <typename T>
 void add_config(T &request, const std::string &token,
                 const std::string &database) {

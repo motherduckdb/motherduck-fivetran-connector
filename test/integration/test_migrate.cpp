@@ -47,9 +47,7 @@ TEST_CASE("Migrate - drop table", "[integration][migrate]") {
 	// Drop the table using Migrate
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->mutable_drop()->set_drop_table(true);
 
 		::fivetran_sdk::v2::MigrateResponse response;
@@ -73,9 +71,7 @@ TEST_CASE("Migrate - drop table", "[integration][migrate]") {
 	// Drop nonexisting table using Migrate
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table("fake_table_name");
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, "fake_table_name");
 		request.mutable_details()->mutable_drop()->set_drop_table(true);
 
 		::fivetran_sdk::v2::MigrateResponse response;
@@ -116,9 +112,7 @@ TEST_CASE("Migrate - rename table", "[integration][migrate]") {
 	// Rename the table
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(from_table);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, from_table);
 		request.mutable_details()->mutable_rename()->mutable_rename_table()->set_from_table(from_table);
 		request.mutable_details()->mutable_rename()->mutable_rename_table()->set_to_table(to_table);
 
@@ -151,9 +145,7 @@ TEST_CASE("Migrate - rename table", "[integration][migrate]") {
 	// Rename nonexisting table should fail
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(from_table);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, from_table);
 		request.mutable_details()->mutable_rename()->mutable_rename_table()->set_from_table("fake_table_name");
 		request.mutable_details()->mutable_rename()->mutable_rename_table()->set_to_table(to_table);
 
@@ -179,9 +171,7 @@ TEST_CASE("Migrate - rename table", "[integration][migrate]") {
 	// Rename to existing table should fail
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(from_table);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, from_table);
 		request.mutable_details()->mutable_rename()->mutable_rename_table()->set_from_table(second_from_table);
 		request.mutable_details()->mutable_rename()->mutable_rename_table()->set_to_table(to_table);
 
@@ -223,9 +213,7 @@ TEST_CASE("Migrate - rename column", "[integration][migrate]") {
 	// Rename column
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->mutable_rename()->mutable_rename_column()->set_from_column("old_name");
 		request.mutable_details()->mutable_rename()->mutable_rename_column()->set_to_column("new_name");
 
@@ -255,9 +243,7 @@ TEST_CASE("Migrate - rename column", "[integration][migrate]") {
 	// Rename column nonexisting column fails
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->mutable_rename()->mutable_rename_column()->set_from_column("fake_column_name");
 		request.mutable_details()->mutable_rename()->mutable_rename_column()->set_to_column("another_new_name");
 
@@ -274,9 +260,7 @@ TEST_CASE("Migrate - rename column", "[integration][migrate]") {
 	// Rename column to existing fails
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->mutable_rename()->mutable_rename_column()->set_from_column("id");
 		request.mutable_details()->mutable_rename()->mutable_rename_column()->set_to_column("new_name");
 
@@ -290,9 +274,7 @@ TEST_CASE("Migrate - rename column", "[integration][migrate]") {
 	// Rename column to reserved name fails
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->mutable_rename()->mutable_rename_column()->set_from_column("id");
 		request.mutable_details()->mutable_rename()->mutable_rename_column()->set_to_column("_fivetran_deleted");
 
@@ -331,9 +313,7 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
 	// Copy the table
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(from_table);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, from_table);
 		request.mutable_details()->mutable_copy()->mutable_copy_table()->set_from_table(from_table);
 		request.mutable_details()->mutable_copy()->mutable_copy_table()->set_to_table(to_table);
 
@@ -416,9 +396,7 @@ TEST_CASE("Migrate - copy column", "[integration][migrate]") {
 	// Copy column
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->mutable_copy()->mutable_copy_column()->set_from_column("source_col");
 		request.mutable_details()->mutable_copy()->mutable_copy_column()->set_to_column("dest_col");
 
@@ -440,9 +418,7 @@ TEST_CASE("Migrate - copy column", "[integration][migrate]") {
 	// Copy nonexisting column fails
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->mutable_copy()->mutable_copy_column()->set_from_column("fake_column_name");
 		request.mutable_details()->mutable_copy()->mutable_copy_column()->set_to_column("new_dest_col");
 
@@ -454,9 +430,7 @@ TEST_CASE("Migrate - copy column", "[integration][migrate]") {
 	// Copy copy to existing column fails
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->mutable_copy()->mutable_copy_column()->set_from_column("source_col");
 		request.mutable_details()->mutable_copy()->mutable_copy_column()->set_to_column("dest_col");
 
@@ -473,9 +447,7 @@ TEST_CASE("Migrate - copy column", "[integration][migrate]") {
 	// Copy to reserved name fails
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->mutable_copy()->mutable_copy_column()->set_from_column("source_col");
 		request.mutable_details()->mutable_copy()->mutable_copy_column()->set_to_column("_fivetran_end");
 
@@ -533,9 +505,7 @@ TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration
 	// Copy to history mode
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(source_table);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, source_table);
 		auto* copy_hist = request.mutable_details()->mutable_copy()->mutable_copy_table_to_history_mode();
 		copy_hist->set_from_table(source_table);
 		copy_hist->set_to_table(dest_table);
@@ -647,9 +617,7 @@ TEST_CASE("Migrate - copy table to history mode from live", "[integration][migra
 	// Copy to history mode (no soft_deleted_column)
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(source_table);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, source_table);
 		auto* copy_hist = request.mutable_details()->mutable_copy()->mutable_copy_table_to_history_mode();
 		copy_hist->set_from_table(source_table);
 		copy_hist->set_to_table(dest_table);
@@ -716,9 +684,7 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
 	// Add column with default
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		auto add_col = request.mutable_details()->mutable_add()->mutable_add_column_with_default_value();
 		add_col->set_column("new_col");
 		add_col->set_column_type(::fivetran_sdk::v2::DataType::STRING);
@@ -743,9 +709,7 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
 	// NULL.
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		auto add_col = request.mutable_details()->mutable_add()->mutable_add_column_with_default_value();
 		add_col->set_column("new_col2");
 		add_col->set_column_type(::fivetran_sdk::v2::DataType::STRING);
@@ -769,9 +733,7 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
 	// Add column with default empty string
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		auto add_col = request.mutable_details()->mutable_add()->mutable_add_column_with_default_value();
 		add_col->set_column("new_col3");
 		add_col->set_column_type(::fivetran_sdk::v2::DataType::STRING);
@@ -786,9 +748,7 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
 	// Add column with reserved name should fail
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		auto add_col = request.mutable_details()->mutable_add()->mutable_add_column_with_default_value();
 		add_col->set_column("_fivetran_active");
 		add_col->set_column_type(::fivetran_sdk::v2::DataType::STRING);
@@ -841,9 +801,7 @@ TEST_CASE("Migrate - update column value", "[integration][migrate]") {
 	// Update all values in column
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->mutable_update_column_value()->set_column("status");
 		request.mutable_details()->mutable_update_column_value()->set_value("updated");
 
@@ -863,9 +821,7 @@ TEST_CASE("Migrate - update column value", "[integration][migrate]") {
 	// Update all values in column to NULL using the string "NULL"
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->mutable_update_column_value()->set_column("status");
 		request.mutable_details()->mutable_update_column_value()->set_value("NULL");
 
@@ -914,9 +870,7 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 	// Add column in history mode
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		auto* add_col = request.mutable_details()->mutable_add()->mutable_add_column_in_history_mode();
 		add_col->set_column("age");
 		add_col->set_column_type(::fivetran_sdk::v2::DataType::INT);
@@ -931,9 +885,7 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 	// Add another column in history mode with the same operation timestamp
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		auto* add_col = request.mutable_details()->mutable_add()->mutable_add_column_in_history_mode();
 		add_col->set_column("switch");
 		add_col->set_column_type(::fivetran_sdk::v2::DataType::BOOLEAN);
@@ -949,9 +901,7 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 	// should fail
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		auto* add_col = request.mutable_details()->mutable_add()->mutable_add_column_in_history_mode();
 		add_col->set_column("last");
 		add_col->set_column_type(::fivetran_sdk::v2::DataType::BOOLEAN);
@@ -966,9 +916,7 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 	// Add another column in history mode with a later operation timestamp
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		auto* add_col = request.mutable_details()->mutable_add()->mutable_add_column_in_history_mode();
 		add_col->set_column("final");
 		add_col->set_column_type(::fivetran_sdk::v2::DataType::STRING);
@@ -1032,9 +980,7 @@ TEST_CASE("Migrate - add/drop column in history mode to empty table", "[integrat
 	// Add column in history mode
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		auto* add_col = request.mutable_details()->mutable_add()->mutable_add_column_in_history_mode();
 		add_col->set_column("age");
 		add_col->set_column_type(::fivetran_sdk::v2::DataType::INT);
@@ -1056,9 +1002,7 @@ TEST_CASE("Migrate - add/drop column in history mode to empty table", "[integrat
 	// Drop column in history mode
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		auto* drop_col = request.mutable_details()->mutable_drop()->mutable_drop_column_in_history_mode();
 		drop_col->set_column("name");
 		drop_col->set_operation_timestamp("2024-06-01T00:00:00Z");
@@ -1109,9 +1053,7 @@ TEST_CASE("Migrate - drop column in history mode", "[integration][migrate]") {
 	// Drop column in history mode
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		auto* drop_col = request.mutable_details()->mutable_drop()->mutable_drop_column_in_history_mode();
 		drop_col->set_column("email");
 		drop_col->set_operation_timestamp("2024-06-01T00:00:00Z");
@@ -1178,9 +1120,7 @@ TEST_CASE("Migrate - live to soft delete", "[integration][migrate]") {
 	// Migrate to soft delete mode
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_type(
 		    ::fivetran_sdk::v2::LIVE_TO_SOFT_DELETE);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_soft_deleted_column("_fivetran_deleted");
@@ -1230,9 +1170,7 @@ TEST_CASE("Migrate - soft delete to live", "[integration][migrate]") {
 	// Migrate to live mode (removes deleted rows and column)
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_type(
 		    ::fivetran_sdk::v2::SOFT_DELETE_TO_LIVE);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_soft_deleted_column("_fivetran_deleted");
@@ -1289,9 +1227,7 @@ TEST_CASE("Migrate - live to history", "[integration][migrate]") {
 	// Migrate to history mode
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_type(::fivetran_sdk::v2::LIVE_TO_HISTORY);
 
 		::fivetran_sdk::v2::MigrateResponse response;
@@ -1351,9 +1287,7 @@ TEST_CASE("Migrate - history to live", "[integration][migrate]") {
 	// Migrate to live mode (keep_deleted_rows = false)
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_type(::fivetran_sdk::v2::HISTORY_TO_LIVE);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_keep_deleted_rows(false);
 
@@ -1415,9 +1349,7 @@ TEST_CASE("Migrate - history to soft delete", "[integration][migrate]") {
 	// Migrate to soft delete mode
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_type(
 		    ::fivetran_sdk::v2::HISTORY_TO_SOFT_DELETE);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_soft_deleted_column("_fivetran_deleted");
@@ -1478,9 +1410,7 @@ TEST_CASE("Migrate - soft delete to history", "[integration][migrate]") {
 	// Migrate to history mode
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_type(
 		    ::fivetran_sdk::v2::SOFT_DELETE_TO_HISTORY);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_soft_deleted_column("_fivetran_deleted");
@@ -1514,9 +1444,7 @@ TEST_CASE("Migrate - fails with empty table name", "[integration][migrate]") {
 	DestinationSdkImpl service;
 
 	::fivetran_sdk::v2::MigrateRequest request;
-	(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-	(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-	request.mutable_details()->set_table("");
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, "");
 	request.mutable_details()->mutable_drop()->set_drop_table(true);
 
 	::fivetran_sdk::v2::MigrateResponse response;
@@ -1543,9 +1471,7 @@ TEST_CASE("Migrate - unsupported operation returns unsupported", "[integration][
 	// Try empty copy operation (unsupported - no specific copy type set)
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		// Create an empty copy operation - doesn't set copy_table, copy_column,
 		// or copy_table_to_history_mode
 		request.mutable_details()->mutable_copy();
@@ -1586,10 +1512,8 @@ TEST_CASE("Migrate - works with schema", "[integration][migrate]") {
 	// Rename column using schema
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->set_schema(schema_name);
-		request.mutable_details()->set_table(table_name);
 		request.mutable_details()->mutable_rename()->mutable_rename_column()->set_from_column("value");
 		request.mutable_details()->mutable_rename()->mutable_rename_column()->set_to_column("new_value");
 
