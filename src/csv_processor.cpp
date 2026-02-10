@@ -301,10 +301,10 @@ void ProcessFile(duckdb::Connection& con, const IngestProperties& props, mdlog::
 	if (create_staging_table_res->HasError()) {
 		const auto& error_msg = create_staging_table_res->GetError();
 		if (error_msg.find("Change the maximum length size, e.g., max_line_size=") != std::string::npos) {
-			throw md_error::RecoverableError(
-			    "A data record was too large to be processed. To fix this, increase the \"Max Record Size (MiB)\" in the "
-			    "connector configuration. Original error:" +
-			    error_msg);
+			throw md_error::RecoverableError("A data record was too large to be processed. To fix this, increase the "
+			                                 "\"Max Record Size (MiB)\" in the "
+			                                 "connector configuration. Original error:" +
+			                                 error_msg);
 		}
 		create_staging_table_res->ThrowError("Failed to create staging table for CSV file <" + props.filename + ">: ");
 	}

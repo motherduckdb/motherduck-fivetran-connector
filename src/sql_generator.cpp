@@ -943,6 +943,8 @@ void MdSqlGenerator::copy_table(duckdb::Connection& con, const table_def& from_t
 
 void MdSqlGenerator::add_defaults(duckdb::Connection& con, const std::vector<column_def>& columns,
                                   const std::string& table_name, const std::string& log_prefix) {
+	// Copies the default of every column that has a default defined to the destination table_name. This assumes all
+	// columns are present in the destination table.
 	for (const auto& col : columns) {
 		// This also sets the default value of the soft_deleted_column if it was not
 		// equal to _fivetran_deleted
@@ -1297,35 +1299,51 @@ void MdSqlGenerator::migrate_history_to_soft_delete(duckdb::Connection& con, con
 		                         "Fivetran support.");
 	}
 
-	{
+	if (soft_deleted_column == "_fivetran_deleted") {
 		std::ostringstream sql;
 		sql << "CREATE TABLE " << temp_table_name
-		    << " AS SELECT * EXCLUDE (\"_fivetran_start\", \"_fivetran_end\") FROM " << table.to_escaped_string();
+		    << " AS SELECT * EXCLUDE (\"_fivetran_start\", \"_fivetran_end\", \"_fivetran_active\"), "
+		       "NOT \"_fivetran_active\" AS \"_fivetran_deleted\" FROM "
+		    << table.to_escaped_string();
 
-		// Keep only the latest record for a primary key based on the highest
-		// _fivetran_start, using QUALIFY
+		// Keep only the latest record for a primary key based on the highest _fivetran_start, using QUALIFY
 		sql << " QUALIFY row_number() OVER (partition by ";
 		write_joined(sql, columns_pk, print_column);
 		sql << " ORDER BY \"_fivetran_start\" DESC) = 1";
 
-		run_query(con, "migrate_history_to_soft_delete create", sql.str(), "Could not add soft_deleted_column");
+		run_query(con, "migrate_history_to_soft_delete create", sql.str(), "Could not create soft_deleted table");
+	} else {
+		std::ostringstream sql;
+		sql << "CREATE TABLE " << temp_table_name
+		    << " AS SELECT * EXCLUDE (\"_fivetran_start\", \"_fivetran_end\", \"_fivetran_active\") "
+		       " REPLACE (NOT \"_fivetran_active\" AS "
+		    << quoted_deleted_col << "), false as \"_fivetran_deleted\" FROM " << table.to_escaped_string();
+
+		sql << " QUALIFY row_number() OVER (partition by ";
+		write_joined(sql, columns_pk, print_column);
+		sql << " ORDER BY \"_fivetran_start\" DESC) = 1";
+
+		run_query(con, "migrate_history_to_soft_delete create", sql.str(), "Could not create soft_deleted table");
+		// The quoted_deleted_col does not need an explicit default to be set here, it will inherit a default from the
+		// original table below when we apply add_defaults
 	}
 
-	add_column(con, temp_table,
-	           column_def {
-	               .name = "_fivetran_deleted",
-	               .type = duckdb::LogicalTypeId::BOOLEAN,
-	               .column_default = "false",
-	           },
-	           "migrate_history_to_soft_delete add_col", true);
+	add_defaults(con,
+	             {column_def {
+	                 .name = "_fivetran_deleted",
+	                 .type = duckdb::LogicalTypeId::BOOLEAN,
+	                 .column_default = "false",
+	             }},
+	             temp_table_name, "migrate_history_to_soft_delete set_deleted_default");
 
-	std::ostringstream sql;
-	sql << "UPDATE " << temp_table_name << " SET " << quoted_deleted_col << " = NOT \"_fivetran_active\";";
-	run_query(con, "migrate_history_to_soft_delete update_soft_deleted", sql.str(),
-	          "Could not update soft_deleted_column");
-	drop_column(con, temp_table, "_fivetran_active", "migrate_history_to_soft_delete drop_active");
-
-	add_defaults(con, columns, temp_table_name, "migrate_history_to_soft_delete set_default");
+	// _fivetran_start, _fivetran_end and _fivetran_active are not present in temp_table.
+	std::vector<column_def> new_columns;
+	for (auto& col : columns) {
+		if (col.name != "_fivetran_start" && col.name != "_fivetran_end" && col.name != "_fivetran_active") {
+			new_columns.push_back(col);
+		}
+	}
+	add_defaults(con, new_columns, temp_table_name, "migrate_history_to_soft_delete set_default");
 	add_pks(con, columns_pk, temp_table_name, "migrate_history_to_soft_delete set_pk");
 
 	// Swap the original and temporary table
@@ -1364,12 +1382,20 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection& con, const tabl
 		run_query(con, "migrate_history_to_live create", sql.str(), "Could not add soft_deleted_column");
 	}
 
-	const auto columns = describe_table(con, table);
+	auto columns = describe_table(con, table);
 
 	std::vector<const column_def*> columns_pk;
 	std::vector<const column_def*> columns_regular;
 	find_primary_keys(columns, columns_pk, &columns_regular, "_fivetran_start");
-	add_defaults(con, columns, temp_table_name, "migrate_history_to_live set_default");
+
+	// _fivetran_start, _fivetran_end and _fivetran_active are not present in temp_table.
+	std::vector<column_def> new_columns;
+	for (auto& col : columns) {
+		if (col.name != "_fivetran_start" && col.name != "_fivetran_end" && col.name != "_fivetran_active") {
+			new_columns.push_back(col);
+		}
+	}
+	add_defaults(con, new_columns, temp_table_name, "migrate_history_to_live set_default");
 
 	if (!keep_deleted_rows) {
 		add_pks(con, columns_pk, temp_table_name, "migrate_history_to_live add_pks");
