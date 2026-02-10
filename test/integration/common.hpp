@@ -78,14 +78,21 @@ void add_col(T &request, const std::string &name,
 	col->set_primary_key(is_primary_key);
 }
 
+
+constexpr std::array TEST_COLUMNS = {
+	column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
+	column_def {.name = "title", .type = duckdb::LogicalTypeId::VARCHAR},
+	column_def {.name = "magic_number", .type = duckdb::LogicalTypeId::INTEGER},
+	column_def {.name = "_fivetran_deleted", .type = duckdb::LogicalTypeId::BOOLEAN},
+	column_def {.name = "_fivetran_synced", .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
+};
+
 template <typename T>
 void define_test_table(T &request, const std::string &table_name) {
-  request.mutable_table()->set_name(table_name);
-	add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
-	add_col(request, "title", ::fivetran_sdk::v2::DataType::STRING, false);
-	add_col(request, "magic_number", ::fivetran_sdk::v2::DataType::INT, false);
-	add_col(request, "_fivetran_deleted", ::fivetran_sdk::v2::DataType::BOOLEAN, false);
-	add_col(request, "_fivetran_synced", ::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
+	request.mutable_table()->set_name(table_name);
+	for (auto column : TEST_COLUMNS) {
+		add_col(request, column.name, get_fivetran_type(column.type), column.primary_key);
+	}
 }
 
 constexpr std::array HISTORY_COLUMNS = {
@@ -227,6 +234,9 @@ void create_table_basic(DestinationSdkImpl &service,
 void create_table_with_varchar_col(DestinationSdkImpl &service,
                                    const std::string &table_name,
                                    const std::string &col_name);
+
+void create_test_table(DestinationSdkImpl &service,
+								   const std::string &table_name);
 
 void create_history_table(DestinationSdkImpl &service,
                                    const std::string &table_name);

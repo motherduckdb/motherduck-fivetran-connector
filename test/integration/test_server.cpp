@@ -239,17 +239,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 
 	// Schema will be main
 	const std::string table_name = "books" + std::to_string(Catch::rngSeed());
-
-	{
-		// Create Table
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
-		define_test_table(request, table_name);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		const auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
+	create_test_table(service, table_name);
 
 	auto con = get_test_connection(MD_TOKEN);
 	{
@@ -667,13 +657,7 @@ TEST_CASE("Parallel WriteBatch requests", "[integration][write-batch]") {
 		const std::string table_name = "parallel_books_" + std::to_string(i);
 		table_names.push_back(table_name);
 
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
-		define_test_table(request, table_name);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
+		create_test_table(service, table_name);
 	}
 
 	// Launch parallel WriteBatch requests that each write to their own table
@@ -716,13 +700,7 @@ TEST_CASE("Parallel DescribeTable requests", "[integration][describe-table]") {
 		const std::string table_name = "parallel_describe_" + std::to_string(t);
 		table_names.push_back(table_name);
 
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
-		define_test_table(request, table_name);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
+		create_test_table(service, table_name);
 	}
 
 	std::vector<std::future<grpc::Status>> futures;
