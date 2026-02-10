@@ -900,7 +900,7 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 		                      "_fivetran_start TIMESTAMPTZ, "
 		                      "_fivetran_end TIMESTAMPTZ, "
 		                      "_fivetran_active BOOLEAN default true, "
-							"primary key (id, _fivetran_start)");
+		                      "primary key (id, _fivetran_start)");
 		REQUIRE_NO_FAIL(res);
 	}
 
@@ -1027,7 +1027,7 @@ TEST_CASE("Migrate - add/drop column in history mode to empty table", "[integrat
 		                      "_fivetran_start TIMESTAMPTZ, "
 		                      "_fivetran_end TIMESTAMPTZ, "
 		                      "_fivetran_active BOOLEAN default true, "
-						"primary key (id, _fivetran_start))");
+		                      "primary key (id, _fivetran_start))");
 		REQUIRE_NO_FAIL(res);
 	}
 
@@ -1097,7 +1097,7 @@ TEST_CASE("Migrate - drop column in history mode", "[integration][migrate]") {
 		                      "_fivetran_start TIMESTAMPTZ, "
 		                      "_fivetran_end TIMESTAMPTZ, "
 		                      "_fivetran_active BOOLEAN default true, "
-						"primary key (id, _fivetran_start))");
+		                      "primary key (id, _fivetran_start))");
 		REQUIRE_NO_FAIL(res);
 	}
 
@@ -1510,7 +1510,7 @@ TEST_CASE("Migrate - history to soft delete with custom soft deleted column", "[
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 2);
 		check_row(res, 0, {1, "active_row", false}); // id=1 had an active row
-		check_row(res, 1, {2, "deleted_row", true});  // id=2 did not have an active row
+		check_row(res, 1, {2, "deleted_row", true}); // id=2 did not have an active row
 	}
 
 	// Verify history columns are gone
