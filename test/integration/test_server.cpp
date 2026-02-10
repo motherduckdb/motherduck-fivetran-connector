@@ -1235,7 +1235,7 @@ TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
 	{
 		// check that id=2 ("The Two Towers") got deleted because it's newer than
 		// the date in books_history_earliest.csv
-		auto res = con->Query("SELECT id, title, magic_number, _fivetran_deleted, _fivetran_synced, "
+		auto res = con->Query("SELECT id, title, magic_number, _fivetran_synced, "
 		                      "_fivetran_active, _fivetran_start, _fivetran_end"
 		                      " FROM " +
 		                      table_name + " ORDER BY id, _fivetran_start");
@@ -1247,30 +1247,28 @@ TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
 		REQUIRE(res->GetValue(0, 0) == 3);
 		REQUIRE(res->GetValue(1, 0) == "The old Hobbit");
 		REQUIRE(res->GetValue(2, 0) == 100);
-		REQUIRE(res->GetValue(3, 0) == false);                           // deleted
-		REQUIRE(res->GetValue(4, 0) == "2023-01-09 04:10:19.156057+00"); // synced
-		REQUIRE(res->GetValue(5, 0) == false);                           // no longer active
-		REQUIRE(res->GetValue(6, 0) == "2023-01-09 04:10:19.156057+00"); // _fivetran_start
-		REQUIRE(res->GetValue(7, 0) == "2024-01-09 04:10:19.155957+00"); // _fivetran_end
+		REQUIRE(res->GetValue(3, 0) == "2023-01-09 04:10:19.156057+00"); // synced
+		REQUIRE(res->GetValue(4, 0) == false);                           // no longer active
+		REQUIRE(res->GetValue(5, 0) == "2023-01-09 04:10:19.156057+00"); // _fivetran_start
+		REQUIRE(res->GetValue(6, 0) == "2024-01-09 04:10:19.155957+00"); // _fivetran_end
 
 		// latest record as of right before this WriteHistoryBatch; should get
 		// deactivated
 		REQUIRE(res->GetValue(0, 1) == 3);
 		REQUIRE(res->GetValue(1, 1) == "The Hobbit");
 		REQUIRE(res->GetValue(2, 1) == 14);
-		REQUIRE(res->GetValue(3, 1) == false);                           // deleted
-		REQUIRE(res->GetValue(4, 1) == "2024-01-09 04:10:19.156057+00"); // synced
-		REQUIRE(res->GetValue(5, 1) == false);                           // no longer active
-		REQUIRE(res->GetValue(6, 1) == "2024-01-09 04:10:19.156057+00"); // _fivetran_start
-		REQUIRE(res->GetValue(7, 1) == "2025-01-01 20:56:59.999+00");    // _fivetran_end updated to 1ms
+		REQUIRE(res->GetValue(3, 1) == "2024-01-09 04:10:19.156057+00"); // synced
+		REQUIRE(res->GetValue(4, 1) == false);                           // no longer active
+		REQUIRE(res->GetValue(5, 1) == "2024-01-09 04:10:19.156057+00"); // _fivetran_start
+		REQUIRE(res->GetValue(6, 1) == "2025-01-01 20:56:59.999+00");    // _fivetran_end updated to 1ms
 		                                                                 // before the earliest
 
 		// active record that's not part of the batch; not affected at all
 		REQUIRE(res->GetValue(0, 2) == 99);
-		REQUIRE(res->GetValue(5, 2) == true);                            // this primary key was not in the
+		REQUIRE(res->GetValue(4, 2) == true);                            // this primary key was not in the
 		                                                                 // incoming batch, so not deactivated
-		REQUIRE(res->GetValue(6, 2) == "2025-01-09 04:10:19.156057+00"); // _fivetran_start, no change
-		REQUIRE(res->GetValue(7, 2) == "9999-01-09 04:10:19.156057+00"); // _fivetran_end, no change
+		REQUIRE(res->GetValue(5, 2) == "2025-01-09 04:10:19.156057+00"); // _fivetran_start, no change
+		REQUIRE(res->GetValue(6, 2) == "9999-01-09 04:10:19.156057+00"); // _fivetran_end, no change
 	}
 
 	{
@@ -1296,7 +1294,7 @@ TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
 	{
 		// check that id=2 ("The Two Towers") got deleted because it's newer than
 		// the date in books_history_earliest.csv
-		auto res = con->Query("SELECT id, title, magic_number, _fivetran_deleted, _fivetran_synced, "
+		auto res = con->Query("SELECT id, title, magic_number, _fivetran_synced, "
 		                      "_fivetran_active, _fivetran_start, _fivetran_end"
 		                      " FROM " +
 		                      table_name + " ORDER BY id, _fivetran_start");
@@ -1307,31 +1305,28 @@ TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
 		REQUIRE(res->GetValue(0, 0) == 2);
 		REQUIRE(res->GetValue(1, 0) == "The empire strikes back");
 		REQUIRE(res->GetValue(2, 0).IsNull());                    // there was no previous record, so no previous value
-		REQUIRE(res->GetValue(3, 0) == false);                    // deleted
-		REQUIRE(res->GetValue(4, 0) == "2025-02-08 12:00:00+00"); // synced
-		REQUIRE(res->GetValue(5, 0) == true);                     // active, as per file
-		REQUIRE(res->GetValue(6, 0) == "2025-02-08 12:00:00+00"); // _fivetran_start
-		REQUIRE(res->GetValue(7, 0) == "9999-02-08 12:00:00+00"); // _fivetran_end
+		REQUIRE(res->GetValue(3, 0) == "2025-02-08 12:00:00+00"); // synced
+		REQUIRE(res->GetValue(4, 0) == true);                     // active, as per file
+		REQUIRE(res->GetValue(5, 0) == "2025-02-08 12:00:00+00"); // _fivetran_start
+		REQUIRE(res->GetValue(6, 0) == "9999-02-08 12:00:00+00"); // _fivetran_end
 
 		// old outdated record, not affected at all
 		REQUIRE(res->GetValue(0, 1) == 3);
 		REQUIRE(res->GetValue(1, 1) == "The old Hobbit");
 		REQUIRE(res->GetValue(2, 1) == 100);
-		REQUIRE(res->GetValue(3, 1) == false);                           // deleted
-		REQUIRE(res->GetValue(4, 1) == "2023-01-09 04:10:19.156057+00"); // synced
-		REQUIRE(res->GetValue(5, 1) == false);                           // no longer active
-		REQUIRE(res->GetValue(6, 1) == "2023-01-09 04:10:19.156057+00"); // _fivetran_start
-		REQUIRE(res->GetValue(7, 1) == "2024-01-09 04:10:19.155957+00"); // _fivetran_end
+		REQUIRE(res->GetValue(3, 1) == "2023-01-09 04:10:19.156057+00"); // synced
+		REQUIRE(res->GetValue(4, 1) == false);                           // no longer active
+		REQUIRE(res->GetValue(5, 1) == "2023-01-09 04:10:19.156057+00"); // _fivetran_start
+		REQUIRE(res->GetValue(6, 1) == "2024-01-09 04:10:19.155957+00"); // _fivetran_end
 
 		// no change in the historical record from the last check
 		REQUIRE(res->GetValue(0, 2) == 3);
 		REQUIRE(res->GetValue(1, 2) == "The Hobbit");
 		REQUIRE(res->GetValue(2, 2) == 14);
-		REQUIRE(res->GetValue(3, 2) == false);                           // deleted
-		REQUIRE(res->GetValue(4, 2) == "2024-01-09 04:10:19.156057+00"); // synced
-		REQUIRE(res->GetValue(5, 2) == false);                           // no longer active
-		REQUIRE(res->GetValue(6, 2) == "2024-01-09 04:10:19.156057+00"); // _fivetran_start
-		REQUIRE(res->GetValue(7, 2) == "2025-01-01 20:56:59.999+00");    // _fivetran_end updated to 1ms
+		REQUIRE(res->GetValue(3, 2) == "2024-01-09 04:10:19.156057+00"); // synced
+		REQUIRE(res->GetValue(4, 2) == false);                           // no longer active
+		REQUIRE(res->GetValue(5, 2) == "2024-01-09 04:10:19.156057+00"); // _fivetran_start
+		REQUIRE(res->GetValue(6, 2) == "2025-01-01 20:56:59.999+00");    // _fivetran_end updated to 1ms
 		                                                                 // before the earliest
 
 		// new version of an existing record
@@ -1340,19 +1335,18 @@ TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
 		// did not accidentally pick up "The old Hobbit" from an older record
 		REQUIRE(res->GetValue(1, 3) == "The Hobbit");
 		REQUIRE(res->GetValue(2, 3) == 123);
-		REQUIRE(res->GetValue(3, 3) == false);                    // deleted
-		REQUIRE(res->GetValue(4, 3) == "2025-02-08 12:00:00+00"); // synced
-		REQUIRE(res->GetValue(5, 3) == true);                     // new version active, per file
-		REQUIRE(res->GetValue(6, 3) == "2025-02-08 12:00:00+00"); // _fivetran_start
-		REQUIRE(res->GetValue(7, 3) == "9999-02-08 12:00:00+00"); // _fivetran_end updated to 1ms before
+		REQUIRE(res->GetValue(3, 3) == "2025-02-08 12:00:00+00"); // synced
+		REQUIRE(res->GetValue(4, 3) == true);                     // new version active, per file
+		REQUIRE(res->GetValue(5, 3) == "2025-02-08 12:00:00+00"); // _fivetran_start
+		REQUIRE(res->GetValue(6, 3) == "9999-02-08 12:00:00+00"); // _fivetran_end updated to 1ms before
 		                                                          // the earliest
 
 		// no change in the historical record from the last check
 		REQUIRE(res->GetValue(0, 4) == 99);
-		REQUIRE(res->GetValue(5, 4) == true);                            // this primary key was not in the
+		REQUIRE(res->GetValue(4, 4) == true);                            // this primary key was not in the
 		                                                                 // incoming batch, so not deactivated
-		REQUIRE(res->GetValue(6, 4) == "2025-01-09 04:10:19.156057+00"); // _fivetran_start, no change
-		REQUIRE(res->GetValue(7, 4) == "9999-01-09 04:10:19.156057+00"); // _fivetran_end, no change
+		REQUIRE(res->GetValue(5, 4) == "2025-01-09 04:10:19.156057+00"); // _fivetran_start, no change
+		REQUIRE(res->GetValue(6, 4) == "9999-01-09 04:10:19.156057+00"); // _fivetran_end, no change
 	}
 }
 
@@ -1383,7 +1377,7 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 
 	auto con = get_test_connection(MD_TOKEN);
 	{
-		auto res = con->Query("SELECT id, title, magic_number, _fivetran_deleted, _fivetran_synced, "
+		auto res = con->Query("SELECT id, title, magic_number, _fivetran_synced, "
 		                      "_fivetran_active, _fivetran_start, _fivetran_end"
 		                      " FROM " +
 		                      table_name + " ORDER BY id, _fivetran_start");
@@ -1394,11 +1388,10 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 		REQUIRE(res->GetValue(0, 0) == 3);
 		REQUIRE(res->GetValue(1, 0) == "The Hobbit");
 		REQUIRE(res->GetValue(2, 0) == 14);
-		REQUIRE(res->GetValue(3, 0) == false);                           // deleted
-		REQUIRE(res->GetValue(4, 0) == "2024-01-09 04:10:19.156057+00"); // synced
-		REQUIRE(res->GetValue(5, 0) == true);                            // active, per file
-		REQUIRE(res->GetValue(6, 0) == "2024-01-09 04:10:19.156057+00"); // _fivetran_start
-		REQUIRE(res->GetValue(7, 0) == "9999-01-09 04:10:19.156057+00"); // _fivetran_end
+		REQUIRE(res->GetValue(3, 0) == "2024-01-09 04:10:19.156057+00"); // synced
+		REQUIRE(res->GetValue(4, 0) == true);                            // active, per file
+		REQUIRE(res->GetValue(5, 0) == "2024-01-09 04:10:19.156057+00"); // _fivetran_start
+		REQUIRE(res->GetValue(6, 0) == "9999-01-09 04:10:19.156057+00"); // _fivetran_end
 	}
 
 	{
@@ -1458,7 +1451,7 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 	{
 		// check that id=2 ("The Two Towers") got deleted because it's newer than
 		// the date in books_history_earliest.csv
-		auto res = con->Query("SELECT id, title, magic_number, _fivetran_deleted, _fivetran_synced, "
+		auto res = con->Query("SELECT id, title, magic_number, _fivetran_synced, "
 		                      "_fivetran_active, _fivetran_start, _fivetran_end"
 		                      " FROM " +
 		                      table_name + " ORDER BY id, _fivetran_start");
@@ -1469,12 +1462,10 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 		REQUIRE(res->GetValue(0, 0) == 3);
 		REQUIRE(res->GetValue(1, 0) == "The Hobbit");
 		REQUIRE(res->GetValue(2, 0) == 14);
-		REQUIRE(res->GetValue(3, 0) == false);                           // deleted
-		REQUIRE(res->GetValue(4, 0) == "2024-01-09 04:10:19.156057+00"); // synced
-		REQUIRE(res->GetValue(5, 0) == false);                           // no longer active
-		REQUIRE(res->GetValue(6, 0) == "2024-01-09 04:10:19.156057+00"); // _fivetran_start
-		REQUIRE(res->GetValue(7, 0) == "2025-03-09 04:10:19.156057+00"); // _fivetran_end updated per
-		                                                                 // delete file
+		REQUIRE(res->GetValue(3, 0) == "2024-01-09 04:10:19.156057+00"); // synced
+		REQUIRE(res->GetValue(4, 0) == false);                           // no longer active
+		REQUIRE(res->GetValue(5, 0) == "2024-01-09 04:10:19.156057+00"); // _fivetran_start
+		REQUIRE(res->GetValue(6, 0) == "2025-03-09 04:10:19.156057+00"); // _fivetran_end updated per
 	}
 }
 
@@ -1560,14 +1551,14 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with reordered CSV columns", "[integ
 	auto con = get_test_connection(MD_TOKEN);
 	{
 		// Verify initial data was inserted correctly despite column order mismatch
-		auto res = con->Query("SELECT id, title, magic_number, _fivetran_deleted, _fivetran_active"
+		auto res = con->Query("SELECT id, title, magic_number, _fivetran_active"
 		                      " FROM " +
 		                      table_name + " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 2);
 
-		check_row(res, 0, {1, "Initial Book", 100, false, true});
-		check_row(res, 1, {2, "Second Book", 200, false, true});
+		check_row(res, 0, {1, "Initial Book", 100, true});
+		check_row(res, 1, {2, "Second Book", 200, true});
 	}
 
 	{
@@ -1726,7 +1717,11 @@ TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") 
 
 	auto con = get_test_connection(MD_TOKEN);
 
-	create_table_with_varchar_col(service, table_name, "name");
+	create_table(service, table_name,
+	             std::array {
+	                 column_def {.name = "id", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true},
+	                 column_def {.name = "name", .type = duckdb::LogicalTypeId::VARCHAR},
+	             });
 
 	{
 		// Alter Table to drop a regular column -- no-op because columns must not be
@@ -1912,11 +1907,12 @@ TEST_CASE("AlterTable must drop columns when specified", "[integration]") {
 	const std::string table_name = "some_table" + std::to_string(Catch::rngSeed());
 
 	auto con = get_test_connection(MD_TOKEN);
-	create_table(service, table_name, std::array {
-					 column_def {.name = "id", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true},
-					 column_def {.name = "name", .type = duckdb::LogicalTypeId::VARCHAR},
-					 column_def {.name = "test", .type = duckdb::LogicalTypeId::VARCHAR},
-				 });
+	create_table(service, table_name,
+	             std::array {
+	                 column_def {.name = "id", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true},
+	                 column_def {.name = "name", .type = duckdb::LogicalTypeId::VARCHAR},
+	                 column_def {.name = "test", .type = duckdb::LogicalTypeId::VARCHAR},
+	             });
 
 	{
 		// Alter Table to drop the name column
@@ -1988,10 +1984,11 @@ TEST_CASE("AlterTable decimal width change", "[integration]") {
 	};
 
 	// Create Table with DECIMAL(17,4)
-	create_table(service, table_name, std::array {
-					 column_def {.name = "id", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true},
-					 column_def {.name = "amount", .type = duckdb::LogicalTypeId::DECIMAL, .width = 17, .scale = 4},
-				 });
+	create_table(service, table_name,
+	             std::array {
+	                 column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
+	                 column_def {.name = "amount", .type = duckdb::LogicalTypeId::DECIMAL, .width = 17, .scale = 4},
+	             });
 	{
 		// Insert test data
 		auto res = con->Query("INSERT INTO " + table_name + " (id, amount) VALUES (1, 1234567890123.4567)");

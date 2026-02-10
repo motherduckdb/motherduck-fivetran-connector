@@ -116,7 +116,7 @@ void define_history_test_table(T &request, const std::string &table_name) {
 template <typename T>
 void define_transaction_test_table(T &request, const std::string &table_name) {
     request.mutable_table()->set_name(table_name);
-	add_col(request, "amount", ::fivetran_sdk::v2::DataType::STRING, false);
+	add_col(request, "amount", ::fivetran_sdk::v2::DataType::INT, false);
 	add_col(request, "_fivetran_synced", ::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
 	add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
 	add_col(request, "desc", ::fivetran_sdk::v2::DataType::STRING, false);
