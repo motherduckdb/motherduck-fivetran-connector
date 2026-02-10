@@ -900,7 +900,7 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 		                      "_fivetran_start TIMESTAMPTZ, "
 		                      "_fivetran_end TIMESTAMPTZ, "
 		                      "_fivetran_active BOOLEAN default true, "
-		                      "primary key (id, _fivetran_start)");
+		                      "primary key (id, _fivetran_start))");
 		REQUIRE_NO_FAIL(res);
 	}
 
