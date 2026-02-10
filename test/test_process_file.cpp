@@ -676,8 +676,8 @@ TEST_CASE("Test reading a CSV file with a huge VARCHAR column", "[csv_processor]
 		                                               [](const std::string&) {
 			                                               // Do nothing
 		                                               }),
-		                    Catch::Matchers::ContainsSubstring("Consider increasing the \"Max Line Size (MiB)\" "
-		                                                       "option in the connector configuration."));
+		                    Catch::Matchers::ContainsSubstring("increase the \"Max Line Size (MiB)\" in the "
+		                                                       "connector configuration. Original error:"));
 	}
 
 	SECTION("Reading a CSV file with a 27 MB VARCHAR column succeeds with increased max_line_size") {
