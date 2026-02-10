@@ -48,10 +48,20 @@ else()
     set(USE_SANITIZERS OFF)
 endif()
 
-### DuckDB dependency ###
-message(STATUS "Fetching DuckDB...")
 set(FETCHCONTENT_TRY_FIND_PACKAGE_MODE NEVER)
 set(FETCHCONTENT_QUIET OFF)
+
+### fmt dependency ###
+FetchContent_Declare(
+        fmt
+        GIT_REPOSITORY https://github.com/fmtlib/fmt
+        GIT_TAG        407c905e45ad75fc29bf0f9bb7c5c2fd3475976f # 12.1.0
+        GIT_SHALLOW TRUE
+        SYSTEM
+)
+FetchContent_MakeAvailable(fmt)
+
+### DuckDB dependency ###
 FetchContent_Declare(
     duckdb
     GIT_REPOSITORY https://github.com/duckdb/duckdb.git
@@ -60,6 +70,7 @@ FetchContent_Declare(
     SYSTEM
 )
 
+# DuckDB options
 set(ENABLE_EXTENSION_AUTOINSTALL OFF)
 set(ENABLE_EXTENSION_AUTOLOADING OFF)
 set(BUILD_SHELL OFF)
@@ -68,14 +79,15 @@ set(BUILD_UNITTESTS OFF)
 # Parquet is needed to enable zstd compression:
 # https://github.com/duckdb/duckdb/blob/c8906e701ea8202fce34813b151933275f501f4b/src/common/virtual_file_system.cpp#L52-54
 set(BUILD_EXTENSIONS "parquet")
-
 set(ENABLE_SANITIZER ${USE_SANITIZERS})
 set(ENABLE_UBSAN ${USE_SANITIZERS})
 
 # Set build type to RELEASE for DuckDB because we use the release build of the MotherDuck extension
 set(CMAKE_BUILD_TYPE_BACKUP ${CMAKE_BUILD_TYPE})
 set(CMAKE_BUILD_TYPE Release)
+
 FetchContent_MakeAvailable(duckdb)
+
 # Restore build type
 set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE_BACKUP})
 
@@ -160,6 +172,7 @@ target_link_libraries(motherduck_destination_sources PUBLIC
         duckdb_static
         fivetran_sdk
         OpenSSL::Crypto
+        fmt::fmt
 )
 
 # The short commit SHA of the latest commit is used as version number in the custom_user_agent

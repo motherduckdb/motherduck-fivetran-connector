@@ -6,7 +6,7 @@
 #include "md_logging.hpp"
 #include "schema_types.hpp"
 
-#include <format>
+#include <fmt/format.h>
 #include <functional>
 #include <iostream>
 #include <map>
@@ -1246,7 +1246,7 @@ void MdSqlGenerator::migrate_soft_delete_to_history(duckdb::Connection& con, con
       ELSE '9999-12-31T23:59:59.999Z'::TIMESTAMPTZ
     END;
   )";
-			std::string sql = std::format(query_template, absolute_table_name, quoted_deleted_col);
+			std::string sql = fmt::format(query_template, absolute_table_name, quoted_deleted_col);
 			run_query(con, "migrate_soft_delete_to_history update", sql, "Could not set history column values");
 		}
 

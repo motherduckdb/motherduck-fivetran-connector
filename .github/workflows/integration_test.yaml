@@ -10,7 +10,7 @@ on:
 jobs:
   build_and_test:
     name: Build and test the connector
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
@@ -24,17 +24,17 @@ jobs:
       - name: build the dependencies
         if: ${{ steps.cache-deps.outputs.cache-hit != 'true' }}
         env:
-          CC: clang-16
-          CXX: clang++-16
-          CPP: clang-cpp-16
+          CC: clang-15
+          CXX: clang++-15
+          CPP: clang-cpp-15
         run: |
           make build_openssl_native build_grpc build_test_dependencies
 
       - name: build the connector
         env:
-          CC: clang-16
-          CXX: clang++-16
-          CPP: clang-cpp-16
+          CC: clang-15
+          CXX: clang++-15
+          CPP: clang-cpp-15
         run: |
           make get_fivetran_protos
           make build_connector_debug
