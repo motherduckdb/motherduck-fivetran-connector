@@ -48,6 +48,10 @@ void check_row(duckdb::unique_ptr<duckdb::MaterializedQueryResult>& res, idx_t r
                std::initializer_list<duckdb::Value> expected) {
 	idx_t col = 0;
 	for (const auto& val : expected) {
-		REQUIRE(res->GetValue(col++, row) == val);
+		if (val.IsNull()) {
+			REQUIRE(res->GetValue(col++, row).IsNull());
+		} else {
+			REQUIRE(res->GetValue(col++, row) == val);
+		}
 	}
 }

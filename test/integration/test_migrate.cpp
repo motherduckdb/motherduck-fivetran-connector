@@ -305,25 +305,11 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 4); // The order is: id, data, value, amount
 
-		// id
-		REQUIRE(res->GetValue(0, 0).IsNull());
-		REQUIRE(res->GetValue(1, 0) == "PRI");
-		REQUIRE(res->GetValue(2, 0) == "INTEGER");
-
-		// data
-		REQUIRE(res->GetValue(0, 1).IsNull());
-		REQUIRE(res->GetValue(1, 1).IsNull());
-		REQUIRE(res->GetValue(2, 1) == "VARCHAR");
-
-		// value
-		REQUIRE(res->GetValue(0, 2) == "\'42\'");
-		REQUIRE(res->GetValue(1, 2).IsNull());
-		REQUIRE(res->GetValue(2, 2) == "DECIMAL(17,4)");
-
-		// amount
-		REQUIRE(res->GetValue(0, 3).IsNull());
-		REQUIRE(res->GetValue(1, 3).IsNull());
-		REQUIRE(res->GetValue(2, 3) == "DECIMAL(31,6)");
+		// duckdb::Value() creates a NULL value
+		check_row(res, 0, {duckdb::Value(), "PRI", "INTEGER"});                 // id
+		check_row(res, 1, {duckdb::Value(), duckdb::Value(), "VARCHAR"});       // data
+		check_row(res, 2, {"\'42\'", duckdb::Value(), "DECIMAL(17,4)"});        // value
+		check_row(res, 3, {duckdb::Value(), duckdb::Value(), "DECIMAL(31,6)"}); // amount
 	}
 
 	// Clean up
@@ -362,8 +348,7 @@ TEST_CASE("Migrate - copy column", "[integration][migrate]") {
 		auto res = con->Query("SELECT source_col, dest_col FROM " + table_name + " WHERE id = 1");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 1);
-		REQUIRE(res->GetValue(0, 0).ToString() == "original");
-		REQUIRE(res->GetValue(1, 0).ToString() == "original");
+		check_row(res, 0, {"original", "original"}); // amount
 	}
 
 	// Copy nonexisting column fails
@@ -510,33 +495,16 @@ TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration
 		                      duckdb::KeywordHelper::WriteQuoted(dest_table, '\'') + ") WHERE column_name != \'" +
 		                      soft_deleted_column + "\' ORDER BY column_name");
 		REQUIRE_NO_FAIL(res);
-		// The order is: _fivetran_active, _fivetran_end, _fivetran_start,
-		// _fivetran_synced, id, name
+		// The order is: _fivetran_active, _fivetran_end, _fivetran_start, _fivetran_synced, id, name
 		REQUIRE(res->RowCount() == 6);
 
 		// _fivetran_active is not a pk and has a default
-		REQUIRE(res->GetValue(0, 0).IsNull());
-		REQUIRE(res->GetValue(1, 0).ToString() == "'CAST(''true'' AS BOOLEAN)'");
-
-		// _fivetran_end is not a pk
-		REQUIRE(res->GetValue(0, 1).IsNull());
-		REQUIRE(res->GetValue(1, 1).IsNull());
-
-		// _fivetran_start is a pk
-		REQUIRE(res->GetValue(0, 2) == "PRI");
-		REQUIRE(res->GetValue(1, 2).IsNull());
-
-		// _fivetran_synced is not a pk
-		REQUIRE(res->GetValue(0, 3).IsNull());
-		REQUIRE(res->GetValue(1, 3).IsNull());
-
-		// id is a pk
-		REQUIRE(res->GetValue(0, 4) == "PRI");
-		REQUIRE(res->GetValue(1, 4).IsNull());
-
-		// name is not a pk
-		REQUIRE(res->GetValue(0, 5).IsNull());
-		REQUIRE(res->GetValue(1, 5).IsNull());
+		check_row(res, 0, {duckdb::Value(), "'CAST(''true'' AS BOOLEAN)'"});
+		check_row(res, 1, {duckdb::Value(), duckdb::Value()}); // _fivetran_end is not a pk
+		check_row(res, 2, {"PRI", duckdb::Value()});           // _fivetran_start is a pk
+		check_row(res, 3, {duckdb::Value(), duckdb::Value()}); // _fivetran_synced is not a pk
+		check_row(res, 4, {"PRI", duckdb::Value()});           // id is a pk
+		check_row(res, 5, {duckdb::Value(), duckdb::Value()}); // name is not a pk
 	}
 
 	// Clean up
@@ -871,10 +839,8 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 		auto res = con->Query("SELECT age, switch, final FROM " + table_name + " WHERE _fivetran_active = TRUE");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 1);
-		REQUIRE(res->GetValue(0, 0) == 25);
-		REQUIRE(res->GetValue(1, 0) == false);
-		REQUIRE(!res->GetValue(2, 0).IsNull());
-		REQUIRE(res->GetValue(2, 0).ToString() == "NULL");
+		check_row(res, 0, {25, false, "NULL"});
+		REQUIRE(!res->GetValue(2, 0).IsNull()); // Ensure it is not a literal NULL
 	}
 
 	// Verify: old row is now inactive
@@ -1015,8 +981,7 @@ TEST_CASE("Migrate - drop column in history mode", "[integration][migrate]") {
 		                      " WHERE _fivetran_start = '2024-01-01'::TIMESTAMPTZ");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 1);
-		REQUIRE(res->GetValue(0, 0).ToString() == "alice@example.com");
-		REQUIRE(res->GetValue(1, 0) == false);
+		check_row(res, 0, {"alice@example.com", false});
 	}
 
 	// Clean up
@@ -1212,8 +1177,7 @@ TEST_CASE("Migrate - history to live", "[integration][migrate]") {
 		auto res = con->Query("SELECT id, value FROM " + table_name);
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 1);
-		REQUIRE(res->GetValue(0, 0) == 1);
-		REQUIRE(res->GetValue(1, 0).ToString() == "current");
+		check_row(res, 0, {1, "current"});
 	}
 
 	// Verify history columns are gone
