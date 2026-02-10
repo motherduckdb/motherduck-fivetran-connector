@@ -1,8 +1,12 @@
 #pragma once
 
+#include <array>
 #include <string>
+#include "../constants.hpp"
 #include "duckdb.hpp"
+#include "fivetran_duckdb_interop.hpp"
 #include "motherduck_destination_server.hpp"
+#include "schema_types.hpp"
 #include "extension_helper.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -273,3 +277,26 @@ void define_history_test_table_reordered(T &request,
           false);
   add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
 }
+
+template <std::size_t N>
+void create_table(DestinationSdkImpl &service, const std::string &table_name,
+                  const std::array<column_def, N> columns) {
+  ::fivetran_sdk::v2::CreateTableRequest request;
+  add_config(request, test::constants::MD_TOKEN, test::constants::TEST_DATABASE_NAME, table_name);
+  for (auto column : columns) {
+    add_col(request, column.name, get_fivetran_type(column.type),
+            column.primary_key);
+  }
+
+  ::fivetran_sdk::v2::CreateTableResponse response;
+  auto status = service.CreateTable(nullptr, &request, &response);
+  REQUIRE_NO_FAIL(status);
+  REQUIRE(response.success());
+}
+
+void create_table_basic(DestinationSdkImpl &service,
+                        const std::string &table_name);
+
+void create_table_with_varchar_col(DestinationSdkImpl &service,
+                                   const std::string &table_name,
+                                   const std::string &col_name);

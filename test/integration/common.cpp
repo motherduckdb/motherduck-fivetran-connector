@@ -18,6 +18,22 @@ std::unique_ptr<duckdb::Connection> get_test_connection(const std::string& token
 	return std::make_unique<duckdb::Connection>(db);
 }
 
+void create_table_basic(DestinationSdkImpl& service, const std::string& table_name) {
+	create_table(service, table_name,
+	             std::array {
+	                 column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
+	             });
+}
+
+void create_table_with_varchar_col(DestinationSdkImpl& service, const std::string& table_name,
+                                   const std::string& col_name) {
+	create_table(service, table_name,
+	             std::array {
+	                 column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
+	                 column_def {.name = col_name, .type = duckdb::LogicalTypeId::VARCHAR},
+	             });
+}
+
 // Helper to verify a row's values in order. Usage:
 //   check_row(res, 0, {1, "Initial Book", 100, false});
 void check_row(duckdb::unique_ptr<duckdb::MaterializedQueryResult>& res, idx_t row,

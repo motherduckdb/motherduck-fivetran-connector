@@ -18,36 +18,6 @@
 
 using namespace test::constants;
 
-template <std::size_t N>
-void create_table(DestinationSdkImpl& service, const std::string& table_name, const std::array<column_def, N> columns) {
-	::fivetran_sdk::v2::CreateTableRequest request;
-	add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-	for (auto column : columns) {
-		add_col(request, column.name, get_fivetran_type(column.type), column.primary_key);
-	}
-
-	::fivetran_sdk::v2::CreateTableResponse response;
-	auto status = service.CreateTable(nullptr, &request, &response);
-	REQUIRE_NO_FAIL(status);
-	REQUIRE(response.success());
-}
-
-void create_table_basic(DestinationSdkImpl& service, const std::string& table_name) {
-	create_table(service, table_name,
-	             std::array {
-	                 column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
-	             });
-}
-
-void create_table_with_varchar_col(DestinationSdkImpl& service, const std::string& table_name,
-                                   const std::string& col_name) {
-	create_table(service, table_name,
-	             std::array {
-	                 column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
-	                 column_def {.name = col_name, .type = duckdb::LogicalTypeId::VARCHAR},
-	             });
-}
-
 TEST_CASE("Migrate - drop table", "[integration][migrate]") {
 	DestinationSdkImpl service;
 	const std::string table_name = "migrate_drop_table_" + std::to_string(Catch::rngSeed());
