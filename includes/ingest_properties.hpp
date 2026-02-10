@@ -13,8 +13,8 @@ inline constexpr std::uint32_t MAX_PARALLEL_REQUESTS = 8;
 /// (or 2?) GiB. Assuming the worst case that all eight requests arrive at the
 /// same time, we need to limit the buffer size accordingly. We don't want to
 /// come too close to the limit, so we pick 768 MiB here. Originally, this was
-/// set to 512 MiB, but one user actually had a line size of over 20 MiB.
-inline constexpr std::uint32_t MAX_LINE_SIZE_DEFAULT = 768 / MAX_PARALLEL_REQUESTS / 4; // 24 MiB
+/// set to 512 MiB, but one user actually had a record size of over 20 MiB.
+inline constexpr std::uint32_t MAX_RECORD_SIZE_DEFAULT = 768 / MAX_PARALLEL_REQUESTS / 4; // 24 MiB
 
 struct IngestProperties {
 	const std::string filename;
@@ -31,6 +31,6 @@ struct IngestProperties {
 	/// type. In that case, the CSV file is read with all_varchar=true and type
 	/// conversion is deferred to later stages (i.e., UPDATE).
 	const bool allow_unmodified_string = false;
-	/// Optional user-configured max_line_size (in MiB) for DuckDB's read_csv.
-	const std::uint32_t max_line_size = MAX_LINE_SIZE_DEFAULT;
+	/// Optional user-configured max record size (in MiB) for DuckDB's read_csv max_line_size.
+	const std::uint32_t max_record_size = MAX_RECORD_SIZE_DEFAULT;
 };

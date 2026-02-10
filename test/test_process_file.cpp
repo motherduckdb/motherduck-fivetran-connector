@@ -676,11 +676,11 @@ TEST_CASE("Test reading a CSV file with a huge VARCHAR column", "[csv_processor]
 		                                               [](const std::string&) {
 			                                               // Do nothing
 		                                               }),
-		                    Catch::Matchers::ContainsSubstring("increase the \"Max Line Size (MiB)\" in the "
+		                    Catch::Matchers::ContainsSubstring("increase the \"Max Record Size (MiB)\" in the "
 		                                                       "connector configuration. Original error:"));
 	}
 
-	SECTION("Reading a CSV file with a 27 MB VARCHAR column succeeds with increased max_line_size") {
+	SECTION("Reading a CSV file with a 27 MB VARCHAR column succeeds with increased max_record_size") {
 		const fs::path test_file = fs::path(TEST_RESOURCES_DIR) / "compressed_csv" / "lorem_ipsum_27mb.csv.zst";
 		REQUIRE(fs::exists(test_file));
 
@@ -689,7 +689,7 @@ TEST_CASE("Test reading a CSV file with a huge VARCHAR column", "[csv_processor]
 
 		const std::vector<column_def> columns {column_def {.name = "id", .type = duckdb::LogicalType::INTEGER},
 		                                       column_def {.name = "text", .type = duckdb::LogicalType::VARCHAR}};
-		IngestProperties props {.filename = test_file.string(), .columns = columns, .max_line_size = 28};
+		IngestProperties props {.filename = test_file.string(), .columns = columns, .max_record_size = 28};
 		auto logger = mdlog::Logger::CreateNopLogger();
 		csv_processor::ProcessFile(con, props, logger, [&con](const std::string& staging_table_name) {
 			const auto res = con.Query("FROM " + staging_table_name);

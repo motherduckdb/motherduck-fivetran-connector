@@ -105,14 +105,14 @@ std::string get_decryption_key(const std::string& filename, const google::protob
 	return encryption_key_it->second;
 }
 
-std::uint32_t get_max_line_size(const google::protobuf::Map<std::string, std::string>& configuration) {
-	const auto value = config::find_optional_property(configuration, config::PROP_MAX_LINE_SIZE);
+std::uint32_t get_max_record_size(const google::protobuf::Map<std::string, std::string>& configuration) {
+	const auto value = config::find_optional_property(configuration, config::PROP_MAX_RECORD_SIZE);
 
 	if (value.has_value()) {
 		return static_cast<std::uint32_t>(std::stoul(value.value()));
 	}
 
-	return MAX_LINE_SIZE_DEFAULT;
+	return MAX_RECORD_SIZE_DEFAULT;
 }
 } // namespace
 
@@ -140,15 +140,16 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(::grpc::ServerContext*,
 	db_field.set_required(true);
 	response->add_fields()->CopyFrom(db_field);
 
-	fivetran_sdk::v2::FormField max_line_size_field;
-	max_line_size_field.set_name(config::PROP_MAX_LINE_SIZE);
-	max_line_size_field.set_label("Max Line Size (MiB)");
-	max_line_size_field.set_description(
-	    "Maximum line size in MiB for reading CSV files. Leave empty to use the default (24 MiB). "
-	    "Increase this if the ingest fails and the error suggests to increase the \"Max Line Size (MiB)\" option.");
-	max_line_size_field.set_text_field(fivetran_sdk::v2::PlainText);
-	max_line_size_field.set_required(false);
-	response->add_fields()->CopyFrom(max_line_size_field);
+	fivetran_sdk::v2::FormField max_record_size_field;
+	max_record_size_field.set_name(config::PROP_MAX_RECORD_SIZE);
+	max_record_size_field.set_label("Max Record Size (MiB)");
+	max_record_size_field.set_description(
+	    "Maximum record size in MiB. Internally, this is an upper limit for the lines in the CSV files Fivetran "
+		"generates. Increase this if the ingest fails and the error suggests to increase the \"Max Record Size (MiB)\" "
+		"option, or if you are certain you have very large records. Leave empty to use the default (24 MiB).");
+	max_record_size_field.set_text_field(fivetran_sdk::v2::PlainText);
+	max_record_size_field.set_required(false);
+	response->add_fields()->CopyFrom(max_record_size_field);
 
 	for (const auto& test_case : config_tester::get_test_cases()) {
 		auto connection_test = response->add_tests();
@@ -360,7 +361,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 		auto schema_name = get_schema_name(request);
 
 		const std::string db_name = config::find_property(request->configuration(), config::PROP_DATABASE);
-		const auto max_line_size = get_max_line_size(request->configuration());
+		const auto max_record_size = get_max_record_size(request->configuration());
 
 		table_def table_name {db_name, get_schema_name(request), request->table().name()};
 		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
@@ -383,7 +384,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 			                        .columns = cols,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = false,
-			                        .max_line_size = max_line_size};
+			                        .max_record_size = max_record_size};
 
 			csv_processor::ProcessFile(con, props, logger, [&](const std::string& staging_table_name) {
 				sql_generator->upsert(con, table_name, staging_table_name, columns_pk, columns_regular);
@@ -398,7 +399,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 			                        .columns = cols,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = true,
-			                        .max_line_size = max_line_size};
+			                        .max_record_size = max_record_size};
 
 			csv_processor::ProcessFile(con, props, logger, [&](const std::string& staging_table_name) {
 				sql_generator->update_values(con, table_name, staging_table_name, columns_pk, columns_regular,
@@ -418,7 +419,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 			                        .columns = cols_to_read,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = false,
-			                        .max_line_size = max_line_size};
+			                        .max_record_size = max_record_size};
 
 			csv_processor::ProcessFile(con, props, logger, [&](const std::string& staging_table_name) {
 				sql_generator->delete_rows(con, table_name, staging_table_name, columns_pk);
@@ -463,7 +464,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 		auto schema_name = get_schema_name(request);
 
 		const std::string db_name = config::find_property(request->configuration(), config::PROP_DATABASE);
-		const auto max_line_size = get_max_line_size(request->configuration());
+		const auto max_record_size = get_max_record_size(request->configuration());
 
 		table_def table_name {db_name, get_schema_name(request), request->table().name()};
 
@@ -505,7 +506,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 			                        .columns = earliest_start_cols,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = false,
-			                        .max_line_size = max_line_size};
+			                        .max_record_size = max_record_size};
 
 			csv_processor::ProcessFile(con, props, logger, [&](const std::string& staging_table_name) {
 				sql_generator->deactivate_historical_records(con, table_name, staging_table_name, lar_table_name,
@@ -522,7 +523,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 			                        .columns = cols,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = true,
-			                        .max_line_size = max_line_size};
+			                        .max_record_size = max_record_size};
 
 			csv_processor::ProcessFile(con, props, logger, [&](const std::string& staging_table_name) {
 				sql_generator->add_partial_historical_values(con, table_name, staging_table_name, lar_table_name,
@@ -544,7 +545,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 			                        .columns = cols,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = false,
-			                        .max_line_size = max_line_size};
+			                        .max_record_size = max_record_size};
 
 			csv_processor::ProcessFile(con, props, logger, [&](const std::string& staging_table_name) {
 				sql_generator->insert(con, table_name, staging_table_name, columns_pk, columns_regular);
@@ -572,7 +573,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 			                        .columns = cols_to_read,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = false,
-			                        .max_line_size = max_line_size};
+			                        .max_record_size = max_record_size};
 
 			csv_processor::ProcessFile(con, props, logger, [&](const std::string& staging_table_name) {
 				sql_generator->delete_historical_rows(con, table_name, staging_table_name, columns_pk);

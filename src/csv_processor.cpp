@@ -225,11 +225,11 @@ std::string generate_read_csv_query(const std::string& filepath, const IngestPro
 		query << ", allow_quoted_nulls=true";
 	}
 
-	const std::uint32_t max_line_size_bytes = props.max_line_size * 1024 * 1024;
-	// We want at least four lines to always fit into the buffer (see duckdb::CSVBuffer::MIN_ROWS_PER_BUFFER)
-	const std::uint32_t buffer_size = max_line_size_bytes * 4;
+	const std::uint32_t max_record_size_bytes = props.max_record_size * 1024 * 1024;
+	// We want at least four records to always fit into the buffer (see duckdb::CSVBuffer::MIN_ROWS_PER_BUFFER)
+	const std::uint32_t buffer_size = max_record_size_bytes * 4;
 
-	query << ", max_line_size=" << std::to_string(max_line_size_bytes);
+	query << ", max_line_size=" << std::to_string(max_record_size_bytes);
 	query << ", buffer_size=" << std::to_string(buffer_size);
 	query << ", compression=" << (compression == CompressionType::ZSTD ? "'zstd'" : "'none'");
 
@@ -302,7 +302,7 @@ void ProcessFile(duckdb::Connection& con, const IngestProperties& props, mdlog::
 		const auto& error_msg = create_staging_table_res->GetError();
 		if (error_msg.find("Change the maximum length size, e.g., max_line_size=") != std::string::npos) {
 			throw md_error::RecoverableError(
-			    "A data record was too large to be processed. To fix this, increase the \"Max Line Size (MiB)\" in the "
+			    "A data record was too large to be processed. To fix this, increase the \"Max Record Size (MiB)\" in the "
 			    "connector configuration. Original error:" +
 			    error_msg);
 		}

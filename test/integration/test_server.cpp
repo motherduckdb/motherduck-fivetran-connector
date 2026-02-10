@@ -26,7 +26,7 @@ TEST_CASE("ConfigurationForm", "[integration][config]") {
 	REQUIRE(response.fields_size() == 3);
 	REQUIRE(response.fields(0).name() == "motherduck_token");
 	REQUIRE(response.fields(1).name() == "motherduck_database");
-	REQUIRE(response.fields(2).name() == "max_line_size");
+	REQUIRE(response.fields(2).name() == "max_record_size");
 
 	REQUIRE(response.tests_size() == 3);
 }
