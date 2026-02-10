@@ -2,7 +2,9 @@
 #include "common.hpp"
 #include "config_tester.hpp"
 #include "duckdb.hpp"
+#include "fivetran_duckdb_interop.hpp"
 #include "motherduck_destination_server.hpp"
+#include "schema_types.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
@@ -16,23 +18,43 @@
 
 using namespace test::constants;
 
+template <std::size_t N>
+void create_table(DestinationSdkImpl& service, const std::string& table_name, const std::array<column_def, N> columns) {
+	::fivetran_sdk::v2::CreateTableRequest request;
+	add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+	for (auto column : columns) {
+		add_col(request, column.name, get_fivetran_type(column.type), column.primary_key);
+	}
+
+	::fivetran_sdk::v2::CreateTableResponse response;
+	auto status = service.CreateTable(nullptr, &request, &response);
+	REQUIRE_NO_FAIL(status);
+	REQUIRE(response.success());
+}
+
+void create_table_basic(DestinationSdkImpl& service, const std::string& table_name) {
+	create_table(service, table_name,
+	             std::array {
+	                 column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
+	             });
+}
+
+void create_table_with_varchar_col(DestinationSdkImpl& service, const std::string& table_name,
+                                   const std::string& col_name) {
+	create_table(service, table_name,
+	             std::array {
+	                 column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
+	                 column_def {.name = col_name, .type = duckdb::LogicalTypeId::VARCHAR},
+	             });
+}
+
 TEST_CASE("Migrate - drop table", "[integration][migrate]") {
 	DestinationSdkImpl service;
 	const std::string table_name = "migrate_drop_table_" + std::to_string(Catch::rngSeed());
 
+	create_table_with_varchar_col(service, table_name, "name");
+
 	auto con = get_test_connection(MD_TOKEN);
-
-	{
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-		add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
-		add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, false);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
-
 	{
 		auto res = con->Query("INSERT INTO " + table_name + " VALUES (1, 'Alice')");
 		REQUIRE_NO_FAIL(res);
@@ -88,20 +110,9 @@ TEST_CASE("Migrate - rename table", "[integration][migrate]") {
 	const std::string from_table = "migrate_rename_from_" + std::to_string(Catch::rngSeed());
 	const std::string to_table = "migrate_rename_to_" + std::to_string(Catch::rngSeed());
 	const std::string second_from_table = "second_migrate_rename_from_" + std::to_string(Catch::rngSeed());
+	create_table_with_varchar_col(service, from_table, "value");
 
 	auto con = get_test_connection(MD_TOKEN);
-
-	// Create the source table
-	{
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, from_table);
-		add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
-		add_col(request, "value", ::fivetran_sdk::v2::DataType::STRING, false);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
 
 	// Insert data
 	{
@@ -158,15 +169,7 @@ TEST_CASE("Migrate - rename table", "[integration][migrate]") {
 	}
 
 	// Create another source table
-	{
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, second_from_table);
-		add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
+	create_table_basic(service, second_from_table);
 
 	// Rename to existing table should fail
 	{
@@ -190,20 +193,9 @@ TEST_CASE("Migrate - rename column", "[integration][migrate]") {
 	DestinationSdkImpl service;
 	const std::string table_name = "migrate_rename_col_" + std::to_string(Catch::rngSeed());
 
+	create_table_with_varchar_col(service, table_name, "old_name");
+
 	auto con = get_test_connection(MD_TOKEN);
-
-	// Create table
-	{
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-		add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
-		add_col(request, "old_name", ::fivetran_sdk::v2::DataType::STRING, false);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
-
 	// Insert data
 	{
 		auto res = con->Query("INSERT INTO " + table_name + " VALUES (1, 'test_value')");
@@ -372,20 +364,9 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
 TEST_CASE("Migrate - copy column", "[integration][migrate]") {
 	DestinationSdkImpl service;
 	const std::string table_name = "migrate_copy_col_" + std::to_string(Catch::rngSeed());
+	create_table_with_varchar_col(service, table_name, "source_col");
 
 	auto con = get_test_connection(MD_TOKEN);
-
-	// Create table
-	{
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-		add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
-		add_col(request, "source_col", ::fivetran_sdk::v2::DataType::STRING, false);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
 
 	// Insert data
 	{
@@ -661,19 +642,9 @@ TEST_CASE("Migrate - copy table to history mode from live", "[integration][migra
 TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
 	DestinationSdkImpl service;
 	const std::string table_name = "migrate_add_col_" + std::to_string(Catch::rngSeed());
+	create_table_basic(service, table_name);
 
 	auto con = get_test_connection(MD_TOKEN);
-
-	// Create table
-	{
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-		add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
 
 	// Insert data
 	{
@@ -777,20 +748,9 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
 TEST_CASE("Migrate - update column value", "[integration][migrate]") {
 	DestinationSdkImpl service;
 	const std::string table_name = "migrate_update_col_" + std::to_string(Catch::rngSeed());
+	create_table_with_varchar_col(service, table_name, "status");
 
 	auto con = get_test_connection(MD_TOKEN);
-
-	// Create table
-	{
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-		add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
-		add_col(request, "status", ::fivetran_sdk::v2::DataType::STRING, false);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
 
 	// Insert data
 	{
@@ -1097,19 +1057,9 @@ TEST_CASE("Migrate - live to soft delete", "[integration][migrate]") {
 	DestinationSdkImpl service;
 	const std::string table_name = "migrate_live_soft_" + std::to_string(Catch::rngSeed());
 
-	auto con = get_test_connection(MD_TOKEN);
-
 	// Create a "live" table (no soft delete column)
-	{
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-		add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
-		add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, false);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
+	create_table_with_varchar_col(service, table_name, "name");
+	auto con = get_test_connection(MD_TOKEN);
 
 	// Insert data
 	{
@@ -1204,19 +1154,9 @@ TEST_CASE("Migrate - live to history", "[integration][migrate]") {
 	DestinationSdkImpl service;
 	const std::string table_name = "migrate_live_hist_" + std::to_string(Catch::rngSeed());
 
-	auto con = get_test_connection(MD_TOKEN);
-
 	// Create a live table
-	{
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-		add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
-		add_col(request, "value", ::fivetran_sdk::v2::DataType::STRING, false);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
+	create_table_with_varchar_col(service, table_name, "value");
+	auto con = get_test_connection(MD_TOKEN);
 
 	// Insert data
 	{
@@ -1444,7 +1384,7 @@ TEST_CASE("Migrate - fails with empty table name", "[integration][migrate]") {
 	DestinationSdkImpl service;
 
 	::fivetran_sdk::v2::MigrateRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, "");
+	add_config(request, MD_TOKEN, TEST_DATABASE_NAME, "");
 	request.mutable_details()->mutable_drop()->set_drop_table(true);
 
 	::fivetran_sdk::v2::MigrateResponse response;
@@ -1458,15 +1398,7 @@ TEST_CASE("Migrate - unsupported operation returns unsupported", "[integration][
 	const std::string table_name = "migrate_unsupported_" + std::to_string(Catch::rngSeed());
 
 	// Create table first
-	{
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-		add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
+	create_table_basic(service, table_name);
 
 	// Try empty copy operation (unsupported - no specific copy type set)
 	{
