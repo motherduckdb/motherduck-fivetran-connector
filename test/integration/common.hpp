@@ -208,8 +208,11 @@ void create_table(DestinationSdkImpl &service, const std::string &table_name,
   ::fivetran_sdk::v2::CreateTableRequest request;
   add_config(request, test::constants::MD_TOKEN, test::constants::TEST_DATABASE_NAME, table_name);
   for (auto column : columns) {
-    add_col(request, column.name, get_fivetran_type(column.type),
-            column.primary_key);
+  	if (column.type == duckdb::LogicalTypeId::DECIMAL && column.width > 0) {
+  		add_decimal_col(request, column.name, column.primary_key, column.width, column.scale);
+  	} else {
+		add_col(request, column.name, get_fivetran_type(column.type), column.primary_key);
+  	}
   }
 
   ::fivetran_sdk::v2::CreateTableResponse response;

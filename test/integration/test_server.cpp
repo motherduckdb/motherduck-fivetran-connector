@@ -934,9 +934,7 @@ TEST_CASE("Test that error is thrown for invalid DECIMAL width and scale") {
 
 	// Try use DECIMAL column with precision/width > 38
 	::fivetran_sdk::v2::CreateTableRequest request;
-	(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-	(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-	request.mutable_table()->set_name("my_decimal_table");
+	add_config(request, MD_TOKEN, TEST_DATABASE_NAME, "my_decimal_table");
 
 	SECTION("Test precision/width > 38") {
 		auto decimal_col = request.mutable_table()->add_columns();
@@ -973,18 +971,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 	const std::string table_name = "some_table" + std::to_string(Catch::rngSeed());
 
 	auto con = get_test_connection(MD_TOKEN);
-
-	{
-		// Create Table
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
-		add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, false);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
+	create_table_with_varchar_col(service, table_name, "name");
 
 	{
 		// Alter Table to add a new primary key to an empty table
@@ -1247,20 +1234,7 @@ TEST_CASE("Invalid truncate with nonexisting delete column", "[integration][curr
 	DestinationSdkImpl service;
 
 	const std::string table_name = "empty_table" + std::to_string(Catch::rngSeed());
-
-	{
-		// Create Table that is missing the _fivetran_deleted column
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-
-		auto col1 = request.mutable_table()->add_columns();
-		col1->set_name("something");
-		col1->set_type(::fivetran_sdk::v2::DataType::STRING);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
+	create_table_basic(service, table_name);
 
 	{
 		// Attempt to truncate the table using a nonexisting _fivetran_deleted
@@ -1824,17 +1798,7 @@ TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") 
 
 	auto con = get_test_connection(MD_TOKEN);
 
-	{
-		// Create Table
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
-		add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, false);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
+	create_table_with_varchar_col(service, table_name, "name");
 
 	{
 		// Alter Table to drop a regular column -- no-op because columns must not be
@@ -2020,19 +1984,11 @@ TEST_CASE("AlterTable must drop columns when specified", "[integration]") {
 	const std::string table_name = "some_table" + std::to_string(Catch::rngSeed());
 
 	auto con = get_test_connection(MD_TOKEN);
-
-	{
-		// Create Table
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
-		add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, false);
-		add_col(request, "test", ::fivetran_sdk::v2::DataType::STRING, false);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
+	create_table(service, table_name, std::array {
+					 column_def {.name = "id", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true},
+					 column_def {.name = "name", .type = duckdb::LogicalTypeId::VARCHAR},
+					 column_def {.name = "test", .type = duckdb::LogicalTypeId::VARCHAR},
+				 });
 
 	{
 		// Alter Table to drop the name column
@@ -2103,18 +2059,11 @@ TEST_CASE("AlterTable decimal width change", "[integration]") {
 		REQUIRE(res->GetValue(1, 0).ToString() == expected_amount);
 	};
 
-	{
-		// Create Table with DECIMAL(17,4)
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-		add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
-		add_decimal_col(request, "amount", false, 17, 4);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
-
+	// Create Table with DECIMAL(17,4)
+	create_table(service, table_name, std::array {
+					 column_def {.name = "id", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true},
+					 column_def {.name = "amount", .type = duckdb::LogicalTypeId::DECIMAL, .width = 17, .scale = 4},
+				 });
 	{
 		// Insert test data
 		auto res = con->Query("INSERT INTO " + table_name + " (id, amount) VALUES (1, 1234567890123.4567)");
