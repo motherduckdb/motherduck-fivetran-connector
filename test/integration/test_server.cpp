@@ -1312,9 +1312,9 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 		REQUIRE(res->RowCount() == 1);
 
 		// record inserted as is
-		check_row(res, 0, {3, "The Hobbit", 14,
-		                   "2024-01-09 04:10:19.156057+00", true,
-		                   "2024-01-09 04:10:19.156057+00", "9999-01-09 04:10:19.156057+00"});
+		check_row(res, 0,
+		          {3, "The Hobbit", 14, "2024-01-09 04:10:19.156057+00", true, "2024-01-09 04:10:19.156057+00",
+		           "9999-01-09 04:10:19.156057+00"});
 	}
 
 	{
@@ -1382,9 +1382,9 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 		REQUIRE(res->RowCount() == 1);
 
 		// record inserted as is, but now deactivated with _fivetran_end updated
-		check_row(res, 0, {3, "The Hobbit", 14,
-		                   "2024-01-09 04:10:19.156057+00", false,
-		                   "2024-01-09 04:10:19.156057+00", "2025-03-09 04:10:19.156057+00"});
+		check_row(res, 0,
+		          {3, "The Hobbit", 14, "2024-01-09 04:10:19.156057+00", false, "2024-01-09 04:10:19.156057+00",
+		           "2025-03-09 04:10:19.156057+00"});
 	}
 }
 
@@ -1867,7 +1867,6 @@ TEST_CASE("AlterTable decimal width change", "[integration]") {
 	DestinationSdkImpl service;
 
 	const std::string table_name = "some_table" + std::to_string(Catch::rngSeed());
-
 	auto con = get_test_connection(MD_TOKEN);
 
 	auto verify_decimal_column = [&](uint32_t expected_precision, uint32_t expected_scale) {
