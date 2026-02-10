@@ -1290,7 +1290,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(duckdb::Connection& con, con
 
 	std::vector<const column_def*> columns_pk;
 	std::vector<const column_def*> columns_regular;
-	auto columns = describe_table(con, table);
+	const auto columns = describe_table(con, table);
 	find_primary_keys(columns, columns_pk, &columns_regular, "_fivetran_start");
 
 	if (columns_pk.empty()) {
