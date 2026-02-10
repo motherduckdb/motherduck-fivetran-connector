@@ -65,7 +65,7 @@ FetchContent_MakeAvailable(fmt)
 FetchContent_Declare(
     duckdb
     GIT_REPOSITORY https://github.com/duckdb/duckdb.git
-    GIT_TAG v1.4.3
+    GIT_TAG 6ddac802ffa9bcfbcc3f5f0d71de5dff9b0bc250 # v1.4.4
     GIT_SHALLOW TRUE
     SYSTEM
 )
