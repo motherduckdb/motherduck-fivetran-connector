@@ -1349,7 +1349,7 @@ TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
 	{
 		// Create Table
 		::fivetran_sdk::v2::CreateTableRequest request;
-		set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		define_history_test_table(request, table_name);
 
 		::fivetran_sdk::v2::CreateTableResponse response;
@@ -1360,7 +1360,7 @@ TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
 	{
 		// upsert some data, so that delete-earliest has something to delete
 		::fivetran_sdk::v2::WriteBatchRequest request;
-		set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		define_history_test_table(request, table_name);
 
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
@@ -1376,7 +1376,7 @@ TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
 		// (not a realistic scenario, but useful to isolate changes and test
 		// idempotence in the next section)
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
-		set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		define_history_test_table(request, table_name);
 
 		request.add_earliest_start_files(TEST_RESOURCES_DIR + "books_history_earliest.csv");
@@ -1432,7 +1432,7 @@ TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
 		// a WriteHistoryBatchRequest with the same earliest files as before, plus
 		// update files
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
-		set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		// TBD: check what happens when unmodified string is not set - it seems to
 		// be blank but shoudl it fail instead?
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
@@ -1520,7 +1520,7 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 	{
 		// Create Table
 		::fivetran_sdk::v2::CreateTableRequest request;
-		set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		define_history_test_table(request, table_name);
 
 		::fivetran_sdk::v2::CreateTableResponse response;
@@ -1532,7 +1532,7 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 		// history write with the earliest file (that does not affect anything
 		// because there is no data), plus upsert file
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
-		set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 
@@ -1570,7 +1570,7 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 		// history write with just the delete file (for testing; normally there
 		// would also be the earliest start file)
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
-		set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 
@@ -1589,7 +1589,7 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 		// the structure of the historical delete files that come through in real
 		// life
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
-		set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 
@@ -1607,7 +1607,7 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 		// same as above (history write with delete file only), but this delete file
 		// has only the _fivetran_end column and the primary key in it
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
-		set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 
@@ -1651,7 +1651,7 @@ TEST_CASE("WriteHistoryBatch should delete overlapping records", "[integration][
 	{
 		// Create Table
 		::fivetran_sdk::v2::CreateTableRequest request;
-		set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		define_history_test_table(request, table_name);
 
 		::fivetran_sdk::v2::CreateTableResponse response;
@@ -1662,7 +1662,7 @@ TEST_CASE("WriteHistoryBatch should delete overlapping records", "[integration][
 	{
 		// Initial batch
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
-		set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 
@@ -1679,7 +1679,7 @@ TEST_CASE("WriteHistoryBatch should delete overlapping records", "[integration][
 	{
 		// Batch with overlapping value for id=2
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
-		set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 
@@ -1717,7 +1717,7 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with reordered CSV columns", "[integ
 		// id, title, magic_number, _fivetran_deleted, _fivetran_synced,
 		// _fivetran_active, _fivetran_start, _fivetran_end
 		::fivetran_sdk::v2::CreateTableRequest request;
-		set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		define_history_test_table(request, table_name);
 
 		::fivetran_sdk::v2::CreateTableResponse response;
@@ -1730,7 +1730,7 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with reordered CSV columns", "[integ
 		// order: _fivetran_end, magic_number, _fivetran_active, title,
 		// _fivetran_synced, _fivetran_start, _fivetran_deleted, id
 		::fivetran_sdk::v2::WriteBatchRequest request;
-		set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		define_history_test_table_reordered(request, table_name);
 
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
@@ -1759,7 +1759,7 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with reordered CSV columns", "[integ
 		// than the table was created with. This tests that INSERT statements
 		// use explicit column lists and don't rely on positional matching.
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
-		set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		request.mutable_file_params()->set_unmodified_string("unmod-testmarker");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 
@@ -1801,7 +1801,7 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with upsert", "[integration][write-b
 	{
 		// Create Tables
 		::fivetran_sdk::v2::CreateTableRequest request;
-		set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		define_transaction_test_table(request, transaction_table_name);
 
 		::fivetran_sdk::v2::CreateTableResponse response;
@@ -1809,7 +1809,7 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with upsert", "[integration][write-b
 		REQUIRE_NO_FAIL(status);
 
 		::fivetran_sdk::v2::CreateTableRequest request2;
-		set_up_plain_write_request(request2, MD_TOKEN, TEST_DATABASE_NAME);
+		add_config(request2, MD_TOKEN, TEST_DATABASE_NAME);
 		define_transaction_history_test_table(request2, transaction_history_table_name);
 
 		::fivetran_sdk::v2::CreateTableResponse response2;
@@ -1820,7 +1820,7 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with upsert", "[integration][write-b
 	{
 		// WriteBatch
 		::fivetran_sdk::v2::WriteBatchRequest request;
-		set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP");
 
@@ -1837,7 +1837,7 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with upsert", "[integration][write-b
 		// history write with the earliest file (that does not affect anything
 		// because there is no data), plus upsert file
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
-		set_up_plain_write_request(request, MD_TOKEN, TEST_DATABASE_NAME);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP");
 

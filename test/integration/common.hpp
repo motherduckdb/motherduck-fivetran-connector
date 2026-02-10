@@ -211,12 +211,6 @@ void define_test_multikey_table(T &request, const std::string &table_name) {
 }
 
 /* compression and encryption are off/none by default */
-template <typename T>
-void set_up_plain_write_request(T &request, const std::string &token,
-                                const std::string db_name) {
-  (*request.mutable_configuration())["motherduck_token"] = token;
-  (*request.mutable_configuration())["motherduck_database"] = db_name;
-}
 
 template <typename T>
 void add_config(T &request, const std::string &token,
@@ -234,8 +228,7 @@ inline void add_config(fivetran_sdk::v2::MigrateRequest &request, const std::str
 }
 
 template <typename T>
-void add_config(T &request, const std::string &token,
-                const std::string &database) {
+void add_config(T &request, const std::string &token, const std::string &database) {
   (*request.mutable_configuration())["motherduck_token"] = token;
   (*request.mutable_configuration())["motherduck_database"] = database;
 }
