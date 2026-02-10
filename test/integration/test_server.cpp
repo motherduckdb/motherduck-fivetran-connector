@@ -65,9 +65,7 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable", "[integra
 		::fivetran_sdk::v2::CreateTableRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.set_schema_name(schema_name);
-		auto col1 = request.mutable_table()->add_columns();
-		col1->set_name("id");
-		col1->set_type(::fivetran_sdk::v2::DataType::STRING);
+		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, false);
 
 		::fivetran_sdk::v2::CreateTableResponse response;
 		auto status = service.CreateTable(nullptr, &request, &response);
@@ -107,14 +105,10 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable", "[integra
 	{
 		// Alter Table
 		::fivetran_sdk::v2::AlterTableRequest request;
-
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 
 		request.set_schema_name(schema_name);
-		::fivetran_sdk::v2::Column col1;
-		col1.set_name("id");
-		col1.set_type(::fivetran_sdk::v2::DataType::INT);
-		request.mutable_table()->add_columns()->CopyFrom(col1);
+		add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, false);
 
 		::fivetran_sdk::v2::AlterTableResponse response;
 		auto status = service.AlterTable(nullptr, &request, &response);
@@ -173,8 +167,7 @@ TEST_CASE("Test endpoint fails when token is bad", "[integration][configtest]") 
 
 	::fivetran_sdk::v2::TestRequest request;
 	request.set_name(config_tester::TEST_AUTHENTICATE);
-	(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-	(*request.mutable_configuration())["motherduck_token"] = "12345";
+	add_config(request, "12345", TEST_DATABASE_NAME);
 
 	::fivetran_sdk::v2::TestResponse response;
 
@@ -622,10 +615,7 @@ TEST_CASE("CreateTable with JSON column", "[integration]") {
 		// Create Table
 		::fivetran_sdk::v2::CreateTableRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-
-		auto col1 = request.mutable_table()->add_columns();
-		col1->set_name("data");
-		col1->set_type(::fivetran_sdk::v2::DataType::JSON);
+		add_col(request, "data", ::fivetran_sdk::v2::DataType::JSON, false);
 
 		::fivetran_sdk::v2::CreateTableResponse response;
 		auto status = service.CreateTable(nullptr, &request, &response);
@@ -799,48 +789,18 @@ TEST_CASE("Test all types with create and describe table") {
 		::fivetran_sdk::v2::CreateTableRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 
-		auto col1 = request.mutable_table()->add_columns();
-		col1->set_name("col_string");
-		col1->set_type(::fivetran_sdk::v2::DataType::STRING);
-		col1->set_primary_key(true);
-		auto col2 = request.mutable_table()->add_columns();
-		col2->set_name("col_int");
-		col2->set_type(::fivetran_sdk::v2::DataType::INT);
-		col2->set_primary_key(true);
-		auto col3 = request.mutable_table()->add_columns();
-		col3->set_name("col_decimal");
-		col3->set_type(::fivetran_sdk::v2::DataType::DECIMAL);
-		col3->mutable_params()->mutable_decimal()->set_precision(20);
-		col3->mutable_params()->mutable_decimal()->set_scale(11);
-
-		auto col4 = request.mutable_table()->add_columns();
-		col4->set_name("col_utc_datetime");
-		col4->set_type(::fivetran_sdk::v2::DataType::UTC_DATETIME);
-		auto col5 = request.mutable_table()->add_columns();
-		col5->set_name("col_naive_datetime");
-		col5->set_type(::fivetran_sdk::v2::DataType::NAIVE_DATETIME);
-		auto col6 = request.mutable_table()->add_columns();
-		col6->set_name("col_naive_date");
-		col6->set_type(::fivetran_sdk::v2::DataType::NAIVE_DATE);
-
-		auto col7 = request.mutable_table()->add_columns();
-		col7->set_name("col_boolean");
-		col7->set_type(::fivetran_sdk::v2::DataType::BOOLEAN);
-		auto col8 = request.mutable_table()->add_columns();
-		col8->set_name("col_short");
-		col8->set_type(::fivetran_sdk::v2::DataType::SHORT);
-		auto col9 = request.mutable_table()->add_columns();
-		col9->set_name("col_long");
-		col9->set_type(::fivetran_sdk::v2::DataType::LONG);
-		auto col10 = request.mutable_table()->add_columns();
-		col10->set_name("col_float");
-		col10->set_type(::fivetran_sdk::v2::DataType::FLOAT);
-		auto col11 = request.mutable_table()->add_columns();
-		col11->set_name("col_double");
-		col11->set_type(::fivetran_sdk::v2::DataType::DOUBLE);
-		auto col12 = request.mutable_table()->add_columns();
-		col12->set_name("col_binary");
-		col12->set_type(::fivetran_sdk::v2::DataType::BINARY);
+		add_col(request, "col_string", ::fivetran_sdk::v2::DataType::STRING, true);
+		add_col(request, "col_int", ::fivetran_sdk::v2::DataType::INT, true);
+		add_decimal_col(request, "col_decimal", false, 20, 11);
+		add_col(request, "col_utc_datetime", ::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
+		add_col(request, "col_naive_datetime", ::fivetran_sdk::v2::DataType::NAIVE_DATETIME, false);
+		add_col(request, "col_naive_date", ::fivetran_sdk::v2::DataType::NAIVE_DATE, false);
+		add_col(request, "col_boolean", ::fivetran_sdk::v2::DataType::BOOLEAN, false);
+		add_col(request, "col_short", ::fivetran_sdk::v2::DataType::SHORT, false);
+		add_col(request, "col_long", ::fivetran_sdk::v2::DataType::LONG, false);
+		add_col(request, "col_float", ::fivetran_sdk::v2::DataType::FLOAT, false);
+		add_col(request, "col_double", ::fivetran_sdk::v2::DataType::DOUBLE, false);
+		add_col(request, "col_binary", ::fivetran_sdk::v2::DataType::BINARY, false);
 
 		::fivetran_sdk::v2::CreateTableResponse response;
 		auto status = service.CreateTable(nullptr, &request, &response);
@@ -915,12 +875,7 @@ TEST_CASE("Test that error is thrown for invalid DECIMAL width and scale") {
 	add_config(request, MD_TOKEN, TEST_DATABASE_NAME, "my_decimal_table");
 
 	SECTION("Test precision/width > 38") {
-		auto decimal_col = request.mutable_table()->add_columns();
-		decimal_col->set_name("col_decimal");
-		decimal_col->set_type(::fivetran_sdk::v2::DataType::DECIMAL);
-		decimal_col->mutable_params()->mutable_decimal()->set_precision(39);
-		decimal_col->mutable_params()->mutable_decimal()->set_scale(5);
-		decimal_col->set_primary_key(true);
+		add_decimal_col(request, "col_decimal", true, 39, 5);
 
 		::fivetran_sdk::v2::CreateTableResponse response;
 		auto status = service.CreateTable(nullptr, &request, &response);
@@ -929,12 +884,7 @@ TEST_CASE("Test that error is thrown for invalid DECIMAL width and scale") {
 	}
 
 	SECTION("Test scale > precision/width") {
-		auto decimal_col = request.mutable_table()->add_columns();
-		decimal_col->set_name("col_decimal");
-		decimal_col->set_type(::fivetran_sdk::v2::DataType::DECIMAL);
-		decimal_col->mutable_params()->mutable_decimal()->set_precision(10);
-		decimal_col->mutable_params()->mutable_decimal()->set_scale(15);
-		decimal_col->set_primary_key(true);
+		add_decimal_col(request, "col_decimal", true, 10, 15);
 
 		::fivetran_sdk::v2::CreateTableResponse response;
 		auto status = service.CreateTable(nullptr, &request, &response);
