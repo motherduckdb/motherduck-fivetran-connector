@@ -56,18 +56,26 @@ get_duckdb_columns(const google::protobuf::RepeatedPtrField<fivetran_sdk::v2::Co
 			                            "> for column <" + col.name() + "> to a DuckDB type");
 		}
 
-		std::uint8_t decimal_width = 0;
-		std::uint8_t decimal_scale = 0;
+		std::optional<std::uint8_t> decimal_width;
+		std::optional<std::uint8_t> decimal_scale;
 		if (duckdb_type == duckdb::LogicalTypeId::DECIMAL) {
 			if (col.has_params() && col.params().has_decimal()) {
 				const std::uint32_t fivetran_precision = col.params().decimal().precision();
 				const std::uint32_t fivetran_scale = col.params().decimal().scale();
 
-				// Maximum width supported by DuckDB is 38
-				if (fivetran_precision > 38) {
+				// Minimum width supported by DuckDB is 1
+				if (fivetran_precision < DECIMAL_MIN_WIDTH) {
 					throw std::invalid_argument("Decimal width " + std::to_string(fivetran_precision) +
 					                            " for column <" + col.name() +
-					                            "> exceeds maximum supported width of 38 in DuckDB");
+					                            "> is too small; minimum supported width is " +
+					                            std::to_string(DECIMAL_MIN_WIDTH) + " in DuckDB");
+				}
+
+				// Maximum width supported by DuckDB is 38
+				if (fivetran_precision > DECIMAL_MAX_WIDTH) {
+					throw std::invalid_argument("Decimal width " + std::to_string(fivetran_precision) +
+					                            " for column <" + col.name() + "> exceeds maximum supported width of " +
+					                            std::to_string(DECIMAL_MAX_WIDTH) + " in DuckDB");
 				}
 
 				if (fivetran_scale > fivetran_precision) {
@@ -76,12 +84,11 @@ get_duckdb_columns(const google::protobuf::RepeatedPtrField<fivetran_sdk::v2::Co
 					                            std::to_string(fivetran_precision));
 				}
 
-				decimal_width = static_cast<std::uint8_t>(fivetran_precision);
-				decimal_scale = static_cast<std::uint8_t>(fivetran_scale);
+				decimal_width.emplace(static_cast<std::uint8_t>(fivetran_precision));
+				decimal_scale.emplace(static_cast<std::uint8_t>(fivetran_scale));
 			} else {
-				// DuckDB default is DECIMAL(18, 3)
-				decimal_width = 18;
-				decimal_scale = 3;
+				decimal_width.emplace(DECIMAL_DEFAULT_WIDTH);
+				decimal_scale.emplace(DECIMAL_DEFAULT_SCALE);
 			}
 		}
 
@@ -183,8 +190,10 @@ grpc::Status DestinationSdkImpl::DescribeTable(::grpc::ServerContext*,
 			ft_col->set_type(fivetran_type);
 			ft_col->set_primary_key(col.primary_key);
 			if (fivetran_type == fivetran_sdk::v2::DECIMAL) {
-				ft_col->mutable_params()->mutable_decimal()->set_precision(col.width);
-				ft_col->mutable_params()->mutable_decimal()->set_scale(col.scale);
+				assert(col.width.has_value()); // width should always be set for DECIMAL types
+				assert(col.scale.has_value()); // scale should always be set for DECIMAL types
+				ft_col->mutable_params()->mutable_decimal()->set_precision(col.width.value_or(DECIMAL_DEFAULT_WIDTH));
+				ft_col->mutable_params()->mutable_decimal()->set_scale(col.scale.value_or(DECIMAL_DEFAULT_SCALE));
 			}
 		}
 

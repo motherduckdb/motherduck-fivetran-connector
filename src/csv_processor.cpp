@@ -186,8 +186,10 @@ void add_type_options(std::ostringstream& query, const std::vector<column_def>& 
 		duckdb::LogicalType pushdown_type;
 		if (column.type == duckdb::LogicalTypeId::BLOB) {
 			pushdown_type = duckdb::LogicalType::VARCHAR;
-		} else if (column.type == duckdb::LogicalTypeId::DECIMAL && column.width > 0) {
-			pushdown_type = duckdb::LogicalType::DECIMAL(column.width, column.scale);
+		} else if (column.type == duckdb::LogicalTypeId::DECIMAL && column.width.has_value()) {
+			assert(column.width.value() >= DECIMAL_MIN_WIDTH && column.width.value() <= DECIMAL_MAX_WIDTH);
+			assert(column.scale.has_value()); // scale should always be set for DECIMAL types
+			pushdown_type = duckdb::LogicalType::DECIMAL(column.width.value(), column.scale.value_or(0));
 		} else {
 			pushdown_type = duckdb::LogicalType(column.type);
 		}
