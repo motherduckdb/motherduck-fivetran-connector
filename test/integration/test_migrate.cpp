@@ -753,7 +753,8 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 		                      " (id INT, name VARCHAR, "
 		                      "_fivetran_start TIMESTAMPTZ, "
 		                      "_fivetran_end TIMESTAMPTZ, "
-		                      "_fivetran_active BOOLEAN)");
+		                      "_fivetran_active BOOLEAN default true, "
+		                      "primary key (id, _fivetran_start))");
 		REQUIRE_NO_FAIL(res);
 	}
 
@@ -869,7 +870,8 @@ TEST_CASE("Migrate - add/drop column in history mode to empty table", "[integrat
 		                      " (id INT, name VARCHAR, "
 		                      "_fivetran_start TIMESTAMPTZ, "
 		                      "_fivetran_end TIMESTAMPTZ, "
-		                      "_fivetran_active BOOLEAN)");
+		                      "_fivetran_active BOOLEAN default true, "
+		                      "primary key (id, _fivetran_start))");
 		REQUIRE_NO_FAIL(res);
 	}
 
@@ -934,7 +936,8 @@ TEST_CASE("Migrate - drop column in history mode", "[integration][migrate]") {
 		                      " (id INT, name VARCHAR, email VARCHAR, "
 		                      "_fivetran_start TIMESTAMPTZ, "
 		                      "_fivetran_end TIMESTAMPTZ, "
-		                      "_fivetran_active BOOLEAN)");
+		                      "_fivetran_active BOOLEAN default true, "
+		                      "primary key (id, _fivetran_start))");
 		REQUIRE_NO_FAIL(res);
 	}
 
@@ -1135,15 +1138,14 @@ TEST_CASE("Migrate - history to live", "[integration][migrate]") {
 
 	auto con = get_test_connection(MD_TOKEN);
 
-	// Drop and create a history table manually (no primary key to allow duplicate
-	// ids)
+	// Drop and create a history table manually (no primary key to allow duplicate ids)
 	con->Query("DROP TABLE IF EXISTS " + table_name);
 	{
 		auto res = con->Query("CREATE TABLE " + table_name +
 		                      " (id INT, value VARCHAR, "
 		                      "_fivetran_start TIMESTAMPTZ, "
 		                      "_fivetran_end TIMESTAMPTZ, "
-		                      "_fivetran_active BOOLEAN, "
+		                      "_fivetran_active BOOLEAN default true, "
 		                      "primary key (id, _fivetran_start))");
 		REQUIRE_NO_FAIL(res);
 	}
@@ -1196,15 +1198,14 @@ TEST_CASE("Migrate - history to soft delete", "[integration][migrate]") {
 
 	auto con = get_test_connection(MD_TOKEN);
 
-	// Drop and create a history table manually (no primary key to allow duplicate
-	// ids)
+	// Drop and create a history table manually (no primary key to allow duplicate ids)
 	con->Query("DROP TABLE IF EXISTS " + table_name);
 	{
 		auto res = con->Query("CREATE TABLE " + table_name +
 		                      " (id INT, id2 INT, value VARCHAR default 'abc', "
 		                      "_fivetran_start TIMESTAMPTZ, "
 		                      "_fivetran_end TIMESTAMPTZ, "
-		                      "_fivetran_active BOOLEAN,"
+		                      "_fivetran_active BOOLEAN default true,"
 		                      "primary key (id, id2, _fivetran_start))");
 		REQUIRE_NO_FAIL(res);
 	}
@@ -1265,6 +1266,73 @@ TEST_CASE("Migrate - history to soft delete", "[integration][migrate]") {
 	con->Query("DROP TABLE IF EXISTS " + table_name);
 }
 
+TEST_CASE("Migrate - history to soft delete with custom soft deleted column", "[integration][migrate]") {
+	DestinationSdkImpl service;
+	const std::string table_name = "migrate_hist_soft_custom_" + std::to_string(Catch::rngSeed());
+
+	auto con = get_test_connection(MD_TOKEN);
+
+	// Create a history table with a pre-existing custom column
+	{
+		auto res = con->Query("CREATE TABLE " + table_name +
+		                      " (id INT, value VARCHAR, is_removed BOOLEAN, "
+		                      "_fivetran_start TIMESTAMPTZ, "
+		                      "_fivetran_end TIMESTAMPTZ, "
+		                      "_fivetran_active BOOLEAN default true, "
+		                      "primary key (id, _fivetran_start))");
+		REQUIRE_NO_FAIL(res);
+	}
+
+	// Insert data: two versions of id=1 (one active, one inactive), id=2 inactive and deleted. Note that in soft delete
+	// mode, we ignore the timestamps.
+	{
+		auto res = con->Query("INSERT INTO " + table_name +
+		                      " VALUES "
+		                      "(1, 'active_row', false, NOW(), '9999-12-31 23:59:59'::TIMESTAMPTZ, true),"
+		                      "(1, 'inactive_row', false, '2020-01-01'::TIMESTAMPTZ, NOW(), false),"
+		                      "(2, 'deleted_row', false, NOW(), '9999-12-31T23:59:59.999Z'::TIMESTAMPTZ, false)");
+		REQUIRE_NO_FAIL(res);
+	}
+
+	// Migrate to soft delete using custom column
+	{
+		::fivetran_sdk::v2::MigrateRequest request;
+		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+		request.mutable_details()->set_table(table_name);
+		request.mutable_details()->mutable_table_sync_mode_migration()->set_type(
+		    ::fivetran_sdk::v2::HISTORY_TO_SOFT_DELETE);
+		request.mutable_details()->mutable_table_sync_mode_migration()->set_soft_deleted_column("is_removed");
+
+		::fivetran_sdk::v2::MigrateResponse response;
+		auto status = service.Migrate(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+		REQUIRE(response.success());
+	}
+
+	// Verify is_removed is set based on _fivetran_active (only latest records kept)
+	{
+		auto res = con->Query("SELECT id, value, is_removed FROM " + table_name + " ORDER BY id");
+		REQUIRE_NO_FAIL(res);
+		REQUIRE(res->RowCount() == 2);
+		check_row(res, 0, {1, "active_row", false}); // id=1 had an active row
+		check_row(res, 1, {2, "deleted_row", true}); // id=2 did not have an active row
+	}
+
+	// Verify history columns are gone
+	{
+		auto res = con->Query("SELECT _fivetran_start FROM " + table_name);
+		REQUIRE(res->HasError());
+	}
+	{
+		auto res = con->Query("SELECT _fivetran_active FROM " + table_name);
+		REQUIRE(res->HasError());
+	}
+
+	// Clean up
+	con->Query("DROP TABLE IF EXISTS " + table_name);
+}
+
 TEST_CASE("Migrate - soft delete to history", "[integration][migrate]") {
 	DestinationSdkImpl service;
 	const std::string table_name = "migrate_soft_hist_" + std::to_string(Catch::rngSeed());
@@ -1308,6 +1376,65 @@ TEST_CASE("Migrate - soft delete to history", "[integration][migrate]") {
 	{
 		auto res = con->Query("SELECT _fivetran_deleted FROM " + table_name);
 		REQUIRE(res->HasError());
+	}
+
+	// Clean up
+	con->Query("DROP TABLE IF EXISTS " + table_name);
+}
+
+TEST_CASE("Migrate - soft delete to history with custom soft deleted column", "[integration][migrate]") {
+	DestinationSdkImpl service;
+	const std::string table_name = "migrate_soft_hist_custom_" + std::to_string(Catch::rngSeed());
+
+	auto con = get_test_connection(MD_TOKEN);
+
+	// Create a table with a custom soft delete column alongside _fivetran_deleted
+	con->Query("CREATE TABLE " + table_name +
+	           " (id INT PRIMARY KEY, name VARCHAR, is_removed BOOLEAN, "
+	           "_fivetran_deleted BOOLEAN, _fivetran_synced TIMESTAMPTZ);");
+	con->Query("INSERT INTO " + table_name +
+	           " VALUES (1, 'active', false, false, NOW()), "
+	           "(2, 'removed', true, false, NOW()), "
+	           "(3, 'also_active', false, false, NOW());");
+
+	// Migrate to history mode using the custom column
+	{
+		::fivetran_sdk::v2::MigrateRequest request;
+		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+		request.mutable_details()->set_table(table_name);
+		request.mutable_details()->mutable_table_sync_mode_migration()->set_type(
+		    ::fivetran_sdk::v2::SOFT_DELETE_TO_HISTORY);
+		request.mutable_details()->mutable_table_sync_mode_migration()->set_soft_deleted_column("is_removed");
+
+		::fivetran_sdk::v2::MigrateResponse response;
+		auto status = service.Migrate(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+		REQUIRE(response.success());
+	}
+
+	// Verify _fivetran_active is based on is_removed (active = NOT is_removed)
+	{
+		auto res = con->Query("SELECT id, name, _fivetran_active, is_removed FROM " + table_name + " ORDER BY id");
+		REQUIRE_NO_FAIL(res);
+		REQUIRE(res->RowCount() == 3);
+		// _fivetran_deleted is false everywhere, so the right values are set here.
+		check_row(res, 0, {1, "active", true, false});
+		check_row(res, 1, {2, "removed", false, true});
+		check_row(res, 2, {3, "also_active", true, false});
+	}
+
+	// Verify _fivetran_deleted column is gone (always dropped)
+	{
+		auto res = con->Query("SELECT _fivetran_deleted FROM " + table_name);
+		REQUIRE(res->HasError());
+	}
+
+	// Verify history columns exist
+	{
+		auto res = con->Query("SELECT _fivetran_start, _fivetran_end FROM " + table_name);
+		REQUIRE_NO_FAIL(res);
+		REQUIRE(res->RowCount() == 3);
 	}
 
 	// Clean up
