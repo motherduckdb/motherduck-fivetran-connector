@@ -2,7 +2,7 @@
 
 #include <array>
 #include <string>
-#include "../constants.hpp"
+#include "constants.hpp"
 #include "duckdb.hpp"
 #include "fivetran_duckdb_interop.hpp"
 #include "motherduck_destination_server.hpp"
@@ -95,7 +95,7 @@ void define_test_table(T &request, const std::string &table_name) {
 	}
 }
 
-constexpr std::array HISTORY_COLUMNS = {
+constexpr std::array HISTORY_TEST_COLUMNS = {
 	column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
 	column_def {.name = "title", .type = duckdb::LogicalTypeId::VARCHAR},
 	column_def {.name = "magic_number", .type = duckdb::LogicalTypeId::INTEGER},
@@ -108,7 +108,7 @@ constexpr std::array HISTORY_COLUMNS = {
 template <typename T>
 void define_history_test_table(T &request, const std::string &table_name) {
   request.mutable_table()->set_name(table_name);
-	for (auto column : HISTORY_COLUMNS) {
+	for (auto column : HISTORY_TEST_COLUMNS) {
 		add_col(request, column.name, get_fivetran_type(column.type), column.primary_key);
 	}
 }

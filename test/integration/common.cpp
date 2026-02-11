@@ -39,7 +39,7 @@ void create_test_table(DestinationSdkImpl& service, const std::string& table_nam
 }
 
 void create_history_table(DestinationSdkImpl& service, const std::string& table_name) {
-	create_table(service, table_name, HISTORY_COLUMNS);
+	create_table(service, table_name, HISTORY_TEST_COLUMNS);
 }
 
 // Helper to verify a row's values in order. Usage:
