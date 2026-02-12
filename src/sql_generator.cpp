@@ -157,28 +157,6 @@ void MdSqlGenerator::run_query(duckdb::Connection& con, const std::string& log_p
 	}
 }
 
-// DuckDB querying
-// TODO: add test for schema or remove the logic if it's unused
-bool MdSqlGenerator::schema_exists(duckdb::Connection& con, const std::string& db_name,
-                                   const std::string& schema_name) {
-	const std::string query = "SELECT schema_name FROM information_schema.schemata "
-	                          "WHERE catalog_name=? AND schema_name=?";
-	const std::string err = "Could not find whether schema <" + schema_name + "> exists in database <" + db_name + ">";
-	auto statement = con.Prepare(query);
-	if (statement->HasError()) {
-		throw std::runtime_error(err + " (at bind step): " + statement->GetError());
-	}
-	duckdb::vector<duckdb::Value> params = {duckdb::Value(db_name), duckdb::Value(schema_name)};
-	auto result = statement->Execute(params, false);
-	if (result->HasError()) {
-		throw std::runtime_error(err + ": " + result->GetError());
-	}
-	auto materialized_result =
-	    duckdb::unique_ptr_cast<duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
-
-	return materialized_result->RowCount() > 0;
-}
-
 bool MdSqlGenerator::table_exists(duckdb::Connection& con, const table_def& table) {
 	const std::string query = "SELECT table_name FROM information_schema.tables WHERE "
 	                          "table_catalog=? AND table_schema=? AND table_name=?";
@@ -202,14 +180,14 @@ bool MdSqlGenerator::table_exists(duckdb::Connection& con, const table_def& tabl
 	return materialized_result->RowCount() > 0;
 }
 
-void MdSqlGenerator::create_schema(duckdb::Connection& con, const std::string& db_name,
-                                   const std::string& schema_name) {
+void MdSqlGenerator::create_schema_if_not_exists(duckdb::Connection& con, const std::string& db_name,
+                                                 const std::string& schema_name) {
 	std::ostringstream ddl;
-	ddl << "CREATE SCHEMA " << KeywordHelper::WriteQuoted(db_name, '"') << "."
+	ddl << "CREATE SCHEMA IF NOT EXISTS" << KeywordHelper::WriteQuoted(db_name, '"') << "."
 	    << KeywordHelper::WriteQuoted(schema_name, '"');
 	const std::string query = ddl.str();
 
-	logger.info("create_schema: " + query);
+	logger.info("create_schema_if_not_exists: " + query);
 	const auto result = con.Query(query);
 	if (result->HasError()) {
 		throw std::runtime_error("Could not create schema <" + schema_name + "> in database <" + db_name +
