@@ -57,7 +57,6 @@ void Logger::log_to_duckdb(const std::string& level, const std::string& message)
 
 	std::string full_message = message;
 	duckdb::StringUtil::Trim(full_message);
-	full_message += ". Source: Fivetran";
 
 	const std::string query =
 	    "SELECT write_log(" + duckdb::KeywordHelper::WriteQuoted(full_message, '\'') +
