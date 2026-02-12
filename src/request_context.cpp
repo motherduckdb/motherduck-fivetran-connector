@@ -5,6 +5,7 @@
 #include "google/protobuf/map.h"
 
 #include <cstdlib>
+#include <cstring>
 #include <string>
 
 namespace {
