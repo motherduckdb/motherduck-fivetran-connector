@@ -73,7 +73,7 @@ void add_col(T& request, const std::string& name, ::fivetran_sdk::v2::DataType t
 }
 
 const column_def ID_PK {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true};
-constexpr std::array TEST_COLUMNS = {
+const std::array TEST_COLUMNS = {
     column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
     column_def {.name = "title", .type = duckdb::LogicalTypeId::VARCHAR},
     column_def {.name = "magic_number", .type = duckdb::LogicalTypeId::INTEGER},
@@ -89,7 +89,7 @@ void define_test_table(T& request, const std::string& table_name) {
 	}
 }
 
-constexpr std::array HISTORY_TEST_COLUMNS = {
+const std::array HISTORY_TEST_COLUMNS = {
     column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
     column_def {.name = "title", .type = duckdb::LogicalTypeId::VARCHAR},
     column_def {.name = "magic_number", .type = duckdb::LogicalTypeId::INTEGER},
