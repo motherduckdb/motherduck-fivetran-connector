@@ -961,7 +961,7 @@ TEST_CASE("Invalid truncate with nonexisting delete column", "[integration][curr
 	DestinationSdkImpl service;
 
 	const std::string table_name = "empty_table" + std::to_string(Catch::rngSeed());
-	create_table_basic(service, table_name);
+	create_table(service, table_name, std::array {ID_PK});
 
 	{
 		// Attempt to truncate the table using a nonexisting _fivetran_deleted

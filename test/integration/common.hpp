@@ -13,6 +13,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <catch2/reporters/catch_reporter_event_listener.hpp>
 #include <catch2/reporters/catch_reporter_registrars.hpp>
+#include <concepts>
 #include <string>
 
 inline bool NO_FAIL(const duckdb::unique_ptr<duckdb::MaterializedQueryResult>& result) {
@@ -153,15 +154,10 @@ inline void add_config(fivetran_sdk::v2::MigrateRequest& request, const std::str
 	request.mutable_details()->set_table(table);
 }
 
-inline void add_config(fivetran_sdk::v2::DescribeTableRequest& request, const std::string& token,
-                       const std::string& database, const std::string& table) {
-	(*request.mutable_configuration())["motherduck_token"] = token;
-	(*request.mutable_configuration())["motherduck_database"] = database;
-	request.set_table_name(table);
-}
-
-inline void add_config(fivetran_sdk::v2::TruncateRequest& request, const std::string& token,
-                       const std::string& database, const std::string& table) {
+template <typename T>
+    requires std::same_as<T, fivetran_sdk::v2::DescribeTableRequest> ||
+             std::same_as<T, fivetran_sdk::v2::TruncateRequest>
+void add_config(T& request, const std::string& token, const std::string& database, const std::string& table) {
 	(*request.mutable_configuration())["motherduck_token"] = token;
 	(*request.mutable_configuration())["motherduck_database"] = database;
 	request.set_table_name(table);
