@@ -50,13 +50,7 @@ TEST_CASE("Migrate - drop table", "[integration][migrate]") {
 
 	// Verify table no longer exists
 	{
-		::fivetran_sdk::v2::DescribeTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
-		request.set_table_name(table_name);
-
-		::fivetran_sdk::v2::DescribeTableResponse response;
-		auto status = service.DescribeTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
+		auto response = describe_table(service, table_name);
 		REQUIRE(response.not_found());
 	}
 
@@ -105,13 +99,7 @@ TEST_CASE("Migrate - rename table", "[integration][migrate]") {
 
 	// Verify old table doesn't exist
 	{
-		::fivetran_sdk::v2::DescribeTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
-		request.set_table_name(from_table);
-
-		::fivetran_sdk::v2::DescribeTableResponse response;
-		auto status = service.DescribeTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
+		auto response = describe_table(service, from_table);
 		REQUIRE(response.not_found());
 	}
 
@@ -1297,9 +1285,7 @@ TEST_CASE("Migrate - history to soft delete with custom soft deleted column", "[
 	// Migrate to soft delete using custom column
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_type(
 		    ::fivetran_sdk::v2::HISTORY_TO_SOFT_DELETE);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_soft_deleted_column("is_removed");
@@ -1400,9 +1386,7 @@ TEST_CASE("Migrate - soft delete to history with custom soft deleted column", "[
 	// Migrate to history mode using the custom column
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		request.mutable_details()->set_table(table_name);
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_type(
 		    ::fivetran_sdk::v2::SOFT_DELETE_TO_HISTORY);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_soft_deleted_column("is_removed");

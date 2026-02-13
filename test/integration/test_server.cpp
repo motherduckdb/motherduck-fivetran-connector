@@ -46,12 +46,7 @@ TEST_CASE("DescribeTable fails when database missing", "[integration][describe-t
 TEST_CASE("DescribeTable on nonexistent table", "[integration][describe-table]") {
 	DestinationSdkImpl service;
 
-	::fivetran_sdk::v2::DescribeTableRequest request;
-	add_config(request, MD_TOKEN, TEST_DATABASE_NAME, "nonexistent_table");
-	::fivetran_sdk::v2::DescribeTableResponse response;
-
-	auto status = service.DescribeTable(nullptr, &request, &response);
-	REQUIRE_NO_FAIL(status);
+	auto response = describe_table(service, "nonexistent_table");
 	REQUIRE(response.not_found());
 }
 
@@ -74,33 +69,21 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable", "[integra
 	}
 
 	{
-		// Describe the created table
-		::fivetran_sdk::v2::DescribeTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		// table not found in default "main" schema
+		auto response = describe_table(service, table_name);
+		REQUIRE(response.not_found());
+	}
 
-		{
-			// table not found in default "main" schema
-			::fivetran_sdk::v2::DescribeTableResponse response;
-			auto status = service.DescribeTable(nullptr, &request, &response);
-			REQUIRE_NO_FAIL(status);
-			REQUIRE(response.not_found());
-		}
+	{
+		// table found in the correct schema
+		auto response = describe_table(service, table_name, schema_name);
+		REQUIRE(!response.not_found());
 
-		{
-			// table found in the correct schema
-			request.set_schema_name(schema_name);
-			::fivetran_sdk::v2::DescribeTableResponse response;
-			auto status = service.DescribeTable(nullptr, &request, &response);
-			REQUIRE_NO_FAIL(status);
-			REQUIRE(!response.not_found());
-
-			REQUIRE(response.table().name() == table_name);
-			REQUIRE(response.table().columns_size() == 1);
-			REQUIRE(response.table().columns(0).name() == "id");
-			REQUIRE(response.table().columns(0).type() == ::fivetran_sdk::v2::DataType::STRING);
-			REQUIRE_FALSE(response.table().columns(0).has_params());
-			REQUIRE_FALSE(response.table().columns(0).params().has_decimal());
-		}
+		REQUIRE(response.table().name() == table_name);
+		REQUIRE(response.table().columns_size() == 1);
+		check_column(response, 0, "id", ::fivetran_sdk::v2::DataType::STRING, false);
+		REQUIRE_FALSE(response.table().columns(0).has_params());
+		REQUIRE_FALSE(response.table().columns(0).params().has_decimal());
 	}
 
 	{
@@ -118,20 +101,12 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable", "[integra
 
 	{
 		// Describe the altered table
-		::fivetran_sdk::v2::DescribeTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-
-		// table found in the correct schema
-		request.set_schema_name(schema_name);
-		::fivetran_sdk::v2::DescribeTableResponse response;
-		auto status = service.DescribeTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
+		auto response = describe_table(service, table_name, schema_name);
 		REQUIRE(!response.not_found());
 
 		REQUIRE(response.table().name() == table_name);
 		REQUIRE(response.table().columns_size() == 1);
-		REQUIRE(response.table().columns(0).name() == "id");
-		REQUIRE(response.table().columns(0).type() == ::fivetran_sdk::v2::DataType::INT);
+		check_column(response, 0, "id", ::fivetran_sdk::v2::DataType::INT, false);
 	}
 }
 
@@ -449,22 +424,14 @@ TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
 	}
 
 	{
-		// Describe the created table
-		::fivetran_sdk::v2::DescribeTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		auto response = describe_table(service, table_name);
+		REQUIRE(response.table().columns().size() == 5);
 
-		{
-			::fivetran_sdk::v2::DescribeTableResponse response;
-			auto status = service.DescribeTable(nullptr, &request, &response);
-			REQUIRE_NO_FAIL(status);
-			REQUIRE(response.table().columns().size() == 5);
-
-			REQUIRE(response.table().columns(0).name() == "id1");
-			REQUIRE(response.table().columns(1).name() == "id2");
-			REQUIRE(response.table().columns(2).name() == "text");
-			REQUIRE(response.table().columns(3).name() == "_fivetran_deleted");
-			REQUIRE(response.table().columns(4).name() == "_fivetran_synced");
-		}
+		REQUIRE(response.table().columns(0).name() == "id1");
+		REQUIRE(response.table().columns(1).name() == "id2");
+		REQUIRE(response.table().columns(2).name() == "text");
+		REQUIRE(response.table().columns(3).name() == "_fivetran_deleted");
+		REQUIRE(response.table().columns(4).name() == "_fivetran_synced");
 	}
 
 	// test connection needs to be created after table creation to avoid stale
@@ -563,17 +530,9 @@ TEST_CASE("CreateTable with JSON column", "[integration]") {
 	}
 
 	{
-		// Describe the created table
-		::fivetran_sdk::v2::DescribeTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-
-		{
-			::fivetran_sdk::v2::DescribeTableResponse response;
-			auto status = service.DescribeTable(nullptr, &request, &response);
-			REQUIRE_NO_FAIL(status);
-			REQUIRE(response.table().columns().size() == 1);
-			REQUIRE(response.table().columns(0).type() == ::fivetran_sdk::v2::DataType::STRING);
-		}
+		auto response = describe_table(service, table_name);
+		REQUIRE(response.table().columns().size() == 1);
+		REQUIRE(response.table().columns(0).type() == ::fivetran_sdk::v2::DataType::STRING);
 	}
 }
 
@@ -748,62 +707,30 @@ TEST_CASE("Test all types with create and describe table") {
 	}
 
 	{
-		// Describe table
-		::fivetran_sdk::v2::DescribeTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-
-		::fivetran_sdk::v2::DescribeTableResponse response;
-		auto status = service.DescribeTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
+		auto response = describe_table(service, table_name);
 		REQUIRE(!response.not_found());
 
 		REQUIRE(response.table().name() == table_name);
 		REQUIRE(response.table().columns_size() == 12);
 
-		REQUIRE(response.table().columns(0).name() == "col_string");
-		REQUIRE(response.table().columns(0).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE(response.table().columns(0).primary_key());
-		REQUIRE(response.table().columns(1).name() == "col_int");
-		REQUIRE(response.table().columns(1).type() == ::fivetran_sdk::v2::DataType::INT);
-		REQUIRE(response.table().columns(1).primary_key());
+		check_column(response, 0, "col_string", ::fivetran_sdk::v2::DataType::STRING, true);
+		check_column(response, 1, "col_int", ::fivetran_sdk::v2::DataType::INT, true);
 
-		REQUIRE(response.table().columns(2).name() == "col_decimal");
-		REQUIRE(response.table().columns(2).type() == ::fivetran_sdk::v2::DataType::DECIMAL);
+		check_column(response, 2, "col_decimal", ::fivetran_sdk::v2::DataType::DECIMAL, false);
 		REQUIRE(response.table().columns(2).has_params());
 		REQUIRE(response.table().columns(2).params().has_decimal());
-
 		REQUIRE(response.table().columns(2).params().decimal().scale() == 11);
 		REQUIRE(response.table().columns(2).params().decimal().precision() == 20);
-		REQUIRE_FALSE(response.table().columns(2).primary_key());
 
-		REQUIRE(response.table().columns(3).name() == "col_utc_datetime");
-		REQUIRE(response.table().columns(3).type() == ::fivetran_sdk::v2::DataType::UTC_DATETIME);
-		REQUIRE_FALSE(response.table().columns(3).primary_key());
-		REQUIRE(response.table().columns(4).name() == "col_naive_datetime");
-		REQUIRE(response.table().columns(4).type() == ::fivetran_sdk::v2::DataType::NAIVE_DATETIME);
-		REQUIRE_FALSE(response.table().columns(4).primary_key());
-		REQUIRE(response.table().columns(5).name() == "col_naive_date");
-		REQUIRE(response.table().columns(5).type() == ::fivetran_sdk::v2::DataType::NAIVE_DATE);
-		REQUIRE_FALSE(response.table().columns(5).primary_key());
-
-		REQUIRE(response.table().columns(6).name() == "col_boolean");
-		REQUIRE(response.table().columns(6).type() == ::fivetran_sdk::v2::DataType::BOOLEAN);
-		REQUIRE_FALSE(response.table().columns(6).primary_key());
-		REQUIRE(response.table().columns(7).name() == "col_short");
-		REQUIRE(response.table().columns(7).type() == ::fivetran_sdk::v2::DataType::SHORT);
-		REQUIRE_FALSE(response.table().columns(7).primary_key());
-		REQUIRE(response.table().columns(8).name() == "col_long");
-		REQUIRE(response.table().columns(8).type() == ::fivetran_sdk::v2::DataType::LONG);
-		REQUIRE_FALSE(response.table().columns(8).primary_key());
-		REQUIRE(response.table().columns(9).name() == "col_float");
-		REQUIRE(response.table().columns(9).type() == ::fivetran_sdk::v2::DataType::FLOAT);
-		REQUIRE_FALSE(response.table().columns(9).primary_key());
-		REQUIRE(response.table().columns(10).name() == "col_double");
-		REQUIRE(response.table().columns(10).type() == ::fivetran_sdk::v2::DataType::DOUBLE);
-		REQUIRE_FALSE(response.table().columns(10).primary_key());
-		REQUIRE(response.table().columns(11).name() == "col_binary");
-		REQUIRE(response.table().columns(11).type() == ::fivetran_sdk::v2::DataType::BINARY);
-		REQUIRE_FALSE(response.table().columns(11).primary_key());
+		check_column(response, 3, "col_utc_datetime", ::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
+		check_column(response, 4, "col_naive_datetime", ::fivetran_sdk::v2::DataType::NAIVE_DATETIME, false);
+		check_column(response, 5, "col_naive_date", ::fivetran_sdk::v2::DataType::NAIVE_DATE, false);
+		check_column(response, 6, "col_boolean", ::fivetran_sdk::v2::DataType::BOOLEAN, false);
+		check_column(response, 7, "col_short", ::fivetran_sdk::v2::DataType::SHORT, false);
+		check_column(response, 8, "col_long", ::fivetran_sdk::v2::DataType::LONG, false);
+		check_column(response, 9, "col_float", ::fivetran_sdk::v2::DataType::FLOAT, false);
+		check_column(response, 10, "col_double", ::fivetran_sdk::v2::DataType::DOUBLE, false);
+		check_column(response, 11, "col_binary", ::fivetran_sdk::v2::DataType::BINARY, false);
 	}
 }
 
@@ -856,28 +783,14 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 	}
 
 	{
-		// Describe the altered table
-		::fivetran_sdk::v2::DescribeTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-
-		::fivetran_sdk::v2::DescribeTableResponse response;
-		auto status = service.DescribeTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
+		auto response = describe_table(service, table_name);
 		REQUIRE(!response.not_found());
 
 		REQUIRE(response.table().name() == table_name);
 		REQUIRE(response.table().columns_size() == 3);
-		REQUIRE(response.table().columns(0).name() == "id");
-		REQUIRE(response.table().columns(0).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE(response.table().columns(0).primary_key());
-
-		REQUIRE(response.table().columns(1).name() == "name");
-		REQUIRE(response.table().columns(1).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE_FALSE(response.table().columns(1).primary_key());
-
-		REQUIRE(response.table().columns(2).name() == "id_new");
-		REQUIRE(response.table().columns(2).type() == ::fivetran_sdk::v2::DataType::INT);
-		REQUIRE(response.table().columns(2).primary_key());
+		check_column(response, 0, "id", ::fivetran_sdk::v2::DataType::STRING, true);
+		check_column(response, 1, "name", ::fivetran_sdk::v2::DataType::STRING, false);
+		check_column(response, 2, "id_new", ::fivetran_sdk::v2::DataType::INT, true);
 	}
 
 	{
@@ -904,28 +817,14 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 	}
 
 	{
-		// Describe the altered table
-		::fivetran_sdk::v2::DescribeTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-
-		::fivetran_sdk::v2::DescribeTableResponse response;
-		auto status = service.DescribeTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
+		auto response = describe_table(service, table_name);
 		REQUIRE(!response.not_found());
 
 		REQUIRE(response.table().name() == table_name);
 		REQUIRE(response.table().columns_size() == 3);
-		REQUIRE(response.table().columns(0).name() == "id");
-		REQUIRE(response.table().columns(0).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE(response.table().columns(0).primary_key());
-
-		REQUIRE(response.table().columns(1).name() == "name");
-		REQUIRE(response.table().columns(1).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE(response.table().columns(1).primary_key());
-
-		REQUIRE(response.table().columns(2).name() == "id_new");
-		REQUIRE(response.table().columns(2).type() == ::fivetran_sdk::v2::DataType::INT);
-		REQUIRE(response.table().columns(2).primary_key());
+		check_column(response, 0, "id", ::fivetran_sdk::v2::DataType::STRING, true);
+		check_column(response, 1, "name", ::fivetran_sdk::v2::DataType::STRING, true);
+		check_column(response, 2, "id_new", ::fivetran_sdk::v2::DataType::INT, true);
 	}
 
 	{
@@ -956,28 +855,14 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 	}
 
 	{
-		// Describe the altered table
-		::fivetran_sdk::v2::DescribeTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-
-		::fivetran_sdk::v2::DescribeTableResponse response;
-		auto status = service.DescribeTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
+		auto response = describe_table(service, table_name);
 		REQUIRE(!response.not_found());
 
 		REQUIRE(response.table().name() == table_name);
 		REQUIRE(response.table().columns_size() == 3);
-		REQUIRE(response.table().columns(0).name() == "id");
-		REQUIRE(response.table().columns(0).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE(response.table().columns(0).primary_key());
-
-		REQUIRE(response.table().columns(1).name() == "name");
-		REQUIRE(response.table().columns(1).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE(response.table().columns(1).primary_key());
-
-		REQUIRE(response.table().columns(2).name() == "id_new");
-		REQUIRE(response.table().columns(2).type() == ::fivetran_sdk::v2::DataType::INT);
-		REQUIRE(response.table().columns(2).primary_key());
+		check_column(response, 0, "id", ::fivetran_sdk::v2::DataType::STRING, true);
+		check_column(response, 1, "name", ::fivetran_sdk::v2::DataType::STRING, true);
+		check_column(response, 2, "id_new", ::fivetran_sdk::v2::DataType::INT, true);
 	}
 
 	{
@@ -1043,44 +928,18 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 	}
 
 	{
-		// Describe the altered table
-		::fivetran_sdk::v2::DescribeTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-
-		::fivetran_sdk::v2::DescribeTableResponse response;
-		auto status = service.DescribeTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
+		auto response = describe_table(service, table_name);
 		REQUIRE(!response.not_found());
 
 		REQUIRE(response.table().name() == table_name);
 		REQUIRE(response.table().columns_size() == 7);
-		REQUIRE(response.table().columns(0).name() == "id");
-		REQUIRE(response.table().columns(0).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE(response.table().columns(0).primary_key());
-
-		REQUIRE(response.table().columns(1).name() == "name");
-		REQUIRE(response.table().columns(1).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE(response.table().columns(1).primary_key());
-
-		REQUIRE(response.table().columns(2).name() == "id_new");
-		REQUIRE(response.table().columns(2).type() == ::fivetran_sdk::v2::DataType::INT);
-		REQUIRE(response.table().columns(2).primary_key());
-
-		REQUIRE(response.table().columns(3).name() == "id_int");
-		REQUIRE(response.table().columns(3).type() == ::fivetran_sdk::v2::DataType::LONG); // this type got updated
-		REQUIRE_FALSE(response.table().columns(3).primary_key());
-
-		REQUIRE(response.table().columns(4).name() == "id_varchar");
-		REQUIRE(response.table().columns(4).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE(response.table().columns(4).primary_key());
-
-		REQUIRE(response.table().columns(5).name() == "id_date");
-		REQUIRE(response.table().columns(5).type() == ::fivetran_sdk::v2::DataType::NAIVE_DATE);
-		REQUIRE(response.table().columns(5).primary_key());
-
-		REQUIRE(response.table().columns(6).name() == "id_float");
-		REQUIRE(response.table().columns(6).type() == ::fivetran_sdk::v2::DataType::FLOAT);
-		REQUIRE(response.table().columns(6).primary_key());
+		check_column(response, 0, "id", ::fivetran_sdk::v2::DataType::STRING, true);
+		check_column(response, 1, "name", ::fivetran_sdk::v2::DataType::STRING, true);
+		check_column(response, 2, "id_new", ::fivetran_sdk::v2::DataType::INT, true);
+		check_column(response, 3, "id_int", ::fivetran_sdk::v2::DataType::LONG, false); // this type got updated
+		check_column(response, 4, "id_varchar", ::fivetran_sdk::v2::DataType::STRING, true);
+		check_column(response, 5, "id_date", ::fivetran_sdk::v2::DataType::NAIVE_DATE, true);
+		check_column(response, 6, "id_float", ::fivetran_sdk::v2::DataType::FLOAT, true);
 	}
 
 	{
@@ -1658,24 +1517,13 @@ TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") 
 	}
 
 	auto verifyTableStructure = [&](bool id_is_primary_key) {
-		// Describe the altered table
-		::fivetran_sdk::v2::DescribeTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-
-		::fivetran_sdk::v2::DescribeTableResponse response;
-		auto status = service.DescribeTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
+		auto response = describe_table(service, table_name);
 		REQUIRE(!response.not_found());
 
 		REQUIRE(response.table().name() == table_name);
 		REQUIRE(response.table().columns_size() == 2);
-		REQUIRE(response.table().columns(0).name() == "id");
-		REQUIRE(response.table().columns(0).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE(response.table().columns(0).primary_key() == id_is_primary_key);
-
-		REQUIRE(response.table().columns(1).name() == "name");
-		REQUIRE(response.table().columns(1).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE_FALSE(response.table().columns(1).primary_key());
+		check_column(response, 0, "id", ::fivetran_sdk::v2::DataType::STRING, id_is_primary_key);
+		check_column(response, 1, "name", ::fivetran_sdk::v2::DataType::STRING, false);
 	};
 
 	verifyTableStructure(true);
@@ -1734,33 +1582,16 @@ TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") 
 	}
 
 	{
-		// Describe the altered table
-		::fivetran_sdk::v2::DescribeTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-
-		::fivetran_sdk::v2::DescribeTableResponse response;
-		auto status = service.DescribeTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
+		auto response = describe_table(service, table_name);
 		REQUIRE(!response.not_found());
 
 		REQUIRE(response.table().name() == table_name);
 		REQUIRE(response.table().columns_size() == 4);
-		REQUIRE(response.table().columns(0).name() == "id");
-		REQUIRE(response.table().columns(0).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE_FALSE(response.table().columns(0).primary_key());
-
-		REQUIRE(response.table().columns(1).name() == "name");
-		REQUIRE(response.table().columns(1).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE(response.table().columns(1).primary_key());
-
+		check_column(response, 0, "id", ::fivetran_sdk::v2::DataType::STRING, false);
+		check_column(response, 1, "name", ::fivetran_sdk::v2::DataType::STRING, true);
 		// both new columns are added to the end, in the order they were requested
-		REQUIRE(response.table().columns(2).name() == "new_before");
-		REQUIRE(response.table().columns(2).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE_FALSE(response.table().columns(2).primary_key());
-
-		REQUIRE(response.table().columns(3).name() == "new_after");
-		REQUIRE(response.table().columns(3).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE_FALSE(response.table().columns(3).primary_key());
+		check_column(response, 2, "new_before", ::fivetran_sdk::v2::DataType::STRING, false);
+		check_column(response, 3, "new_after", ::fivetran_sdk::v2::DataType::STRING, false);
 	}
 
 	{
@@ -1782,41 +1613,18 @@ TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") 
 	}
 
 	{
-		// Describe the altered table
-		::fivetran_sdk::v2::DescribeTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-
-		::fivetran_sdk::v2::DescribeTableResponse response;
-		auto status = service.DescribeTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
+		auto response = describe_table(service, table_name);
 		REQUIRE(!response.not_found());
 
 		REQUIRE(response.table().name() == table_name);
 		REQUIRE(response.table().columns_size() == 6);
-		REQUIRE(response.table().columns(0).name() == "id");
-		REQUIRE(response.table().columns(0).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE_FALSE(response.table().columns(0).primary_key());
-
-		REQUIRE(response.table().columns(1).name() == "name");
-		REQUIRE(response.table().columns(1).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE(response.table().columns(1).primary_key());
-
-		REQUIRE(response.table().columns(2).name() == "new_before");
-		REQUIRE(response.table().columns(2).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE_FALSE(response.table().columns(2).primary_key());
-
-		REQUIRE(response.table().columns(3).name() == "new_after");
-		REQUIRE(response.table().columns(3).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE_FALSE(response.table().columns(3).primary_key());
-
+		check_column(response, 0, "id", ::fivetran_sdk::v2::DataType::STRING, false);
+		check_column(response, 1, "name", ::fivetran_sdk::v2::DataType::STRING, true);
+		check_column(response, 2, "new_before", ::fivetran_sdk::v2::DataType::STRING, false);
+		check_column(response, 3, "new_after", ::fivetran_sdk::v2::DataType::STRING, false);
 		// both new columns are added to the end, in the order they were requested
-		REQUIRE(response.table().columns(4).name() == "new_before2");
-		REQUIRE(response.table().columns(4).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE_FALSE(response.table().columns(4).primary_key());
-
-		REQUIRE(response.table().columns(5).name() == "new_after2");
-		REQUIRE(response.table().columns(5).type() == ::fivetran_sdk::v2::DataType::STRING);
-		REQUIRE_FALSE(response.table().columns(5).primary_key());
+		check_column(response, 4, "new_before2", ::fivetran_sdk::v2::DataType::STRING, false);
+		check_column(response, 5, "new_after2", ::fivetran_sdk::v2::DataType::STRING, false);
 	}
 }
 
@@ -1848,12 +1656,7 @@ TEST_CASE("AlterTable must drop columns when specified", "[integration]") {
 	}
 
 	{
-		::fivetran_sdk::v2::DescribeTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-
-		::fivetran_sdk::v2::DescribeTableResponse response;
-		auto status = service.DescribeTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
+		auto response = describe_table(service, table_name);
 		REQUIRE(!response.not_found());
 
 		REQUIRE(response.table().name() == table_name);
@@ -1870,23 +1673,14 @@ TEST_CASE("AlterTable decimal width change", "[integration]") {
 	auto con = get_test_connection(MD_TOKEN);
 
 	auto verify_decimal_column = [&](uint32_t expected_precision, uint32_t expected_scale) {
-		::fivetran_sdk::v2::DescribeTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
-		request.set_table_name(table_name);
-
-		::fivetran_sdk::v2::DescribeTableResponse response;
-		auto status = service.DescribeTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
+		auto response = describe_table(service, table_name);
 		REQUIRE(!response.not_found());
 
 		REQUIRE(response.table().name() == table_name);
 		REQUIRE(response.table().columns_size() == 2);
 
-		REQUIRE(response.table().columns(0).name() == "id");
-		REQUIRE(response.table().columns(0).type() == ::fivetran_sdk::v2::DataType::INT);
-
-		REQUIRE(response.table().columns(1).name() == "amount");
-		REQUIRE(response.table().columns(1).type() == ::fivetran_sdk::v2::DataType::DECIMAL);
+		check_column(response, 0, "id", ::fivetran_sdk::v2::DataType::INT, true);
+		check_column(response, 1, "amount", ::fivetran_sdk::v2::DataType::DECIMAL, false);
 		REQUIRE(response.table().columns(1).has_params());
 		REQUIRE(response.table().columns(1).params().has_decimal());
 		REQUIRE(response.table().columns(1).params().decimal().precision() == expected_precision);

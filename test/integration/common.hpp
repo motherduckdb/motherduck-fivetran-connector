@@ -2,7 +2,7 @@
 
 #include <array>
 #include <string>
-#include "constants.hpp"
+#include "../constants.hpp"
 #include "duckdb.hpp"
 #include "fivetran_duckdb_interop.hpp"
 #include "motherduck_destination_server.hpp"
@@ -240,3 +240,11 @@ void create_test_table(DestinationSdkImpl &service,
 
 void create_history_table(DestinationSdkImpl &service,
                                    const std::string &table_name);
+
+void check_column(const fivetran_sdk::v2::DescribeTableResponse &response,
+                  int index, const std::string &name,
+                  fivetran_sdk::v2::DataType type, bool primary_key);
+
+fivetran_sdk::v2::DescribeTableResponse describe_table(
+    DestinationSdkImpl &service, const std::string &table_name,
+    const std::string &schema_name = "");
