@@ -3,7 +3,7 @@
 #include <string>
 
 namespace test::constants {
-#define STRING(x) #x
+#define STRING(x)  #x
 #define XSTRING(s) STRING(s)
 const std::string TEST_RESOURCES_DIR = XSTRING(TEST_RESOURCES_LOCATION);
 #undef XSTRING

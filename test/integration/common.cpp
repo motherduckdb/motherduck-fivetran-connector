@@ -49,17 +49,15 @@ void check_row(duckdb::unique_ptr<duckdb::MaterializedQueryResult>& res, idx_t r
 	}
 }
 
-void check_column(const fivetran_sdk::v2::DescribeTableResponse& response,
-                  int index, const std::string& name,
+void check_column(const fivetran_sdk::v2::DescribeTableResponse& response, int index, const std::string& name,
                   fivetran_sdk::v2::DataType type, bool primary_key) {
 	REQUIRE(response.table().columns(index).name() == name);
 	REQUIRE(response.table().columns(index).type() == type);
 	REQUIRE(response.table().columns(index).primary_key() == primary_key);
 }
 
-fivetran_sdk::v2::DescribeTableResponse describe_table(
-    DestinationSdkImpl& service, const std::string& table_name,
-    const std::string& schema_name) {
+fivetran_sdk::v2::DescribeTableResponse describe_table(DestinationSdkImpl& service, const std::string& table_name,
+                                                       const std::string& schema_name) {
 	::fivetran_sdk::v2::DescribeTableRequest request;
 	add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
 	if (!schema_name.empty()) {
