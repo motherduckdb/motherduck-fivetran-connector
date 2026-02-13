@@ -766,7 +766,8 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 	const std::string table_name = "some_table" + std::to_string(Catch::rngSeed());
 
 	auto con = get_test_connection(MD_TOKEN);
-	create_table_with_varchar_col(service, table_name, "name");
+	create_table(service, table_name,
+	             std::array {ID_PK, column_def {.name = "name", .type = duckdb::LogicalTypeId::VARCHAR}});
 
 	{
 		// Alter Table to add a new primary key to an empty table

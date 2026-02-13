@@ -336,7 +336,7 @@ TEST_CASE("Migrate - copy column", "[integration][migrate]") {
 		auto res = con->Query("SELECT source_col, dest_col FROM " + table_name + " WHERE id = 1");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 1);
-		check_row(res, 0, {"original", "original"}); // amount
+		check_row(res, 0, {"original", "original"});
 	}
 
 	// Copy nonexisting column fails
