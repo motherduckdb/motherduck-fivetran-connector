@@ -127,7 +127,7 @@ TEST_CASE("Migrate - rename table", "[integration][migrate]") {
 	}
 
 	// Create another source table
-	create_table_basic(service, second_from_table);
+	create_table(service, second_from_table, std::array {ID_PK});
 
 	// Rename to existing table should fail
 	{
@@ -568,7 +568,7 @@ TEST_CASE("Migrate - copy table to history mode from live", "[integration][migra
 TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
 	DestinationSdkImpl service;
 	const std::string table_name = "migrate_add_col_" + std::to_string(Catch::rngSeed());
-	create_table_basic(service, table_name);
+	create_table(service, table_name, std::array {ID_PK});
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -1443,7 +1443,7 @@ TEST_CASE("Migrate - unsupported operation returns unsupported", "[integration][
 	const std::string table_name = "migrate_unsupported_" + std::to_string(Catch::rngSeed());
 
 	// Create table first
-	create_table_basic(service, table_name);
+	create_table(service, table_name, std::array {ID_PK});
 
 	// Try empty copy operation (unsupported - no specific copy type set)
 	{
