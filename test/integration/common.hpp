@@ -82,10 +82,25 @@ const std::array TEST_COLUMNS = {
 };
 
 template <typename T>
-void define_test_table(T& request, const std::string& table_name) {
+void add_decimal_col(T& request, const std::string& name, bool is_primary_key, std::uint32_t precision,
+					 std::uint32_t scale) {
+	auto col = request.mutable_table()->add_columns();
+	col->set_name(name);
+	col->set_type(::fivetran_sdk::v2::DataType::DECIMAL);
+	col->set_primary_key(is_primary_key);
+	col->mutable_params()->mutable_decimal()->set_precision(precision);
+	col->mutable_params()->mutable_decimal()->set_scale(scale);
+}
+
+template <typename T, std::size_t N>
+void define_table(T& request, const std::string& table_name, const std::array<column_def, N> columns) {
 	request.mutable_table()->set_name(table_name);
-	for (auto column : TEST_COLUMNS) {
-		add_col(request, column.name, get_fivetran_type(column.type), column.primary_key);
+	for (auto column : columns) {
+		if (column.type == duckdb::LogicalTypeId::DECIMAL && column.width > 0) {
+			add_decimal_col(request, column.name, column.primary_key, column.width, column.scale);
+		} else {
+			add_col(request, column.name, get_fivetran_type(column.type), column.primary_key);
+		}
 	}
 }
 
@@ -101,10 +116,7 @@ const std::array HISTORY_TEST_COLUMNS = {
 
 template <typename T>
 void define_history_test_table(T& request, const std::string& table_name) {
-	request.mutable_table()->set_name(table_name);
-	for (auto column : HISTORY_TEST_COLUMNS) {
-		add_col(request, column.name, get_fivetran_type(column.type), column.primary_key);
-	}
+	define_table(request, table_name, HISTORY_TEST_COLUMNS);
 }
 
 template <typename T>
@@ -169,17 +181,6 @@ void add_config(T& request, const std::string& token, const std::string& databas
 	(*request.mutable_configuration())["motherduck_database"] = database;
 }
 
-template <typename T>
-void add_decimal_col(T& request, const std::string& name, bool is_primary_key, std::uint32_t precision,
-                     std::uint32_t scale) {
-	auto col = request.mutable_table()->add_columns();
-	col->set_name(name);
-	col->set_type(::fivetran_sdk::v2::DataType::DECIMAL);
-	col->set_primary_key(is_primary_key);
-	col->mutable_params()->mutable_decimal()->set_precision(precision);
-	col->mutable_params()->mutable_decimal()->set_scale(scale);
-}
-
 // Same columns as define_history_test_table but in a DIFFERENT order.
 // Used to test that INSERT statements use explicit column lists.
 template <typename T>
@@ -198,13 +199,7 @@ template <std::size_t N>
 void create_table(DestinationSdkImpl& service, const std::string& table_name, const std::array<column_def, N> columns) {
 	::fivetran_sdk::v2::CreateTableRequest request;
 	add_config(request, test::constants::MD_TOKEN, test::constants::TEST_DATABASE_NAME, table_name);
-	for (auto column : columns) {
-		if (column.type == duckdb::LogicalTypeId::DECIMAL && column.width > 0) {
-			add_decimal_col(request, column.name, column.primary_key, column.width, column.scale);
-		} else {
-			add_col(request, column.name, get_fivetran_type(column.type), column.primary_key);
-		}
-	}
+	define_table(request, table_name, columns);
 
 	::fivetran_sdk::v2::CreateTableResponse response;
 	auto status = service.CreateTable(nullptr, &request, &response);
@@ -214,10 +209,6 @@ void create_table(DestinationSdkImpl& service, const std::string& table_name, co
 
 void create_table_with_varchar_col(DestinationSdkImpl& service, const std::string& table_name,
                                    const std::string& col_name);
-
-void create_test_table(DestinationSdkImpl& service, const std::string& table_name);
-
-void create_history_table(DestinationSdkImpl& service, const std::string& table_name);
 
 void check_column(const fivetran_sdk::v2::DescribeTableResponse& response, int index, const std::string& name,
                   fivetran_sdk::v2::DataType type, bool primary_key);

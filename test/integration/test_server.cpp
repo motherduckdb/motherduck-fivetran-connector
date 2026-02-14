@@ -208,7 +208,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 
 	// Schema will be main
 	const std::string table_name = "books" + std::to_string(Catch::rngSeed());
-	create_test_table(service, table_name);
+	create_table(service, table_name, TEST_COLUMNS);
 
 	auto con = get_test_connection(MD_TOKEN);
 	{
@@ -217,7 +217,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		request.mutable_file_params()->set_encryption(::fivetran_sdk::v2::Encryption::AES);
 		request.mutable_file_params()->set_compression(::fivetran_sdk::v2::Compression::ZSTD);
-		define_test_table(request, table_name);
+		define_table(request, table_name, TEST_COLUMNS);
 		const std::string filename = "books_batch_1_insert.csv.zst.aes";
 		const std::string filepath = TEST_RESOURCES_DIR + filename;
 
@@ -247,7 +247,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 		// upsert
 		::fivetran_sdk::v2::WriteBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
-		define_test_table(request, table_name);
+		define_table(request, table_name, TEST_COLUMNS);
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 		const std::string filename = "books_upsert.csv";
 		const std::string filepath = TEST_RESOURCES_DIR + filename;
@@ -276,7 +276,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 		// delete
 		::fivetran_sdk::v2::WriteBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
-		define_test_table(request, table_name);
+		define_table(request, table_name, TEST_COLUMNS);
 		const std::string filename = "books_delete.csv";
 		const std::string filepath = TEST_RESOURCES_DIR + filename;
 
@@ -304,7 +304,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
-		define_test_table(request, table_name);
+		define_table(request, table_name, TEST_COLUMNS);
 		const std::string filename = "books_update.csv";
 		const std::string filepath = TEST_RESOURCES_DIR + filename;
 
@@ -546,7 +546,7 @@ TEST_CASE("Parallel WriteBatch requests", "[integration][write-batch]") {
 		const std::string table_name = "parallel_books_" + std::to_string(i);
 		table_names.push_back(table_name);
 
-		create_test_table(service, table_name);
+		create_table(service, table_name, TEST_COLUMNS);
 	}
 
 	// Launch parallel WriteBatch requests that each write to their own table
@@ -556,7 +556,7 @@ TEST_CASE("Parallel WriteBatch requests", "[integration][write-batch]") {
 		futures.push_back(std::async(std::launch::async, [&service, &table_names, i]() {
 			::fivetran_sdk::v2::WriteBatchRequest request;
 			add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
-			define_test_table(request, table_names[i]);
+			define_table(request, table_names[i], TEST_COLUMNS);
 			request.mutable_file_params()->set_null_string("magic-nullvalue");
 			request.add_replace_files(TEST_RESOURCES_DIR + "books_upsert.csv");
 
@@ -589,7 +589,7 @@ TEST_CASE("Parallel DescribeTable requests", "[integration][describe-table]") {
 		const std::string table_name = "parallel_describe_" + std::to_string(t);
 		table_names.push_back(table_name);
 
-		create_test_table(service, table_name);
+		create_table(service, table_name, TEST_COLUMNS);
 	}
 
 	std::vector<std::future<grpc::Status>> futures;
@@ -666,7 +666,7 @@ TEST_CASE("reading inaccessible or nonexistent files fails") {
 	(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
 	request.mutable_file_params()->set_encryption(::fivetran_sdk::v2::Encryption::AES);
 	request.mutable_file_params()->set_compression(::fivetran_sdk::v2::Compression::ZSTD);
-	define_test_table(request, "unused_table");
+	define_table(request, "unused_table", TEST_COLUMNS);
 
 	request.add_replace_files(bad_file_name);
 	(*request.mutable_keys())[bad_file_name] = "whatever";
@@ -1000,7 +1000,7 @@ TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
 
 	// Schema will be main
 	const std::string table_name = "books" + std::to_string(Catch::rngSeed());
-	create_history_table(service, table_name);
+	create_table(service, table_name, HISTORY_TEST_COLUMNS);
 
 	{
 		// upsert some data, so that delete-earliest has something to delete
@@ -1142,7 +1142,7 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 
 	// Schema will be main
 	const std::string table_name = "books" + std::to_string(Catch::rngSeed());
-	create_history_table(service, table_name);
+	create_table(service, table_name, HISTORY_TEST_COLUMNS);
 
 	{
 		// history write with the earliest file (that does not affect anything
@@ -1252,7 +1252,7 @@ TEST_CASE("WriteHistoryBatch should delete overlapping records", "[integration][
 	DestinationSdkImpl service;
 
 	const std::string table_name = "books" + std::to_string(Catch::rngSeed());
-	create_history_table(service, table_name);
+	create_table(service, table_name, HISTORY_TEST_COLUMNS);
 
 	{
 		// Initial batch
@@ -1309,7 +1309,7 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with reordered CSV columns", "[integ
 	// Create Table with columns in a specific order:
 	// id, title, magic_number, _fivetran_deleted, _fivetran_synced,
 	// _fivetran_active, _fivetran_start, _fivetran_end
-	create_history_table(service, table_name);
+	create_table(service, table_name, HISTORY_TEST_COLUMNS);
 
 	{
 		// Insert initial data using a CSV file where columns are in a DIFFERENT

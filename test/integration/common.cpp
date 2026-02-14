@@ -27,14 +27,6 @@ void create_table_with_varchar_col(DestinationSdkImpl& service, const std::strin
 	             });
 }
 
-void create_test_table(DestinationSdkImpl& service, const std::string& table_name) {
-	create_table(service, table_name, TEST_COLUMNS);
-}
-
-void create_history_table(DestinationSdkImpl& service, const std::string& table_name) {
-	create_table(service, table_name, HISTORY_TEST_COLUMNS);
-}
-
 // Helper to verify a row's values in order. Usage:
 //   check_row(res, 0, {1, "Initial Book", 100, false});
 void check_row(duckdb::unique_ptr<duckdb::MaterializedQueryResult>& res, idx_t row,
