@@ -243,10 +243,7 @@ grpc::Status DestinationSdkImpl::CreateTable(::grpc::ServerContext*,
 		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 		const table_def table {db_name, schema_name, request->table().name()};
 
-		if (!sql_generator->schema_exists(con, db_name, schema_name)) {
-			sql_generator->create_schema(con, db_name, schema_name);
-		}
-
+		sql_generator->create_schema_if_not_exists(con, db_name, schema_name);
 		const auto cols = get_duckdb_columns(request->table().columns());
 		sql_generator->create_table(con, table, cols, {});
 		response->set_success(true);
