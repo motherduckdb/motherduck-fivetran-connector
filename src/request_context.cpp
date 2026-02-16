@@ -5,13 +5,13 @@
 #include "google/protobuf/map.h"
 
 #include <cstdlib>
-#include <cstring>
 #include <string>
+#include <string_view>
 
 namespace {
 mdlog::Logger get_logger_for_env(duckdb::Connection& con) {
 	const char* env_var = std::getenv("MD_DISABLE_DUCKDB_LOGGING");
-	if (env_var && std::strcmp(env_var, "0") != 0) {
+	if (env_var && std::string_view(env_var) != "0") {
 		return mdlog::Logger::CreateStdoutLogger();
 	}
 	return mdlog::Logger::CreateMultiSinkLogger(&con);
