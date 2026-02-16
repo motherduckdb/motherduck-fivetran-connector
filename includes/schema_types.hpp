@@ -28,6 +28,7 @@ struct column_def {
 inline std::string format_type(const column_def& col) {
 	if (col.type == duckdb::LogicalTypeId::DECIMAL && col.width.has_value()) {
 		assert(col.width.value() >= DECIMAL_MIN_WIDTH && col.width.value() <= DECIMAL_MAX_WIDTH);
+		assert(!col.scale.has_value() || col.scale.value() <= col.width.value());
 		// If scale is not set, its value is 0. This is the same as for e.g. a DECIMAL(15) type in DuckDB.
 		return duckdb::EnumUtil::ToString(col.type) + " (" + std::to_string(col.width.value()) + "," +
 		       std::to_string(col.scale.value_or(0)) + ")";
