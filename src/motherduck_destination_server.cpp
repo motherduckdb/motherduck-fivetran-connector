@@ -112,10 +112,9 @@ std::uint32_t get_max_record_size(const google::protobuf::Map<std::string, std::
 		try {
 			return static_cast<std::uint32_t>(std::stoul(value.value()));
 		} catch (const std::exception&) {
-			throw md_error::RecoverableError(
-				"Value \"" + value.value() + "\" could not be converted into an integer for \"Max Record Size\". "
-					"Make sure to set the \"Max Record Size\" to a valid positive integer."
-				);
+			throw md_error::RecoverableError("Value \"" + value.value() +
+			                                 "\" could not be converted into an integer for \"Max Record Size\". "
+			                                 "Make sure to set the \"Max Record Size\" to a valid positive integer.");
 		}
 	}
 
@@ -152,9 +151,11 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(::grpc::ServerContext*,
 	max_record_size_field.set_label("Max Record Size (MiB)");
 	max_record_size_field.set_description(
 	    "Maximum record size in MiB. Important: this should be a positive integer, without any units. Internally, "
-		"this is an upper limit for the lines in the CSV files Fivetran generates. Increase this if the ingest fails and"
-		" the error suggests to increase the \"Max Record Size (MiB)\" option, or if you are certain you have very large"
-		" records. Leave empty to use the default (24 MiB).");
+	    "this is an upper limit for the lines in the CSV files Fivetran generates. Increase this if the ingest fails "
+	    "and"
+	    " the error suggests to increase the \"Max Record Size (MiB)\" option, or if you are certain you have very "
+	    "large"
+	    " records. Leave empty to use the default (24 MiB).");
 	max_record_size_field.set_text_field(fivetran_sdk::v2::PlainText);
 	max_record_size_field.set_required(false);
 	response->add_fields()->CopyFrom(max_record_size_field);
@@ -890,7 +891,7 @@ grpc::Status DestinationSdkImpl::Test(::grpc::ServerContext*, const ::fivetran_s
 		// it more actionable.
 		RequestContext ctx("Test", connection_factory, request->configuration());
 
-		auto test_result = config_tester::run_test(test_name, ctx.GetConnection());
+		auto test_result = config_tester::run_test(test_name, ctx.GetConnection(), request->configuration());
 		if (test_result.success) {
 			response->set_success(true);
 		} else {

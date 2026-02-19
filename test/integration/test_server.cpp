@@ -28,7 +28,7 @@ TEST_CASE("ConfigurationForm", "[integration][config]") {
 	REQUIRE(response.fields(1).name() == "motherduck_database");
 	REQUIRE(response.fields(2).name() == "max_record_size");
 
-	REQUIRE(response.tests_size() == 3);
+	REQUIRE(response.tests_size() == 4);
 }
 
 TEST_CASE("DescribeTable fails when database missing", "[integration][describe-table]") {
@@ -243,6 +243,42 @@ TEST_CASE("Test fails when motherduck_database is a share", "[integration][confi
 
 	REQUIRE_NO_FAIL(status);
 	REQUIRE_THAT(response.failure(), Catch::Matchers::ContainsSubstring("is a read-only MotherDuck share"));
+}
+
+TEST_CASE("Test fails when max_record_size is not a number", "[integration][configtest]") {
+	DestinationSdkImpl service;
+
+	::fivetran_sdk::v2::TestRequest request;
+	request.set_name(config_tester::TEST_MAX_RECORD_SIZE_VALID);
+	(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+	(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+	(*request.mutable_configuration())["max_record_size"] = "nan";
+
+	::fivetran_sdk::v2::TestResponse response;
+
+	auto status = service.Test(nullptr, &request, &response);
+	REQUIRE_NO_FAIL(status);
+	const std::string expected_message = "Test <test_max_record_size_valid> failed: Value \"nan\" could not be "
+	                                     "converted into an integer for \"Max Record Size\". Make sure to set the "
+	                                     "\"Max Record Size\" to a valid positive integer.";
+	REQUIRE(response.failure() == expected_message);
+}
+
+TEST_CASE("Test succeeds when max_record_size is a number", "[integration][configtest]") {
+	DestinationSdkImpl service;
+
+	::fivetran_sdk::v2::TestRequest request;
+	request.set_name(config_tester::TEST_MAX_RECORD_SIZE_VALID);
+	(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+	(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+	(*request.mutable_configuration())["max_record_size"] = "1234567";
+
+	::fivetran_sdk::v2::TestResponse response;
+
+	auto status = service.Test(nullptr, &request, &response);
+	REQUIRE_NO_FAIL(status);
+	REQUIRE(response.failure().empty());
+	REQUIRE(response.success());
 }
 
 TEST_CASE("WriteBatch", "[integration][write-batch]") {
@@ -844,7 +880,6 @@ TEST_CASE("reading inaccessible or nonexistent files fails") {
 	REQUIRE_THAT(status.error_message(), Catch::Matchers::ContainsSubstring("No such file or directory"));
 }
 
-
 TEST_CASE("WriteBatch fails with invalid max_record_size", "[integration][write-batch]") {
 	DestinationSdkImpl service;
 
@@ -862,9 +897,10 @@ TEST_CASE("WriteBatch fails with invalid max_record_size", "[integration][write-
 	::fivetran_sdk::v2::WriteBatchResponse response;
 	auto status = service.WriteBatch(nullptr, &request, &response);
 	REQUIRE_NO_FAIL(status);
-	REQUIRE(response.mutable_task()->message() == "WriteBatch endpoint failed for schema <test>, table "
-					"<people_history>: Value \"not_a_number\" could not be converted into an integer for \"Max "
-					"Record Size\". Make sure to set the \"Max Record Size\" to a valid positive integer.");
+	REQUIRE(response.mutable_task()->message() ==
+	        "WriteBatch endpoint failed for schema <test>, table "
+	        "<people_history>: Value \"not_a_number\" could not be converted into an integer for \"Max "
+	        "Record Size\". Make sure to set the \"Max Record Size\" to a valid positive integer.");
 }
 
 TEST_CASE("Test all types with create and describe table") {

@@ -5,6 +5,7 @@
 
 #include <array>
 #include <google/protobuf/map.h>
+#include <optional>
 #include <string>
 
 namespace config_tester {
@@ -104,15 +105,37 @@ TestResult run_write_permissions_test(duckdb::Connection& con) {
 
 	return TestResult(true);
 }
+
+/// Checks that max_record_size can be converted into an integer
+TestResult run_max_record_size_valid_test(const google::protobuf::Map<std::string, std::string>& configuration) {
+	const auto value = config::find_optional_property(configuration, config::PROP_MAX_RECORD_SIZE);
+
+	if (!value.has_value()) {
+		return TestResult(true);
+	}
+
+	try {
+		std::stoul(value.value());
+		return TestResult(true);
+	} catch (const std::exception&) {
+		return TestResult(false, "Value \"" + value.value() +
+		                             "\" could not be converted into an "
+		                             "integer for \"Max Record Size\". Make sure to set the"
+		                             " \"Max Record Size\" to a valid positive integer.");
+	}
+}
 } // namespace
 
-std::array<TestCase, 3> get_test_cases() {
+std::array<TestCase, 4> get_test_cases() {
 	return {TestCase {TEST_AUTHENTICATE, "Test that user is authenticated"},
 	        TestCase {TEST_DATABASE_TYPE, "Test that database is not read-only"},
-	        TestCase {TEST_WRITE_PERMISSIONS, "Test that auth token has write permissions"}};
+	        TestCase {TEST_WRITE_PERMISSIONS, "Test that auth token has write permissions"},
+	        TestCase {TEST_MAX_RECORD_SIZE_VALID, "Test that the \"Max Record Size\" is a valid "
+	                                              "integer"}};
 }
 
-TestResult run_test(const std::string& test_name, duckdb::Connection& con) {
+TestResult run_test(const std::string& test_name, duckdb::Connection& con,
+                    const google::protobuf::Map<std::string, std::string>& configuration) {
 	if (test_name == TEST_AUTHENTICATE) {
 		return run_authentication_test(con);
 	}
@@ -121,6 +144,9 @@ TestResult run_test(const std::string& test_name, duckdb::Connection& con) {
 	}
 	if (test_name == TEST_WRITE_PERMISSIONS) {
 		return run_write_permissions_test(con);
+	}
+	if (test_name == TEST_MAX_RECORD_SIZE_VALID) {
+		return run_max_record_size_valid_test(configuration);
 	}
 	throw std::runtime_error("Unknown test name: " + test_name);
 }

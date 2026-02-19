@@ -16,6 +16,7 @@ namespace config_tester {
 inline constexpr const char* TEST_AUTHENTICATE = "test_authentication";
 inline constexpr const char* TEST_DATABASE_TYPE = "test_database_type";
 inline constexpr const char* TEST_WRITE_PERMISSIONS = "test_write_permissions";
+inline constexpr const char* TEST_MAX_RECORD_SIZE_VALID = "test_max_record_size_valid";
 
 struct TestCase {
 	explicit TestCase(std::string name_, std::string description_)
@@ -36,7 +37,8 @@ struct TestResult {
 	std::string failure_message;
 };
 
-std::array<TestCase, 3> get_test_cases();
+std::array<TestCase, 4> get_test_cases();
 
-TestResult run_test(const std::string& test_name, duckdb::Connection& con);
+TestResult run_test(const std::string& test_name, duckdb::Connection& con,
+                    const google::protobuf::Map<std::string, std::string>& configuration);
 } // namespace config_tester
