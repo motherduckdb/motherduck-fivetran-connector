@@ -109,7 +109,14 @@ std::uint32_t get_max_record_size(const google::protobuf::Map<std::string, std::
 	const auto value = config::find_optional_property(configuration, config::PROP_MAX_RECORD_SIZE);
 
 	if (value.has_value()) {
-		return static_cast<std::uint32_t>(std::stoul(value.value()));
+		try {
+			return static_cast<std::uint32_t>(std::stoul(value.value()));
+		} catch (const std::exception&) {
+			throw md_error::RecoverableError(
+				"Value \"" + value.value() + "\" could not be converted into an integer for \"Max Record Size\". "
+					"Make sure to set the \"Max Record Size\" to a valid positive integer."
+				);
+		}
 	}
 
 	return MAX_RECORD_SIZE_DEFAULT;
@@ -144,9 +151,10 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(::grpc::ServerContext*,
 	max_record_size_field.set_name(config::PROP_MAX_RECORD_SIZE);
 	max_record_size_field.set_label("Max Record Size (MiB)");
 	max_record_size_field.set_description(
-	    "Maximum record size in MiB. Internally, this is an upper limit for the lines in the CSV files Fivetran "
-	    "generates. Increase this if the ingest fails and the error suggests to increase the \"Max Record Size (MiB)\" "
-	    "option, or if you are certain you have very large records. Leave empty to use the default (24 MiB).");
+	    "Maximum record size in MiB. Important: this should be a positive integer, without any units. Internally, "
+		"this is an upper limit for the lines in the CSV files Fivetran generates. Increase this if the ingest fails and"
+		" the error suggests to increase the \"Max Record Size (MiB)\" option, or if you are certain you have very large"
+		" records. Leave empty to use the default (24 MiB).");
 	max_record_size_field.set_text_field(fivetran_sdk::v2::PlainText);
 	max_record_size_field.set_required(false);
 	response->add_fields()->CopyFrom(max_record_size_field);
@@ -425,7 +433,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 
 	} catch (const md_error::RecoverableError& mde) {
 		auto const msg = "WriteBatch endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		                 request->table().name() + ">:" + std::string(mde.what());
+		                 request->table().name() + ">: " + std::string(mde.what());
 		logger.warning(msg);
 		response->mutable_task()->set_message(msg);
 		return ::grpc::Status::OK;

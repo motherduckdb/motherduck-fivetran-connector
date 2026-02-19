@@ -844,6 +844,29 @@ TEST_CASE("reading inaccessible or nonexistent files fails") {
 	REQUIRE_THAT(status.error_message(), Catch::Matchers::ContainsSubstring("No such file or directory"));
 }
 
+
+TEST_CASE("WriteBatch fails with invalid max_record_size", "[integration][write-batch]") {
+	DestinationSdkImpl service;
+
+	const std::string table_name = "people_history";
+
+	::fivetran_sdk::v2::WriteBatchRequest request;
+	(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+	(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+	(*request.mutable_configuration())["max_record_size"] = "not_a_number";
+	request.set_schema_name("test");
+	define_test_table(request, table_name);
+
+	request.add_replace_files(TEST_RESOURCES_DIR + "books_upsert.csv");
+
+	::fivetran_sdk::v2::WriteBatchResponse response;
+	auto status = service.WriteBatch(nullptr, &request, &response);
+	REQUIRE_NO_FAIL(status);
+	REQUIRE(response.mutable_task()->message() == "WriteBatch endpoint failed for schema <test>, table "
+					"<people_history>: Value \"not_a_number\" could not be converted into an integer for \"Max "
+					"Record Size\". Make sure to set the \"Max Record Size\" to a valid positive integer.");
+}
+
 TEST_CASE("Test all types with create and describe table") {
 
 	DestinationSdkImpl service;
