@@ -331,6 +331,23 @@ TEST_CASE("Test succeeds when max_record_size is a number", "[integration][confi
 	REQUIRE(response.success());
 }
 
+TEST_CASE("Test succeeds when max_record_size is empty", "[integration][configtest]") {
+	DestinationSdkImpl service;
+
+	::fivetran_sdk::v2::TestRequest request;
+	request.set_name(config_tester::TEST_MAX_RECORD_SIZE_VALID);
+	(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+	(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+	(*request.mutable_configuration())["max_record_size"] = "";
+
+	::fivetran_sdk::v2::TestResponse response;
+
+	auto status = service.Test(nullptr, &request, &response);
+	REQUIRE_NO_FAIL(status);
+	REQUIRE(response.failure().empty());
+	REQUIRE(response.success());
+}
+
 TEST_CASE("WriteBatch", "[integration][write-batch]") {
 	DestinationSdkImpl service;
 

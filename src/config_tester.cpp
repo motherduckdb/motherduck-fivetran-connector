@@ -115,6 +115,10 @@ TestResult run_max_record_size_valid_test(const google::protobuf::Map<std::strin
 		return TestResult(true);
 	}
 
+	if (value.value().empty()) {  // Defaults to MAX_RECORD_SIZE_DEFAULT
+		return TestResult(true);
+	}
+
 	try {
 		auto parsed = std::stoul(value.value());
 
