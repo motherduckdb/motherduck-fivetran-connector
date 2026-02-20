@@ -108,17 +108,24 @@ std::string get_decryption_key(const std::string& filename, const google::protob
 std::uint32_t get_max_record_size(const google::protobuf::Map<std::string, std::string>& configuration) {
 	const auto value = config::find_optional_property(configuration, config::PROP_MAX_RECORD_SIZE);
 
+	std::uint32_t max_record_size = MAX_RECORD_SIZE_DEFAULT;
 	if (value.has_value()) {
+		unsigned long converted_value;
 		try {
-			return static_cast<std::uint32_t>(std::stoul(value.value()));
+			converted_value = std::stoul(value.value());
 		} catch (const std::exception&) {
 			throw md_error::RecoverableError("Value \"" + value.value() +
 			                                 "\" could not be converted into an integer for \"Max Record Size\". "
 			                                 "Make sure to set the \"Max Record Size\" to a valid positive integer.");
 		}
+
+		// Only use max_record_size values from the configuration that are larger than the default
+		if (converted_value > MAX_RECORD_SIZE_DEFAULT && converted_value <= std::numeric_limits<std::uint32_t>::max()) {
+			max_record_size = static_cast<std::uint32_t>(converted_value);
+		}
 	}
 
-	return MAX_RECORD_SIZE_DEFAULT;
+	return max_record_size;
 }
 } // namespace
 
