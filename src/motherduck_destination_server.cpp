@@ -132,14 +132,6 @@ std::uint32_t get_max_record_size(const google::protobuf::Map<std::string, std::
 			               "\" of \"Max Record Size\" is too high, "
 			               "using maximum of 1024 MiB.");
 		}
-
-		// When set too high, using the maximum max_record_size
-		if (converted_value > MAX_RECORD_SIZE_DEFAULT && converted_value <= std::numeric_limits<std::uint32_t>::max()) {
-			logger.warning("Value \"" + value.value() +
-			               "\" of \"Max Record Size\" is too low, "
-			               "using default of 24 MiB.");
-			max_record_size = static_cast<std::uint32_t>(converted_value);
-		}
 	}
 
 	return max_record_size;
