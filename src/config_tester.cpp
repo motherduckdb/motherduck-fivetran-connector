@@ -2,6 +2,7 @@
 
 #include "config.hpp"
 #include "duckdb.hpp"
+#include "ingest_properties.hpp"
 
 #include <array>
 #include <google/protobuf/map.h>
@@ -115,7 +116,20 @@ TestResult run_max_record_size_valid_test(const google::protobuf::Map<std::strin
 	}
 
 	try {
-		std::stoul(value.value());
+		auto parsed = std::stoul(value.value());
+
+		if (parsed < MAX_RECORD_SIZE_DEFAULT) {
+			return TestResult(false, "Value \"" + value.value() +
+			                             "\" for \"Max Record Size\" is lower than the default of 24 MiB. "
+			                             "It should be between 24 and 1024");
+		}
+
+		if (parsed > MAX_RECORD_SIZE_MAX) {
+			return TestResult(false, "Value \"" + value.value() +
+			                             "\" for \"Max Record Size\" is higher than the max of 1024 MiB. "
+			                             "It should be between 24 and 1024");
+		}
+
 		return TestResult(true);
 	} catch (const std::exception&) {
 		return TestResult(false, "Value \"" + value.value() +

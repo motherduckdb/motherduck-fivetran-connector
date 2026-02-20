@@ -264,6 +264,56 @@ TEST_CASE("Test fails when max_record_size is not a number", "[integration][conf
 	REQUIRE(response.failure() == expected_message);
 }
 
+TEST_CASE("Test succeeds when max_record_size is almost a number", "[integration][configtest]") {
+	DestinationSdkImpl service;
+
+	::fivetran_sdk::v2::TestRequest request;
+	request.set_name(config_tester::TEST_MAX_RECORD_SIZE_VALID);
+	(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+	(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+	(*request.mutable_configuration())["max_record_size"] = "32MiB";
+
+	::fivetran_sdk::v2::TestResponse response;
+
+	auto status = service.Test(nullptr, &request, &response);
+	REQUIRE_NO_FAIL(status);
+	REQUIRE(response.failure() == "");
+}
+
+TEST_CASE("Test fails when max_record_size is too low", "[integration][configtest]") {
+	DestinationSdkImpl service;
+
+	::fivetran_sdk::v2::TestRequest request;
+	request.set_name(config_tester::TEST_MAX_RECORD_SIZE_VALID);
+	(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+	(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+	(*request.mutable_configuration())["max_record_size"] = "12";
+
+	::fivetran_sdk::v2::TestResponse response;
+
+	auto status = service.Test(nullptr, &request, &response);
+	REQUIRE_NO_FAIL(status);
+	REQUIRE(response.failure() == "Test <test_max_record_size_valid> failed: Value \"12\" for \"Max Record Size\" "
+	                              "is lower than the default of 24 MiB. It should be between 24 and 1024");
+}
+
+TEST_CASE("Test fails when max_record_size is too high", "[integration][configtest]") {
+	DestinationSdkImpl service;
+
+	::fivetran_sdk::v2::TestRequest request;
+	request.set_name(config_tester::TEST_MAX_RECORD_SIZE_VALID);
+	(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+	(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+	(*request.mutable_configuration())["max_record_size"] = "1025";
+
+	::fivetran_sdk::v2::TestResponse response;
+
+	auto status = service.Test(nullptr, &request, &response);
+	REQUIRE_NO_FAIL(status);
+	REQUIRE(response.failure() == "Test <test_max_record_size_valid> failed: Value \"1025\" for \"Max Record Size\" "
+	                              "is higher than the max of 1024 MiB. It should be between 24 and 1024");
+}
+
 TEST_CASE("Test succeeds when max_record_size is a number", "[integration][configtest]") {
 	DestinationSdkImpl service;
 
@@ -271,7 +321,7 @@ TEST_CASE("Test succeeds when max_record_size is a number", "[integration][confi
 	request.set_name(config_tester::TEST_MAX_RECORD_SIZE_VALID);
 	(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
 	(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-	(*request.mutable_configuration())["max_record_size"] = "1234567";
+	(*request.mutable_configuration())["max_record_size"] = "1023";
 
 	::fivetran_sdk::v2::TestResponse response;
 
