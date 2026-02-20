@@ -32,7 +32,7 @@ struct TestResult {
 		assert((success && failure_message.empty()) || (!success && !failure_message.empty()));
 	}
 
-	bool success;
+	bool success = false;
 	std::string failure_message;
 };
 

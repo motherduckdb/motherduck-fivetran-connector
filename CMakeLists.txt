@@ -65,7 +65,7 @@ FetchContent_MakeAvailable(fmt)
 FetchContent_Declare(
     duckdb
     GIT_REPOSITORY https://github.com/duckdb/duckdb.git
-    GIT_TAG v1.4.3
+    GIT_TAG 6ddac802ffa9bcfbcc3f5f0d71de5dff9b0bc250 # v1.4.4
     GIT_SHALLOW TRUE
     SYSTEM
 )
@@ -184,6 +184,11 @@ target_compile_options(motherduck_destination_sources PUBLIC
         -Wall -Wextra -Wpedantic -Wnon-virtual-dtor -Wold-style-cast
         -Woverloaded-virtual -Wdouble-promotion -Wconversion -Wformat=2
         -Wnull-dereference -Werror)
+# In GCC, -Wmissing-field-initializers is too noisy because it also warns for designated initializers
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(motherduck_destination_sources PUBLIC -Wno-missing-field-initializers)
+endif()
+
 if(USE_SANITIZERS)
     target_compile_options(motherduck_destination_sources PUBLIC "-fsanitize=address,undefined")
     target_link_options(motherduck_destination_sources PUBLIC "-fsanitize=address,undefined")
