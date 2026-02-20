@@ -93,11 +93,11 @@ void add_decimal_col(T& request, const std::string& name, bool is_primary_key, s
 }
 
 template <typename T, std::size_t N>
-void define_table(T& request, const std::string& table_name, const std::array<column_def, N> columns) {
+void define_table(T& request, const std::string& table_name, const std::array<column_def, N> &columns) {
 	request.mutable_table()->set_name(table_name);
 	for (auto column : columns) {
-		if (column.type == duckdb::LogicalTypeId::DECIMAL && column.width > 0) {
-			add_decimal_col(request, column.name, column.primary_key, column.width, column.scale);
+		if (column.type == duckdb::LogicalTypeId::DECIMAL && column.width.has_value()) {
+			add_decimal_col(request, column.name, column.primary_key, *column.width, *column.scale);
 		} else {
 			add_col(request, column.name, get_fivetran_type(column.type), column.primary_key);
 		}
