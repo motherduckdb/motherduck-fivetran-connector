@@ -111,7 +111,7 @@ std::uint32_t get_max_record_size(const google::protobuf::Map<std::string, std::
 
 	std::uint32_t max_record_size = MAX_RECORD_SIZE_DEFAULT;
 
-	if (value.has_value() && !value.value().empty()) {  // Also return the default when the value is an empty string
+	if (value.has_value() && !value.value().empty()) { // Also return the default when the value is an empty string
 		unsigned long converted_value;
 		try {
 			converted_value = std::stoul(value.value());
