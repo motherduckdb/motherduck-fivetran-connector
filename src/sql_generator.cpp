@@ -217,7 +217,7 @@ void MdSqlGenerator::create_table(duckdb::Connection& con, const table_def& tabl
 	find_primary_keys(all_columns, columns_pk);
 
 	std::ostringstream ddl;
-	ddl << "CREATE OR REPLACE TABLE " << absolute_table_name << " (";
+	ddl << "CREATE TABLE " << absolute_table_name << " (";
 
 	for (const auto& col : all_columns) {
 		ddl << KeywordHelper::WriteQuoted(col.name, '"') << " " << format_type(col);
