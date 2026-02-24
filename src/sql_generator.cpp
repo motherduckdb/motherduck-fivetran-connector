@@ -6,15 +6,19 @@
 #include "md_logging.hpp"
 #include "schema_types.hpp"
 
+#include <chrono>
+#include <cstdint>
 #include <fmt/format.h>
 #include <functional>
 #include <iostream>
 #include <map>
 #include <memory>
+#include <random>
 #include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 using duckdb::KeywordHelper;
@@ -180,18 +184,65 @@ bool MdSqlGenerator::table_exists(duckdb::Connection& con, const table_def& tabl
 	return materialized_result->RowCount() > 0;
 }
 
-void MdSqlGenerator::create_schema_if_not_exists(duckdb::Connection& con, const std::string& db_name,
-                                                 const std::string& schema_name) {
+namespace {
+duckdb::unique_ptr<duckdb::MaterializedQueryResult> create_schema_if_not_exists(duckdb::Connection& con,
+                                                                                const std::string& db_name,
+                                                                                const std::string& schema_name,
+                                                                                mdlog::Logger& logger) {
 	std::ostringstream ddl;
-	ddl << "CREATE SCHEMA IF NOT EXISTS" << KeywordHelper::WriteQuoted(db_name, '"') << "."
+	ddl << "CREATE SCHEMA IF NOT EXISTS " << KeywordHelper::WriteQuoted(db_name, '"') << "."
 	    << KeywordHelper::WriteQuoted(schema_name, '"');
 	const std::string query = ddl.str();
-
 	logger.info("create_schema_if_not_exists: " + query);
-	const auto result = con.Query(query);
-	if (result->HasError()) {
+	return con.Query(query);
+}
+
+/// Retries the given idempotent operation after a short delay if it fails due to a transaction write-write conflict.
+/// @param operation An idempotent operation to execute and potentially retry if it fails due to a write-write conflict.
+/// @param max_retries The maximum number of retries before giving up and returning the last error result.
+duckdb::unique_ptr<duckdb::MaterializedQueryResult>
+retry_transaction_errors(const std::function<duckdb::unique_ptr<duckdb::MaterializedQueryResult>()>& operation,
+                         const uint_fast8_t max_retries = 8) {
+	uint_fast8_t attempt = 0;
+	duckdb::unique_ptr<duckdb::MaterializedQueryResult> result = operation();
+
+	while (result->HasError() && attempt < max_retries) {
+		const auto& error_data = result->GetErrorObject();
+		// We only retry transaction conflicts
+		if (error_data.Type() != duckdb::ExceptionType::TRANSACTION ||
+		    error_data.RawMessage().find("Catalog write-write conflict") == std::string::npos) {
+			break;
+		}
+
+		// Since function has been built with `CREATE SCHEMA IF NOT EXISTS` queries in mind.
+		// The assumption here is that we have a short queue of connections doing short-lived transactions on the same
+		// catalog object, and that this queue is not growing. We expect one at least one transaction to be successful
+		// per round/attempt, hence we retry maximum 8 times (number of parallel threads in Fivetran). We add a bit of
+		// jitter to reduce the chance of conflicts and therefore retries.
+		thread_local std::mt19937 gen(std::random_device {}());
+		// It is fine to retry immediately (i.e. 0 ms delay), but in the common case, we wait for a short amount of
+		// time.
+		std::uniform_int_distribution<std::uint_fast8_t> dis(0, 100);
+		const auto delay_ms = dis(gen);
+		std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+
+		result = operation();
+		attempt++;
+	}
+
+	return result;
+}
+
+} // namespace
+
+void MdSqlGenerator::create_schema_if_not_exists_with_retries(duckdb::Connection& con, const std::string& db_name,
+                                                              const std::string& schema_name) const {
+	const auto create_result =
+	    retry_transaction_errors([&]() { return create_schema_if_not_exists(con, db_name, schema_name, logger); });
+
+	if (create_result->HasError()) {
 		throw std::runtime_error("Could not create schema <" + schema_name + "> in database <" + db_name +
-		                         ">: " + result->GetError());
+		                         ">: " + create_result->GetError());
 	}
 }
 

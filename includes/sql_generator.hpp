@@ -22,8 +22,8 @@ public:
 	/// Generates a randomized table name which is not used yet in the database
 	std::string generate_temp_table_name(duckdb::Connection& con, const std::string& prefix) const;
 
-	void create_schema_if_not_exists(duckdb::Connection& con, const std::string& db_name,
-	                                 const std::string& schema_name);
+	void create_schema_if_not_exists_with_retries(duckdb::Connection& con, const std::string& db_name,
+	                                              const std::string& schema_name) const;
 
 	bool table_exists(duckdb::Connection& con, const table_def& table);
 

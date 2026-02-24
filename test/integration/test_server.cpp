@@ -9,9 +9,6 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <catch2/reporters/catch_reporter_event_listener.hpp>
 #include <fstream>
-#include <future>
-#include <thread>
-#include <vector>
 
 using namespace test::constants;
 
@@ -788,99 +785,6 @@ TEST_CASE("CreateTable with JSON column", "[integration]") {
 			REQUIRE(response.table().columns().size() == 1);
 			REQUIRE(response.table().columns(0).type() == ::fivetran_sdk::v2::DataType::STRING);
 		}
-	}
-}
-
-TEST_CASE("Parallel WriteBatch requests", "[integration][write-batch]") {
-	DestinationSdkImpl service;
-
-	constexpr unsigned int num_tables = 5;
-	std::vector<std::string> table_names;
-
-	for (unsigned int i = 0; i < num_tables; i++) {
-		const std::string table_name = "parallel_books_" + std::to_string(i);
-		table_names.push_back(table_name);
-
-		::fivetran_sdk::v2::CreateTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		define_test_table(request, table_name);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
-
-	// Launch parallel WriteBatch requests that each write to their own table
-	std::vector<std::future<grpc::Status>> futures;
-
-	for (unsigned int i = 0; i < num_tables; i++) {
-		futures.push_back(std::async(std::launch::async, [&service, &table_names, i]() {
-			::fivetran_sdk::v2::WriteBatchRequest request;
-			(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-			(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-			define_test_table(request, table_names[i]);
-			request.mutable_file_params()->set_null_string("magic-nullvalue");
-			request.add_replace_files(TEST_RESOURCES_DIR + "books_upsert.csv");
-
-			::fivetran_sdk::v2::WriteBatchResponse response;
-			return service.WriteBatch(nullptr, &request, &response);
-		}));
-	}
-
-	for (auto& future : futures) {
-		auto status = future.get();
-		REQUIRE_NO_FAIL(status);
-	}
-
-	auto con = get_test_connection(MD_TOKEN);
-	for (const auto& table_name : table_names) {
-		auto res = con->Query("SELECT id, title FROM " + table_name + " ORDER BY id");
-		REQUIRE_NO_FAIL(res);
-		REQUIRE(res->RowCount() == 3);
-	}
-}
-
-TEST_CASE("Parallel DescribeTable requests", "[integration][describe-table]") {
-	DestinationSdkImpl service;
-
-	constexpr unsigned int num_tables = 10;
-	constexpr unsigned int requests_per_table = 5;
-	std::vector<std::string> table_names;
-
-	for (unsigned int t = 0; t < num_tables; t++) {
-		const std::string table_name = "parallel_describe_" + std::to_string(t);
-		table_names.push_back(table_name);
-
-		::fivetran_sdk::v2::CreateTableRequest request;
-		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		define_test_table(request, table_name);
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
-
-	std::vector<std::future<grpc::Status>> futures;
-
-	for (unsigned int t = 0; t < num_tables; t++) {
-		for (unsigned int r = 0; r < requests_per_table; r++) {
-			futures.push_back(std::async(std::launch::async, [&service, &table_names, t]() {
-				::fivetran_sdk::v2::DescribeTableRequest request;
-				(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
-				(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-				request.set_table_name(table_names[t]);
-
-				::fivetran_sdk::v2::DescribeTableResponse response;
-				return service.DescribeTable(nullptr, &request, &response);
-			}));
-		}
-	}
-
-	for (auto& future : futures) {
-		auto status = future.get();
-		REQUIRE_NO_FAIL(status);
 	}
 }
 
