@@ -11,7 +11,6 @@
 #include <catch2/reporters/catch_reporter_event_listener.hpp>
 #include <catch2/reporters/catch_reporter_registrars.hpp>
 
-
 inline bool NO_FAIL(
     const duckdb::unique_ptr<duckdb::MaterializedQueryResult> &result) {
   if (result->HasError()) {
