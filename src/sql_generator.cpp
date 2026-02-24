@@ -590,7 +590,7 @@ void MdSqlGenerator::update_values(duckdb::Connection& con, const table_def& tab
 	logger.info("update: " + query);
 	auto result = con.Query(query);
 	if (result->HasError()) {
-		throw std::runtime_error("Could not update table <" + absolute_table_name + ">:" + result->GetError());
+		throw std::runtime_error("Could not update table <" + absolute_table_name + ">: " + result->GetError());
 	}
 }
 
