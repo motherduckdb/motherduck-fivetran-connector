@@ -24,12 +24,12 @@ RequestContext::RequestContext(const std::string& endpoint_name_, ConnectionFact
       con(connection_factory.CreateConnection(config::find_property(request_config, config::PROP_TOKEN),
                                               config::find_property(request_config, config::PROP_DATABASE))),
       logger(get_logger_for_env(con)) {
-	logger.info("Endpoint <" + endpoint_name + "> started");
+	logger.debug("Endpoint <" + endpoint_name + "> started");
 }
 
 RequestContext::~RequestContext() {
 	if (con.HasActiveTransaction() && !con.IsAutoCommit()) {
 		con.Rollback();
 	}
-	logger.info("Endpoint <" + endpoint_name + "> completed");
+	logger.debug("Endpoint <" + endpoint_name + "> completed");
 }

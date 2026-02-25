@@ -157,26 +157,24 @@ void MdSqlGenerator::run_query(duckdb::Connection& con, const std::string& log_p
 	}
 }
 
-bool MdSqlGenerator::table_exists(duckdb::Connection& con, const table_def& table) {
-	const std::string query = "SELECT table_name FROM information_schema.tables WHERE "
-	                          "table_catalog=? AND table_schema=? AND table_name=?";
-	const std::string err = "Could not find whether table <" + table.to_escaped_string() + "> exists";
-	auto statement = con.Prepare(query);
-	logger.info("    prepared table_exists query for table " + table.table_name);
+bool MdSqlGenerator::table_exists(duckdb::Connection& con, const table_def& table) const {
+	const std::string query = "SELECT table_name FROM duckdb_tables() WHERE "
+	                          "database_name=? AND schema_name=? AND table_name=?";
+	const std::string err_prefix = "Could not find whether table <" + table.to_escaped_string() + "> exists";
+	logger.debug("table_exists: " + std::string(query) + ", database_name=" + table.db_name +
+	             ", schema_name=" + table.schema_name + ", table_name=" + table.table_name);
+	const auto statement = con.Prepare(query);
 	if (statement->HasError()) {
-		throw std::runtime_error(err + " (at bind step): " + statement->GetError());
+		throw std::runtime_error(err_prefix + " (at bind step): " + statement->GetError());
 	}
 	duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name), duckdb::Value(table.schema_name),
 	                                        duckdb::Value(table.table_name)};
 	auto result = statement->Execute(params, false);
-	logger.info("    executed table_exists query for table " + table.table_name);
-
 	if (result->HasError()) {
-		throw std::runtime_error(err + ": " + result->GetError());
+		result->ThrowError(err_prefix);
 	}
-	auto materialized_result =
+	const auto materialized_result =
 	    duckdb::unique_ptr_cast<duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
-	logger.info("    materialized table_exists results for table " + table.table_name);
 	return materialized_result->RowCount() > 0;
 }
 
@@ -376,7 +374,7 @@ void MdSqlGenerator::alter_table_recreate(duckdb::Connection& con, const table_d
 	std::string common_column_list = out_column_list.str();
 
 	std::ostringstream out;
-	out << "INSERT INTO " << absolute_table_name << "(" << common_column_list << ") SELECT " << common_column_list
+	out << "INSERT INTO " << absolute_table_name << " (" << common_column_list << ") SELECT " << common_column_list
 	    << " FROM " << absolute_temp_table_name;
 
 	run_query(con, "Reinserting data after changing primary keys", out.str(),
