@@ -376,7 +376,7 @@ void MdSqlGenerator::alter_table_recreate(duckdb::Connection& con, const table_d
 	std::string common_column_list = out_column_list.str();
 
 	std::ostringstream out;
-	out << "INSERT INTO " << absolute_table_name << "(" << common_column_list << ") SELECT " << common_column_list
+	out << "INSERT INTO " << absolute_table_name << " (" << common_column_list << ") SELECT " << common_column_list
 	    << " FROM " << absolute_temp_table_name;
 
 	run_query(con, "Reinserting data after changing primary keys", out.str(),
