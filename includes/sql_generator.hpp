@@ -14,6 +14,37 @@ void find_primary_keys(const std::vector<column_def>& cols, std::vector<const co
                        std::vector<const column_def*>* columns_regular = nullptr,
                        const std::string& ignored_primary_key = "");
 
+struct TransactionContext {
+	explicit TransactionContext(duckdb::Connection& con_) : con(con_) {
+		auto should_begin = !con.HasActiveTransaction();
+		if (should_begin) {
+			con.BeginTransaction();
+		}
+		has_begun = should_begin;
+	}
+
+	void Commit() {
+		if (has_begun) {
+			con.Commit();
+			has_begun = false;
+		}
+	}
+
+	~TransactionContext() {
+		// We should commit the context before it goes out of scope. When this doesn't happen, HasActiveTransaction() is
+		// true. However, if the context did not begin a new transaction because the connection already had an active
+		// transaction from an outer scope (i.e. should_begin, and therefore has_begun are false), we don't want to
+		// rollback because it is expected that the outer transaction should remain active. Note that
+		if (con.HasActiveTransaction() && has_begun && !con.IsAutoCommit()) {
+			con.Rollback();
+		}
+	}
+
+private:
+	duckdb::Connection& con;
+	bool has_begun;
+};
+
 class MdSqlGenerator {
 
 public:
