@@ -7,7 +7,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/internal/catch_run_context.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
-#include <catch2/reporters/catch_reporter_event_listener.hpp>
 #include <fstream>
 #include <future>
 #include <thread>
@@ -28,7 +27,7 @@ TEST_CASE("ConfigurationForm", "[integration][config]") {
 	REQUIRE(response.fields(1).name() == "motherduck_database");
 	REQUIRE(response.fields(2).name() == "max_record_size");
 
-	REQUIRE(response.tests_size() == 3);
+	REQUIRE(response.tests_size() == 4);
 }
 
 TEST_CASE("DescribeTable fails when database missing", "[integration][describe-table]") {
@@ -675,6 +674,61 @@ TEST_CASE("reading inaccessible or nonexistent files fails") {
 	auto status = service.WriteBatch(nullptr, &request, &response);
 	REQUIRE_FALSE(status.ok());
 	REQUIRE_THAT(status.error_message(), Catch::Matchers::ContainsSubstring("No such file or directory"));
+}
+
+TEST_CASE("WriteBatch fails with invalid max_record_size", "[integration][write-batch]") {
+	DestinationSdkImpl service;
+
+	const std::string table_name = "people_history";
+
+	::fivetran_sdk::v2::WriteBatchRequest request;
+	(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+	(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+	(*request.mutable_configuration())["max_record_size"] = "not_a_number";
+	request.set_schema_name("test");
+	define_test_table(request, table_name);
+
+	request.add_replace_files(TEST_RESOURCES_DIR + "books_upsert.csv");
+
+	::fivetran_sdk::v2::WriteBatchResponse response;
+	auto status = service.WriteBatch(nullptr, &request, &response);
+	REQUIRE_NO_FAIL(status);
+	REQUIRE(response.mutable_task()->message() ==
+	        "WriteBatch endpoint failed for schema <test>, table "
+	        "<people_history>: Value \"not_a_number\" could not be converted into an integer for \"Max "
+	        "Record Size\". Make sure to set the \"Max Record Size\" to a valid positive integer.");
+}
+
+TEST_CASE("WriteBatch succeeds with empty max_record_size", "[integration][write-batch]") {
+	DestinationSdkImpl service;
+
+	const std::string table_name = "books" + std::to_string(Catch::rngSeed());
+	{
+		// Create Table
+		::fivetran_sdk::v2::CreateTableRequest request;
+		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+		define_test_table(request, table_name);
+
+		::fivetran_sdk::v2::CreateTableResponse response;
+		const auto status = service.CreateTable(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+	}
+
+	{
+		::fivetran_sdk::v2::WriteBatchRequest request;
+		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
+		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+		(*request.mutable_configuration())["max_record_size"] = "";
+		define_test_table(request, table_name);
+		request.mutable_file_params()->set_null_string("magic-nullvalue");
+		request.add_replace_files(TEST_RESOURCES_DIR + "books_upsert.csv");
+
+		::fivetran_sdk::v2::WriteBatchResponse response;
+		auto status = service.WriteBatch(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+		REQUIRE(response.mutable_task()->message() == "");
+	}
 }
 
 TEST_CASE("Test all types with create and describe table") {

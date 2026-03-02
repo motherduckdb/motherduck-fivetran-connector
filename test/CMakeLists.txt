@@ -14,8 +14,9 @@ add_executable(integration_tests
         test_md_error.cpp
         test_process_file.cpp
         integration/common.cpp
-        integration/test_server.cpp
+        integration/test_config_tester.cpp
         integration/test_migrate.cpp
+        integration/test_server.cpp
 )
 target_compile_definitions(integration_tests PRIVATE
         TEST_RESOURCES_LOCATION=${CMAKE_CURRENT_LIST_DIR}/files/
