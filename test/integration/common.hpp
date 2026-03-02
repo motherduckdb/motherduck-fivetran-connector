@@ -83,7 +83,7 @@ const std::array TEST_COLUMNS = {
 
 template <typename T>
 void add_decimal_col(T& request, const std::string& name, bool is_primary_key, std::uint32_t precision,
-					 std::uint32_t scale) {
+                     std::uint32_t scale) {
 	auto col = request.mutable_table()->add_columns();
 	col->set_name(name);
 	col->set_type(::fivetran_sdk::v2::DataType::DECIMAL);
@@ -93,7 +93,7 @@ void add_decimal_col(T& request, const std::string& name, bool is_primary_key, s
 }
 
 template <typename T, std::size_t N>
-void define_table(T& request, const std::string& table_name, const std::array<column_def, N> &columns) {
+void define_table(T& request, const std::string& table_name, const std::array<column_def, N>& columns) {
 	request.mutable_table()->set_name(table_name);
 	for (auto column : columns) {
 		if (column.type == duckdb::LogicalTypeId::DECIMAL && column.width.has_value()) {
