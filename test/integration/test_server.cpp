@@ -686,7 +686,7 @@ TEST_CASE("WriteBatch fails with invalid max_record_size", "[integration][write-
 	(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
 	(*request.mutable_configuration())["max_record_size"] = "not_a_number";
 	request.set_schema_name("test");
-	define_test_table(request, table_name);
+	define_table(request, table_name, TEST_COLUMNS);
 
 	request.add_replace_files(TEST_RESOURCES_DIR + "books_upsert.csv");
 
@@ -708,7 +708,7 @@ TEST_CASE("WriteBatch succeeds with empty max_record_size", "[integration][write
 		::fivetran_sdk::v2::CreateTableRequest request;
 		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
 		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
-		define_test_table(request, table_name);
+		define_table(request, table_name, TEST_COLUMNS);
 
 		::fivetran_sdk::v2::CreateTableResponse response;
 		const auto status = service.CreateTable(nullptr, &request, &response);
@@ -720,7 +720,7 @@ TEST_CASE("WriteBatch succeeds with empty max_record_size", "[integration][write
 		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
 		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
 		(*request.mutable_configuration())["max_record_size"] = "";
-		define_test_table(request, table_name);
+		define_table(request, table_name, TEST_COLUMNS);
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 		request.add_replace_files(TEST_RESOURCES_DIR + "books_upsert.csv");
 
