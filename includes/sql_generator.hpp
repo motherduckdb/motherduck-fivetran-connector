@@ -25,7 +25,7 @@ public:
 	void create_schema_if_not_exists(duckdb::Connection& con, const std::string& db_name,
 	                                 const std::string& schema_name);
 
-	bool table_exists(duckdb::Connection& con, const table_def& table);
+	bool table_exists(duckdb::Connection& con, const table_def& table) const;
 
 	void create_table(duckdb::Connection& con, const table_def& table, const std::vector<column_def>& all_columns,
 	                  const std::set<std::string>& columns_with_default_value);
