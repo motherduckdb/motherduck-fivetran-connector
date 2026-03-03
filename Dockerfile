@@ -1,20 +1,21 @@
 ##### Stage 1: Builder #####
 FROM ubuntu:22.04 AS builder
 
-ENV CC=clang
-ENV CXX=clang++
+ENV CC=/usr/bin/clang-16
+ENV CXX=/usr/bin/clang++-16
 
 ENV CCACHE_DIR=/root/.ccache
 ENV CMAKE_C_COMPILER_LAUNCHER=ccache
 ENV CMAKE_CXX_COMPILER_LAUNCHER=ccache
+ENV CMAKE_GENERATOR=Ninja
 
 # zlib is required for OpenSSL
 # lsb-release, software-properties-common and gnupg are required to install Clang
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     build-essential \
-    clang \
     ccache \
+    ninja-build \
     git \
     lsb-release \
     software-properties-common gnupg \
@@ -58,15 +59,18 @@ COPY includes/ ./includes/
 # Set this because we don't copy the .git directory
 ARG GIT_COMMIT_SHA_OVERRIDE
 
-RUN --mount=type=cache,target=/root/.ccache \
-    make build_connector GIT_COMMIT_SHA_OVERRIDE=${GIT_COMMIT_SHA_OVERRIDE}
+# We need to copy the final artifact because the cache gets unmounted after the build step.
+# Hence, we couldn't copy the artifact in the final stage from the build directory.
+RUN --mount=type=cache,target=/root/.ccache --mount=type=cache,target=/app/build \
+    make build_connector GIT_COMMIT_SHA_OVERRIDE=${GIT_COMMIT_SHA_OVERRIDE} && \
+    cp /app/build/Release/motherduck_destination /app/motherduck_destination
 
 ##### Stage 2: Final image #####
 FROM ubuntu:22.04
 
 WORKDIR /app
 
-COPY --from=builder /app/build/Release/motherduck_destination ./build/Release/
+COPY --from=builder /app/motherduck_destination ./motherduck_destination
 
 # The roots.pem file needs to be copied until we update to gRPC 1.63 or later.
 # In older version, it might not pick up system root certificates.
@@ -75,4 +79,4 @@ COPY --from=builder /app/sources/grpc/etc/roots.pem /usr/share/grpc/roots.pem
 
 EXPOSE 50052
 
-CMD ["./build/Release/motherduck_destination", "--port", "50052"]
+CMD ["./motherduck_destination", "--port", "50052"]
