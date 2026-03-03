@@ -259,11 +259,12 @@ std::vector<column_def> MdSqlGenerator::describe_table(duckdb::Connection& con, 
 
 	std::vector<column_def> columns;
 
+	// TODO: coalesce the numeric_ columns
 	auto query = "SELECT "
 	             "column_name, "
 	             "data_type_id, "
 	             "column_default, "
-	             "NOT is_nullable, "
+	             "NOT is_nullable AS is_primary_key, "
 	             "numeric_precision, "
 	             "numeric_scale "
 	             "FROM duckdb_columns() "
@@ -411,6 +412,12 @@ void MdSqlGenerator::alter_table_in_place(duckdb::Connection& con, const table_d
 	}
 }
 
+struct column_def_compare {
+	bool operator()(const column_def& a, const column_def& b) const {
+		return a.name < b.name;
+	}
+};
+
 void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table,
                                  const std::vector<column_def>& requested_columns, const bool drop_columns) {
 	bool recreate_table = false;
@@ -423,12 +430,48 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 
 	logger.info("    in MdSqlGenerator::alter_table for " + absolute_table_name);
 	const auto& existing_columns = describe_table(con, table);
-	std::map<std::string, column_def> new_column_map;
+
+	auto existing_columns_set = std::set<column_def, column_def_compare>(existing_columns.begin(), existing_columns.end());
+	auto new_columns_set = std::set<column_def, column_def_compare>(requested_columns.begin(), requested_columns.end());
+
+	auto existing_it = existing_columns_set.cbegin();
+	auto new_it = new_columns_set.cbegin();
+	while (existing_it != existing_columns_set.cend() && new_it != new_columns_set.cend()) {
+		if (existing_it->name == new_it->name) {
+			// TODO: Handle alter types or primary key
+			common_columns.insert(new_it->name);
+			existing_it++;
+			new_it++;
+		} else if (existing_it->name < new_it->name) {
+			// TODO: Handle drop_columns
+			// Column is in existing_columns but not in new
+			deleted_columns.insert(existing_it->name);
+			existing_it++;
+		} else {
+			// Column is in new_columns but not in existing
+			// TODO: Insert column_def, not just name
+			// Check primary_key_added
+			added_columns.insert(new_it->name);
+			new_it++;
+		}
+	}
+	while (existing_it != existing_columns_set.cend()) {
+		// Column is in existing but not new --> delete it
+		deleted_columns.insert(existing_it->name);
+		existing_it++;
+	}
+	while (new_it != new_columns_set.cend()) {
+		// Column is in new but not existing --> add it
+		added_columns.insert(new_it->name);
+		new_it++;
+	}
+
 
 	// start by assuming all columns are new
+	std::unordered_map<std::string, column_def> new_column_map;
+	new_column_map.reserve(requested_columns.size());
 	for (const auto& col : requested_columns) {
 		new_column_map.emplace(col.name, col);
-		added_columns.emplace(col.name);
 	}
 
 	// make added_columns correct by removing previously existing columns
