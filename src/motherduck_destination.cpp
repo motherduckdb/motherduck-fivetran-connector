@@ -2,7 +2,6 @@
 #include "motherduck_destination_server.hpp"
 
 #include <csignal>
-#include <cstdlib>
 #include <execinfo.h>
 #include <grpcpp/grpcpp.h>
 #include <string>
