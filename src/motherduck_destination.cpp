@@ -1,11 +1,12 @@
 #include "extension_helper.hpp"
 #include "motherduck_destination_server.hpp"
-#include "stacktrace.hpp"
 
 #include <csignal>
+#include <cstdlib>
 #include <execinfo.h>
 #include <grpcpp/grpcpp.h>
 #include <string>
+#include <unistd.h>
 
 void RunServer(const std::string& port) {
 	std::string server_address = "0.0.0.0:" + port;
@@ -23,14 +24,22 @@ void RunServer(const std::string& port) {
 	server->Wait();
 }
 
-void logCrash(int sig) {
-	std::cerr << "Crash signal " << sig << std::endl;
-	auto trace = duckdb_copy::StackTrace::GetStackTrace();
-	std::cerr << "Stack Trace:" << trace << std::endl;
-	std::exit(sig);
+void logCrash(const int sig) {
+	constexpr char msg[] = "\n=== SIGSEGV or SIGABRT ===\nStack trace:\n";
+	write(STDERR_FILENO, msg, sizeof(msg) - 1);
+
+	// backtrace() and backtrace_symbols_fd() do not allocate heap memory,
+	// making them usable in a signal handler (unlike backtrace_symbols).
+	static constexpr int MAX_DEPTH = 120;
+	void* callstack[MAX_DEPTH];
+	const int num_frames = backtrace(callstack, MAX_DEPTH);
+	backtrace_symbols_fd(callstack, num_frames, STDERR_FILENO);
+
+	signal(sig, SIG_DFL);
+	raise(sig);
 }
 
-int main(int argc, char** argv) {
+int main(const int argc, char** argv) {
 	std::signal(SIGSEGV, logCrash);
 	std::signal(SIGABRT, logCrash);
 
