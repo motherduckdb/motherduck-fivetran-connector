@@ -588,7 +588,7 @@ void MdSqlGenerator::update_values(duckdb::Connection& con, const table_def& tab
 	logger.info("update: " + query);
 	auto result = con.Query(query);
 	if (result->HasError()) {
-		throw std::runtime_error("Could not update table <" + absolute_table_name + ">:" + result->GetError());
+		throw std::runtime_error("Could not update table <" + absolute_table_name + ">: " + result->GetError());
 	}
 }
 
@@ -648,7 +648,7 @@ void MdSqlGenerator::add_partial_historical_values(duckdb::Connection& con, cons
 	auto result = con.Query(query);
 	if (result->HasError()) {
 		throw std::runtime_error("Could not update (add partial historical values) table <" + absolute_table_name +
-		                         ">:" + result->GetError());
+		                         ">: " + result->GetError());
 	}
 }
 
@@ -671,7 +671,7 @@ void MdSqlGenerator::delete_rows(duckdb::Connection& con, const table_def& table
 	logger.info("delete_rows: " + query);
 	auto result = con.Query(query);
 	if (result->HasError()) {
-		throw std::runtime_error("Error deleting rows from table <" + absolute_table_name + ">:" + result->GetError());
+		throw std::runtime_error("Error deleting rows from table <" + absolute_table_name + ">: " + result->GetError());
 	}
 }
 
@@ -698,7 +698,7 @@ void MdSqlGenerator::deactivate_historical_records(duckdb::Connection& con, cons
 		auto result = con.Query(query);
 		if (result->HasError()) {
 			throw std::runtime_error("Error deleting overlapping records from table <" + absolute_table_name +
-			                         ">:" + result->GetError());
+			                         ">: " + result->GetError());
 		}
 	}
 
@@ -726,7 +726,7 @@ void MdSqlGenerator::deactivate_historical_records(duckdb::Connection& con, cons
 		auto result = con.Query(query);
 		if (result->HasError()) {
 			throw std::runtime_error("Error stashing latest records from table <" + absolute_table_name +
-			                         ">:" + result->GetError());
+			                         ">: " + result->GetError());
 		}
 	}
 
@@ -745,7 +745,7 @@ void MdSqlGenerator::deactivate_historical_records(duckdb::Connection& con, cons
 		logger.info("deactivate records: " + query);
 		auto result = con.Query(query);
 		if (result->HasError()) {
-			throw std::runtime_error("Error deactivating records <" + absolute_table_name + ">:" + result->GetError());
+			throw std::runtime_error("Error deactivating records <" + absolute_table_name + ">: " + result->GetError());
 		}
 	}
 }
@@ -771,7 +771,7 @@ void MdSqlGenerator::delete_historical_rows(duckdb::Connection& con, const table
 	auto result = con.Query(query);
 	if (result->HasError()) {
 		throw std::runtime_error("Error deleting historical records <" + absolute_table_name +
-		                         ">:" + result->GetError());
+		                         ">: " + result->GetError());
 	}
 }
 
@@ -1300,8 +1300,8 @@ void MdSqlGenerator::migrate_history_to_soft_delete(duckdb::Connection& con, con
 		sql << " ORDER BY \"_fivetran_start\" DESC) = 1";
 
 		run_query(con, "migrate_history_to_soft_delete create", sql.str(), "Could not create soft_deleted table");
-		// The quoted_deleted_col does not need an explicit default to be set here, it will inherit a default from the
-		// original table below when we apply add_defaults
+		// The quoted_deleted_col does not need an explicit default to be set here, it will inherit a default from
+		// the original table below when we apply add_defaults
 	}
 
 	add_defaults(con,

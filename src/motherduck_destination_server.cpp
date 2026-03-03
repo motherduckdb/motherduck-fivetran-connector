@@ -245,12 +245,12 @@ grpc::Status DestinationSdkImpl::DescribeTable(::grpc::ServerContext*,
 
 	} catch (const md_error::RecoverableError& mde) {
 		logger.warning("DescribeTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		               request->table_name() + ">:" + std::string(mde.what()));
+		               request->table_name() + ">: " + std::string(mde.what()));
 		response->mutable_task()->set_message(mde.what());
 		return ::grpc::Status::OK;
 	} catch (const std::exception& ex) {
 		logger.severe("DescribeTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		              request->table_name() + ">:" + std::string(ex.what()));
+		              request->table_name() + ">: " + std::string(ex.what()));
 		response->mutable_task()->set_message(ex.what());
 		return create_grpc_status_from_exception(ex);
 	}
@@ -283,12 +283,12 @@ grpc::Status DestinationSdkImpl::CreateTable(::grpc::ServerContext*,
 		response->set_success(true);
 	} catch (const md_error::RecoverableError& mde) {
 		logger.warning("CreateTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		               request->table().name() + ">:" + std::string(mde.what()));
+		               request->table().name() + ">: " + std::string(mde.what()));
 		response->mutable_task()->set_message(mde.what());
 		return ::grpc::Status::OK;
 	} catch (const std::exception& ex) {
 		logger.severe("CreateTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		              request->table().name() + ">:" + std::string(ex.what()));
+		              request->table().name() + ">: " + std::string(ex.what()));
 		response->mutable_task()->set_message(ex.what());
 		return create_grpc_status_from_exception(ex);
 	}
@@ -318,12 +318,12 @@ grpc::Status DestinationSdkImpl::AlterTable(::grpc::ServerContext*,
 		response->set_success(true);
 	} catch (const md_error::RecoverableError& mde) {
 		logger.severe("AlterTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		              request->table().name() + ">:" + std::string(mde.what()));
+		              request->table().name() + ">: " + std::string(mde.what()));
 		response->mutable_task()->set_message(mde.what());
 		return ::grpc::Status::OK;
 	} catch (const std::exception& ex) {
 		logger.severe("AlterTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		              request->table().name() + ">:" + std::string(ex.what()));
+		              request->table().name() + ">: " + std::string(ex.what()));
 		response->mutable_task()->set_message(ex.what());
 		return create_grpc_status_from_exception(ex);
 	}
@@ -363,12 +363,12 @@ grpc::Status DestinationSdkImpl::Truncate(::grpc::ServerContext*, const ::fivetr
 
 	} catch (const md_error::RecoverableError& mde) {
 		logger.warning("Truncate endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		               request->table_name() + ">:" + std::string(mde.what()));
+		               request->table_name() + ">: " + std::string(mde.what()));
 		response->mutable_task()->set_message(mde.what());
 		return ::grpc::Status::OK;
 	} catch (const std::exception& ex) {
 		logger.severe("Truncate endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		              request->table_name() + ">:" + std::string(ex.what()));
+		              request->table_name() + ">: " + std::string(ex.what()));
 		response->mutable_task()->set_message(ex.what());
 		return create_grpc_status_from_exception(ex);
 	}
