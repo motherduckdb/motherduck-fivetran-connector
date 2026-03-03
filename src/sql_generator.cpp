@@ -191,7 +191,7 @@ void MdSqlGenerator::create_schema_if_not_exists(duckdb::Connection& con, const 
 	const auto result = con.Query(query);
 	if (result->HasError()) {
 		throw std::runtime_error("Could not create schema <" + schema_name + "> in database <" + db_name +
-		                         ">: " + create_result->GetError());
+		                         ">: " + result->GetError());
 	}
 }
 
