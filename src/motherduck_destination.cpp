@@ -27,8 +27,9 @@ void logCrash(const int sig) {
 	constexpr char msg[] = "\n=== SIGSEGV or SIGABRT ===\nStack trace:\n";
 	write(STDERR_FILENO, msg, sizeof(msg) - 1);
 
-	// backtrace() and backtrace_symbols_fd() do not allocate heap memory,
-	// making them usable in a signal handler (unlike backtrace_symbols).
+	// backtrace() and backtrace_symbols_fd() are not specified by POSIX
+	// as async-signal-safe and may allocate internally, but they are commonly
+	// used in crash handlers as a best-effort way to capture a stack trace.
 	static constexpr int MAX_DEPTH = 120;
 	void* callstack[MAX_DEPTH];
 	const int num_frames = backtrace(callstack, MAX_DEPTH);
