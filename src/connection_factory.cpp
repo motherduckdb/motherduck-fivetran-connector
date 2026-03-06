@@ -56,6 +56,14 @@ duckdb::DuckDB& ConnectionFactory::get_duckdb(const std::string& md_auth_token, 
 			stdout_logger.info("get_duckdb: fetched welcome pack");
 		}
 
+		// Set default_collation to a connection-specific default value which
+		// overwrites any global setting and ensures that client-side planning and
+		// server-side execution use the same collation.
+		const auto set_collation_res = con.Query("SET GLOBAL default_collation=''");
+		if (set_collation_res->HasError()) {
+			stdout_logger.severe("get_duckdb: Could not SET default_collation: " + set_collation_res->GetError());
+		}
+
 		initial_md_token = md_auth_token;
 		initial_db_name = db_name;
 	};
@@ -78,15 +86,5 @@ duckdb::DuckDB& ConnectionFactory::get_duckdb(const std::string& md_auth_token, 
 duckdb::Connection ConnectionFactory::CreateConnection(const std::string& md_auth_token, const std::string& db_name) {
 	stdout_logger.info("create_connection: start");
 	duckdb::DuckDB& db = get_duckdb(md_auth_token, db_name);
-	auto con = duckdb::Connection(db);
-
-	// Set default_collation to a connection-specific default value which
-	// overwrites any global setting and ensures that client-side planning and
-	// server-side execution use the same collation.
-	const auto set_collation_res = con.Query("SET default_collation=''");
-	if (set_collation_res->HasError()) {
-		throw std::runtime_error("get_connection: Could not SET default_collation: " + set_collation_res->GetError());
-	}
-
-	return con;
+	return duckdb::Connection(db);
 }
