@@ -81,7 +81,7 @@ TEST_CASE("Test fails when motherduck_database is a share", "[integration][confi
 	REQUIRE(create_res->ColumnCount() == 1);
 	const auto share_url = create_res->GetValue(0, 0).ToString();
 
-	const auto attach_res = con->Query("ATTACH IF NOT EXISTS '" + share_url + "'");
+	const auto attach_res = con->Query("ATTACH OR REPLACE '" + share_url + "'");
 	REQUIRE_NO_FAIL(attach_res);
 
 	::fivetran_sdk::v2::TestRequest request;
