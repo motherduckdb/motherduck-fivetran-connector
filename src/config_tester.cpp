@@ -5,6 +5,7 @@
 #include "ingest_properties.hpp"
 
 #include <array>
+#include <cctype>
 #include <google/protobuf/map.h>
 #include <optional>
 #include <string>
@@ -109,34 +110,49 @@ TestResult run_write_permissions_test(duckdb::Connection& con) {
 
 /// Checks that max_record_size can be converted into an integer
 TestResult run_max_record_size_valid_test(const google::protobuf::Map<std::string, std::string>& configuration) {
-	const auto value = config::find_optional_property(configuration, config::PROP_MAX_RECORD_SIZE);
+	const auto optional_val = config::find_optional_property(configuration, config::PROP_MAX_RECORD_SIZE);
 
-	if (!value.has_value()) {
+	if (!optional_val.has_value()) {
 		return TestResult(true);
 	}
 
-	if (value.value().empty()) { // Defaults to MAX_RECORD_SIZE_DEFAULT
+	const std::string& val = optional_val.value();
+
+	if (val.empty()) { // Defaults to MAX_RECORD_SIZE_DEFAULT
 		return TestResult(true);
+	}
+
+	for (const char c : val) {
+		if (!std::isdigit(static_cast<unsigned char>(c))) {
+			return TestResult(false,
+			                  "Value \"" + val +
+			                      "\" could not be converted into an "
+			                      "integer for \"Max Record Size\" because it contains non-numeric characters ('" +
+			                      c +
+			                      "'). Make sure to set the"
+			                      " \"Max Record Size\" to a valid positive integer.");
+		}
 	}
 
 	try {
-		auto parsed = std::stoul(value.value());
+		auto parsed = std::stoul(val);
 
 		if (parsed < MAX_RECORD_SIZE_DEFAULT) {
-			return TestResult(false, "Value \"" + value.value() +
+			return TestResult(false, "Value \"" + val +
 			                             "\" for \"Max Record Size\" is lower than the default of 24 MiB. "
 			                             "It should be between 24 and 1024");
 		}
 
 		if (parsed > MAX_RECORD_SIZE_MAX) {
-			return TestResult(false, "Value \"" + value.value() +
-			                             "\" for \"Max Record Size\" is higher than the max of 1024 MiB. "
-			                             "It should be between 24 and 1024");
+			return TestResult(false,
+			                  "Value \"" + val +
+			                      "\" for \"Max Record Size\" is higher than the maximum allowed value of 1024 MiB. "
+			                      "It should be between 24 and 1024");
 		}
 
 		return TestResult(true);
 	} catch (const std::exception&) {
-		return TestResult(false, "Value \"" + value.value() +
+		return TestResult(false, "Value \"" + val +
 		                             "\" could not be converted into an "
 		                             "integer for \"Max Record Size\". Make sure to set the"
 		                             " \"Max Record Size\" to a valid positive integer.");
