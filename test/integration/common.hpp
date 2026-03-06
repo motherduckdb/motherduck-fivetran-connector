@@ -47,6 +47,7 @@ inline bool REQUIRE_FAIL(const grpc::Status& status, const Catch::Matchers::Stri
 }
 
 #define REQUIRE_NO_FAIL(result) REQUIRE(NO_FAIL((result)))
+#define CHECK_NO_FAIL(result) CHECK(NO_FAIL((result)))
 
 class testRunListener : public Catch::EventListenerBase {
 public:
