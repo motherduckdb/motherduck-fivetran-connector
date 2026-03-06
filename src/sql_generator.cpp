@@ -214,7 +214,7 @@ retry_transaction_errors(const std::function<duckdb::unique_ptr<duckdb::Material
 
 		// Since function has been built with `CREATE SCHEMA IF NOT EXISTS` queries in mind.
 		// The assumption here is that we have a short queue of connections doing short-lived transactions on the same
-		// catalog object, and that this queue is not growing. We expect one at least one transaction to be successful
+		// catalog object, and that this queue is not growing. We expect at least one transaction to be successful
 		// per round/attempt, hence we retry maximum 8 times (number of parallel threads in Fivetran). We add a bit of
 		// jitter to reduce the chance of conflicts and therefore retries.
 		thread_local std::mt19937 gen(std::random_device {}());
