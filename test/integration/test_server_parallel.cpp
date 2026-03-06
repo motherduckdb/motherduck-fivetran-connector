@@ -90,7 +90,7 @@ TEST_CASE("Parallel CreateTable requests into the same schema", "[integration][c
 	DestinationSdkImpl service;
 
 	constexpr unsigned int num_tables = 10;
-	constexpr std::string SCHEMA_NAME = "parallel_schema";
+	const std::string SCHEMA_NAME = "parallel_schema";
 
 	{
 		auto test_con = get_test_connection(MD_TOKEN);
@@ -131,8 +131,8 @@ TEST_CASE("Parallel CreateTable requests into different schemas", "[integration]
 	DestinationSdkImpl service;
 
 	constexpr unsigned int num_schemas = 10;
-	constexpr std::string SCHEMA_BASE = "parallel_schema_";
-	constexpr std::string TABLE_NAME = "some_table";
+	const std::string SCHEMA_BASE = "parallel_schema_";
+	const std::string TABLE_NAME = "some_table";
 	{
 		auto test_con = get_test_connection(MD_TOKEN);
 		for (unsigned int i = 0; i < num_schemas; i++) {
