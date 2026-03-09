@@ -275,7 +275,7 @@ void define_history_test_table_reordered(T &request,
   add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
 }
 
-inline uint32_t randint() {
+inline uint64_t randint() {
 	// This has no thread-safety in mind (yet), as Catch2 runs tests serially withing one process.
 	static std::mt19937 gen(Catch::rngSeed());
 	return gen();
