@@ -18,7 +18,7 @@ using namespace test::constants;
 
 TEST_CASE("Migrate - drop table", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string table_name = "migrate_drop_table_" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "migrate_drop_table_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -89,9 +89,9 @@ TEST_CASE("Migrate - drop table", "[integration][migrate]") {
 
 TEST_CASE("Migrate - rename table", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string from_table = "migrate_rename_from_" + std::to_string(Catch::rngSeed());
-	const std::string to_table = "migrate_rename_to_" + std::to_string(Catch::rngSeed());
-	const std::string second_from_table = "second_migrate_rename_from_" + std::to_string(Catch::rngSeed());
+	const std::string from_table = "migrate_rename_from_" + std::to_string(randint());
+	const std::string to_table = "migrate_rename_to_" + std::to_string(randint());
+	const std::string second_from_table = "second_migrate_rename_from_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -198,7 +198,7 @@ TEST_CASE("Migrate - rename table", "[integration][migrate]") {
 
 TEST_CASE("Migrate - rename column", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string table_name = "migrate_rename_col_" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "migrate_rename_col_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -309,8 +309,8 @@ TEST_CASE("Migrate - rename column", "[integration][migrate]") {
 
 TEST_CASE("Migrate - copy table", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string from_table = "migrate_copy_from_" + std::to_string(Catch::rngSeed());
-	const std::string to_table = "migrate_copy_to_" + std::to_string(Catch::rngSeed());
+	const std::string from_table = "migrate_copy_from_" + std::to_string(randint());
+	const std::string to_table = "migrate_copy_to_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -391,7 +391,7 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
 
 TEST_CASE("Migrate - copy column", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string table_name = "migrate_copy_col_" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "migrate_copy_col_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -492,8 +492,8 @@ TEST_CASE("Migrate - copy column", "[integration][migrate]") {
 
 TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string source_table = "migrate_copy_hist_src_" + std::to_string(Catch::rngSeed());
-	const std::string dest_table = "migrate_copy_hist_dst_" + std::to_string(Catch::rngSeed());
+	const std::string source_table = "migrate_copy_hist_src_" + std::to_string(randint());
+	const std::string dest_table = "migrate_copy_hist_dst_" + std::to_string(randint());
 	const std::string soft_deleted_column = GENERATE("_fivetran_deleted", "custom_soft_deleted");
 
 	auto con = get_test_connection(MD_TOKEN);
@@ -625,8 +625,8 @@ TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration
 
 TEST_CASE("Migrate - copy table to history mode from live", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string source_table = "migrate_copy_hist_live_src_" + std::to_string(Catch::rngSeed());
-	const std::string dest_table = "migrate_copy_hist_live_dst_" + std::to_string(Catch::rngSeed());
+	const std::string source_table = "migrate_copy_hist_live_src_" + std::to_string(randint());
+	const std::string dest_table = "migrate_copy_hist_live_dst_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -692,7 +692,7 @@ TEST_CASE("Migrate - copy table to history mode from live", "[integration][migra
 
 TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string table_name = "migrate_add_col_" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "migrate_add_col_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -816,7 +816,7 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
 
 TEST_CASE("Migrate - update column value", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string table_name = "migrate_update_col_" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "migrate_update_col_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -888,7 +888,7 @@ TEST_CASE("Migrate - update column value", "[integration][migrate]") {
 
 TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string table_name = "migrate_add_col_hist_" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "migrate_add_col_hist_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -1015,7 +1015,7 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 
 TEST_CASE("Migrate - add/drop column in history mode to empty table", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string table_name = "migrate_add_col_hist_" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "migrate_add_col_hist_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -1085,7 +1085,7 @@ TEST_CASE("Migrate - add/drop column in history mode to empty table", "[integrat
 
 TEST_CASE("Migrate - drop column in history mode", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string table_name = "migrate_drop_col_hist_" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "migrate_drop_col_hist_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -1156,7 +1156,7 @@ TEST_CASE("Migrate - drop column in history mode", "[integration][migrate]") {
 
 TEST_CASE("Migrate - live to soft delete", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string table_name = "migrate_live_soft_" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "migrate_live_soft_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -1209,7 +1209,7 @@ TEST_CASE("Migrate - live to soft delete", "[integration][migrate]") {
 
 TEST_CASE("Migrate - soft delete to live", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string table_name = "migrate_soft_live_" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "migrate_soft_live_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -1267,7 +1267,7 @@ TEST_CASE("Migrate - soft delete to live", "[integration][migrate]") {
 
 TEST_CASE("Migrate - live to history", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string table_name = "migrate_live_hist_" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "migrate_live_hist_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -1323,7 +1323,7 @@ TEST_CASE("Migrate - live to history", "[integration][migrate]") {
 
 TEST_CASE("Migrate - history to live", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string table_name = "migrate_hist_live_" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "migrate_hist_live_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -1386,7 +1386,7 @@ TEST_CASE("Migrate - history to live", "[integration][migrate]") {
 
 TEST_CASE("Migrate - history to soft delete", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string table_name = "migrate_hist_soft_" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "migrate_hist_soft_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -1462,7 +1462,7 @@ TEST_CASE("Migrate - history to soft delete", "[integration][migrate]") {
 
 TEST_CASE("Migrate - history to soft delete with custom soft deleted column", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string table_name = "migrate_hist_soft_custom_" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "migrate_hist_soft_custom_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -1529,7 +1529,7 @@ TEST_CASE("Migrate - history to soft delete with custom soft deleted column", "[
 
 TEST_CASE("Migrate - soft delete to history", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string table_name = "migrate_soft_hist_" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "migrate_soft_hist_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -1580,7 +1580,7 @@ TEST_CASE("Migrate - soft delete to history", "[integration][migrate]") {
 
 TEST_CASE("Migrate - soft delete to history with custom soft deleted column", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string table_name = "migrate_soft_hist_custom_" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "migrate_soft_hist_custom_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -1654,7 +1654,7 @@ TEST_CASE("Migrate - fails with empty table name", "[integration][migrate]") {
 
 TEST_CASE("Migrate - unsupported operation returns unsupported", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string table_name = "migrate_unsupported_" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "migrate_unsupported_" + std::to_string(randint());
 
 	// Create table first
 	{
@@ -1690,8 +1690,8 @@ TEST_CASE("Migrate - unsupported operation returns unsupported", "[integration][
 
 TEST_CASE("Migrate - works with schema", "[integration][migrate]") {
 	DestinationSdkImpl service;
-	const std::string schema_name = "migrate_schema_" + std::to_string(Catch::rngSeed());
-	const std::string table_name = "migrate_table_" + std::to_string(Catch::rngSeed());
+	const std::string schema_name = "migrate_schema_" + std::to_string(randint());
+	const std::string table_name = "migrate_table_" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 

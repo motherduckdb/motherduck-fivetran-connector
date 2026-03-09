@@ -60,8 +60,8 @@ TEST_CASE("DescribeTable on nonexistent table", "[integration][describe-table]")
 TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable", "[integration]") {
 	DestinationSdkImpl service;
 
-	const std::string schema_name = "some_schema" + std::to_string(Catch::rngSeed());
-	const std::string table_name = "some_table" + std::to_string(Catch::rngSeed());
+	const std::string schema_name = "some_schema" + std::to_string(randint());
+	const std::string table_name = "some_table" + std::to_string(randint());
 
 	{
 		// Create Table
@@ -249,7 +249,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 	DestinationSdkImpl service;
 
 	// Schema will be main
-	const std::string table_name = "books" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "books" + std::to_string(randint());
 
 	{
 		// Create Table
@@ -512,7 +512,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
 	DestinationSdkImpl service;
 
-	const std::string table_name = "multikey_table" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "multikey_table" + std::to_string(randint());
 
 	{
 		// Create Table
@@ -654,7 +654,7 @@ TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
 TEST_CASE("CreateTable with JSON column", "[integration]") {
 	DestinationSdkImpl service;
 
-	const std::string table_name = "json_table" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "json_table" + std::to_string(randint());
 
 	{
 		// Create Table
@@ -848,7 +848,7 @@ TEST_CASE("Test all types with create and describe table") {
 
 	DestinationSdkImpl service;
 
-	const std::string table_name = "all_types_table" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "all_types_table" + std::to_string(randint());
 
 	{
 		// Create Table
@@ -1007,7 +1007,7 @@ TEST_CASE("Test that error is thrown for invalid DECIMAL width and scale") {
 TEST_CASE("AlterTable with constraints", "[integration]") {
 	DestinationSdkImpl service;
 
-	const std::string table_name = "some_table" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "some_table" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -1291,7 +1291,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 TEST_CASE("Invalid truncate with nonexisting delete column", "[integration][current]") {
 	DestinationSdkImpl service;
 
-	const std::string table_name = "empty_table" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "empty_table" + std::to_string(randint());
 
 	{
 		// Create Table that is missing the _fivetran_deleted column
@@ -1345,7 +1345,7 @@ TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
 	DestinationSdkImpl service;
 
 	// Schema will be main
-	const std::string table_name = "books" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "books" + std::to_string(randint());
 
 	{
 		// Create Table
@@ -1516,7 +1516,7 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 	DestinationSdkImpl service;
 
 	// Schema will be main
-	const std::string table_name = "books" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "books" + std::to_string(randint());
 
 	{
 		// Create Table
@@ -1647,7 +1647,7 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 TEST_CASE("WriteHistoryBatch should delete overlapping records", "[integration][write-batch]") {
 	DestinationSdkImpl service;
 
-	const std::string table_name = "books" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "books" + std::to_string(randint());
 
 	{
 		// Create Table
@@ -1711,7 +1711,7 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with reordered CSV columns", "[integ
 	// use explicit column lists rather than relying on positional matching.
 	DestinationSdkImpl service;
 
-	const std::string table_name = "books_reordered" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "books_reordered" + std::to_string(randint());
 
 	{
 		// Create Table with columns in a specific order:
@@ -1796,8 +1796,8 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with upsert", "[integration][write-b
 	// and one is a historic table.
 
 	// Schema will be main
-	const std::string transaction_table_name = "transaction" + std::to_string(Catch::rngSeed());
-	const std::string transaction_history_table_name = "transaction_history" + std::to_string(Catch::rngSeed());
+	const std::string transaction_table_name = "transaction" + std::to_string(randint());
+	const std::string transaction_history_table_name = "transaction_history" + std::to_string(randint());
 
 	{
 		// Create Tables
@@ -1907,7 +1907,7 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with upsert", "[integration][write-b
 TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") {
 	DestinationSdkImpl service;
 
-	const std::string table_name = "some_table" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "some_table" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -2110,7 +2110,7 @@ TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") 
 TEST_CASE("AlterTable must drop columns when specified", "[integration]") {
 	DestinationSdkImpl service;
 
-	const std::string table_name = "some_table" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "some_table" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -2162,7 +2162,7 @@ TEST_CASE("AlterTable must drop columns when specified", "[integration]") {
 TEST_CASE("AlterTable decimal width change", "[integration]") {
 	DestinationSdkImpl service;
 
-	const std::string table_name = "some_table" + std::to_string(Catch::rngSeed());
+	const std::string table_name = "some_table" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 
