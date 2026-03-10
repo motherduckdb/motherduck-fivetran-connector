@@ -276,7 +276,7 @@ void define_history_test_table_reordered(T &request,
 }
 
 inline uint64_t randint() {
-	// This has no thread-safety in mind (yet), as Catch2 runs tests serially withing one process.
+	// This has no thread-safety in mind (yet), as Catch2 runs tests serially within one process.
 	static std::mt19937 gen(Catch::rngSeed());
 	return gen();
 }
