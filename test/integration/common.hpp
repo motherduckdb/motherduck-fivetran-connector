@@ -9,6 +9,7 @@
 
 #include <array>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/internal/catch_run_context.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <catch2/reporters/catch_reporter_event_listener.hpp>
@@ -47,7 +48,7 @@ inline bool REQUIRE_FAIL(const grpc::Status& status, const Catch::Matchers::Stri
 }
 
 #define REQUIRE_NO_FAIL(result) REQUIRE(NO_FAIL((result)))
-#define CHECK_NO_FAIL(result) CHECK(NO_FAIL((result)))
+#define CHECK_NO_FAIL(result)   CHECK(NO_FAIL((result)))
 
 class testRunListener : public Catch::EventListenerBase {
 public:
@@ -216,3 +217,9 @@ void check_column(const fivetran_sdk::v2::DescribeTableResponse& response, int i
 
 fivetran_sdk::v2::DescribeTableResponse describe_table(DestinationSdkImpl& service, const std::string& table_name,
                                                        const std::string& schema_name = "");
+
+inline uint64_t randint() {
+	// This has no thread-safety in mind (yet), as Catch2 runs tests serially within one process.
+	static std::mt19937 gen(Catch::rngSeed());
+	return gen();
+}
