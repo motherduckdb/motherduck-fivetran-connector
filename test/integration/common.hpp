@@ -6,6 +6,7 @@
 #include "extension_helper.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/internal/catch_run_context.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <catch2/reporters/catch_reporter_event_listener.hpp>
@@ -272,4 +273,10 @@ void define_history_test_table_reordered(T &request,
   add_col(request, "_fivetran_deleted", ::fivetran_sdk::v2::DataType::BOOLEAN,
           false);
   add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
+}
+
+inline uint64_t randint() {
+	// This has no thread-safety in mind (yet), as Catch2 runs tests serially within one process.
+	static std::mt19937 gen(Catch::rngSeed());
+	return gen();
 }
