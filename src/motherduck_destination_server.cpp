@@ -56,18 +56,26 @@ get_duckdb_columns(const google::protobuf::RepeatedPtrField<fivetran_sdk::v2::Co
 			                            "> for column <" + col.name() + "> to a DuckDB type");
 		}
 
-		std::uint8_t decimal_width = 0;
-		std::uint8_t decimal_scale = 0;
+		std::optional<std::uint8_t> decimal_width;
+		std::optional<std::uint8_t> decimal_scale;
 		if (duckdb_type == duckdb::LogicalTypeId::DECIMAL) {
 			if (col.has_params() && col.params().has_decimal()) {
 				const std::uint32_t fivetran_precision = col.params().decimal().precision();
 				const std::uint32_t fivetran_scale = col.params().decimal().scale();
 
-				// Maximum width supported by DuckDB is 38
-				if (fivetran_precision > 38) {
+				// Minimum width supported by DuckDB is 1
+				if (fivetran_precision < DECIMAL_MIN_WIDTH) {
 					throw std::invalid_argument("Decimal width " + std::to_string(fivetran_precision) +
 					                            " for column <" + col.name() +
-					                            "> exceeds maximum supported width of 38 in DuckDB");
+					                            "> is too small; minimum supported width is " +
+					                            std::to_string(DECIMAL_MIN_WIDTH) + " in DuckDB");
+				}
+
+				// Maximum width supported by DuckDB is 38
+				if (fivetran_precision > DECIMAL_MAX_WIDTH) {
+					throw std::invalid_argument("Decimal width " + std::to_string(fivetran_precision) +
+					                            " for column <" + col.name() + "> exceeds maximum supported width of " +
+					                            std::to_string(DECIMAL_MAX_WIDTH) + " in DuckDB");
 				}
 
 				if (fivetran_scale > fivetran_precision) {
@@ -76,12 +84,11 @@ get_duckdb_columns(const google::protobuf::RepeatedPtrField<fivetran_sdk::v2::Co
 					                            std::to_string(fivetran_precision));
 				}
 
-				decimal_width = static_cast<std::uint8_t>(fivetran_precision);
-				decimal_scale = static_cast<std::uint8_t>(fivetran_scale);
+				decimal_width.emplace(static_cast<std::uint8_t>(fivetran_precision));
+				decimal_scale.emplace(static_cast<std::uint8_t>(fivetran_scale));
 			} else {
-				// DuckDB default is DECIMAL(18, 3)
-				decimal_width = 18;
-				decimal_scale = 3;
+				decimal_width.emplace(DECIMAL_DEFAULT_WIDTH);
+				decimal_scale.emplace(DECIMAL_DEFAULT_SCALE);
 			}
 		}
 
@@ -105,14 +112,37 @@ std::string get_decryption_key(const std::string& filename, const google::protob
 	return encryption_key_it->second;
 }
 
-std::uint32_t get_max_record_size(const google::protobuf::Map<std::string, std::string>& configuration) {
+std::uint32_t get_max_record_size(const google::protobuf::Map<std::string, std::string>& configuration,
+                                  mdlog::Logger& logger) {
 	const auto value = config::find_optional_property(configuration, config::PROP_MAX_RECORD_SIZE);
 
-	if (value.has_value()) {
-		return static_cast<std::uint32_t>(std::stoul(value.value()));
+	std::uint32_t max_record_size = MAX_RECORD_SIZE_DEFAULT;
+
+	if (value.has_value() && !value.value().empty()) { // Also return the default when the value is an empty string
+		unsigned long converted_value;
+		try {
+			converted_value = std::stoul(value.value());
+		} catch (const std::exception&) {
+			throw md_error::RecoverableError("Value \"" + value.value() +
+			                                 "\" could not be converted into an integer for \"Max Record Size\". "
+			                                 "Make sure to set the \"Max Record Size\" to a valid positive integer.");
+		}
+
+		// Only use max_record_size values from the configuration that are larger than the default
+		if (converted_value >= MAX_RECORD_SIZE_DEFAULT && converted_value <= MAX_RECORD_SIZE_MAX) {
+			max_record_size = static_cast<std::uint32_t>(converted_value);
+		} else if (converted_value < MAX_RECORD_SIZE_DEFAULT) {
+			logger.warning("Value \"" + value.value() +
+			               "\" of \"Max Record Size\" is too low, "
+			               "using default of 24 MiB.");
+		} else { // Value must be too high
+			logger.warning("Value \"" + value.value() +
+			               "\" of \"Max Record Size\" is too high, "
+			               "using maximum of 1024 MiB.");
+		}
 	}
 
-	return MAX_RECORD_SIZE_DEFAULT;
+	return max_record_size;
 }
 } // namespace
 
@@ -144,9 +174,11 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(::grpc::ServerContext*,
 	max_record_size_field.set_name(config::PROP_MAX_RECORD_SIZE);
 	max_record_size_field.set_label("Max Record Size (MiB)");
 	max_record_size_field.set_description(
-	    "Maximum record size in MiB. Internally, this is an upper limit for the lines in the CSV files Fivetran "
-	    "generates. Increase this if the ingest fails and the error suggests to increase the \"Max Record Size (MiB)\" "
-	    "option, or if you are certain you have very large records. Leave empty to use the default (24 MiB).");
+	    "This should be a positive integer between 24 and 1048, without any units. Other units provided will be"
+	    " ignored. Internally, this is an upper limit for the lines in the CSV files"
+	    " Fivetran generates. Increase this if the ingest fails and the error suggests to increase the"
+	    " \"Max Record Size (MiB)\" option, or if you are certain you have very large records. Leave empty to use the"
+	    " default (24 MiB). Warning: setting this too high can lead to out-of-memory errors for high-volume ingests.");
 	max_record_size_field.set_text_field(fivetran_sdk::v2::PlainText);
 	max_record_size_field.set_required(false);
 	response->add_fields()->CopyFrom(max_record_size_field);
@@ -204,19 +236,21 @@ grpc::Status DestinationSdkImpl::DescribeTable(::grpc::ServerContext*,
 			ft_col->set_type(fivetran_type);
 			ft_col->set_primary_key(col.primary_key);
 			if (fivetran_type == fivetran_sdk::v2::DECIMAL) {
-				ft_col->mutable_params()->mutable_decimal()->set_precision(col.width);
-				ft_col->mutable_params()->mutable_decimal()->set_scale(col.scale);
+				assert(col.width.has_value()); // width should always be set for DECIMAL types
+				assert(col.scale.has_value()); // scale should always be set for DECIMAL types
+				ft_col->mutable_params()->mutable_decimal()->set_precision(col.width.value_or(DECIMAL_DEFAULT_WIDTH));
+				ft_col->mutable_params()->mutable_decimal()->set_scale(col.scale.value_or(DECIMAL_DEFAULT_SCALE));
 			}
 		}
 
 	} catch (const md_error::RecoverableError& mde) {
 		logger.warning("DescribeTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		               request->table_name() + ">:" + std::string(mde.what()));
+		               request->table_name() + ">: " + std::string(mde.what()));
 		response->mutable_task()->set_message(mde.what());
 		return ::grpc::Status::OK;
 	} catch (const std::exception& ex) {
 		logger.severe("DescribeTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		              request->table_name() + ">:" + std::string(ex.what()));
+		              request->table_name() + ">: " + std::string(ex.what()));
 		response->mutable_task()->set_message(ex.what());
 		return create_grpc_status_from_exception(ex);
 	}
@@ -237,24 +271,24 @@ grpc::Status DestinationSdkImpl::CreateTable(::grpc::ServerContext*,
 	auto& logger = ctx->GetLogger();
 
 	try {
-		auto schema_name = get_schema_name(request);
+		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
 		std::string db_name = config::find_property(request->configuration(), config::PROP_DATABASE);
-		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
-		const table_def table {db_name, schema_name, request->table().name()};
+		auto schema_name = get_schema_name(request);
+		sql_generator->create_schema_if_not_exists_with_retries(con, db_name, schema_name);
 
-		sql_generator->create_schema_if_not_exists(con, db_name, schema_name);
+		const table_def table {db_name, schema_name, request->table().name()};
 		const auto cols = get_duckdb_columns(request->table().columns());
 		sql_generator->create_table(con, table, cols, {});
 		response->set_success(true);
 	} catch (const md_error::RecoverableError& mde) {
 		logger.warning("CreateTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		               request->table().name() + ">:" + std::string(mde.what()));
+		               request->table().name() + ">: " + std::string(mde.what()));
 		response->mutable_task()->set_message(mde.what());
 		return ::grpc::Status::OK;
 	} catch (const std::exception& ex) {
 		logger.severe("CreateTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		              request->table().name() + ">:" + std::string(ex.what()));
+		              request->table().name() + ">: " + std::string(ex.what()));
 		response->mutable_task()->set_message(ex.what());
 		return create_grpc_status_from_exception(ex);
 	}
@@ -284,12 +318,12 @@ grpc::Status DestinationSdkImpl::AlterTable(::grpc::ServerContext*,
 		response->set_success(true);
 	} catch (const md_error::RecoverableError& mde) {
 		logger.severe("AlterTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		              request->table().name() + ">:" + std::string(mde.what()));
+		              request->table().name() + ">: " + std::string(mde.what()));
 		response->mutable_task()->set_message(mde.what());
 		return ::grpc::Status::OK;
 	} catch (const std::exception& ex) {
 		logger.severe("AlterTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		              request->table().name() + ">:" + std::string(ex.what()));
+		              request->table().name() + ">: " + std::string(ex.what()));
 		response->mutable_task()->set_message(ex.what());
 		return create_grpc_status_from_exception(ex);
 	}
@@ -329,12 +363,12 @@ grpc::Status DestinationSdkImpl::Truncate(::grpc::ServerContext*, const ::fivetr
 
 	} catch (const md_error::RecoverableError& mde) {
 		logger.warning("Truncate endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		               request->table_name() + ">:" + std::string(mde.what()));
+		               request->table_name() + ">: " + std::string(mde.what()));
 		response->mutable_task()->set_message(mde.what());
 		return ::grpc::Status::OK;
 	} catch (const std::exception& ex) {
 		logger.severe("Truncate endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		              request->table_name() + ">:" + std::string(ex.what()));
+		              request->table_name() + ">: " + std::string(ex.what()));
 		response->mutable_task()->set_message(ex.what());
 		return create_grpc_status_from_exception(ex);
 	}
@@ -358,7 +392,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 		auto schema_name = get_schema_name(request);
 
 		const std::string db_name = config::find_property(request->configuration(), config::PROP_DATABASE);
-		const auto max_record_size = get_max_record_size(request->configuration());
+		const auto max_record_size = get_max_record_size(request->configuration(), logger);
 
 		table_def table_name {db_name, get_schema_name(request), request->table().name()};
 		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
@@ -425,7 +459,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 
 	} catch (const md_error::RecoverableError& mde) {
 		auto const msg = "WriteBatch endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		                 request->table().name() + ">:" + std::string(mde.what());
+		                 request->table().name() + ">: " + std::string(mde.what());
 		logger.warning(msg);
 		response->mutable_task()->set_message(msg);
 		return ::grpc::Status::OK;
@@ -461,7 +495,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 		auto schema_name = get_schema_name(request);
 
 		const std::string db_name = config::find_property(request->configuration(), config::PROP_DATABASE);
-		const auto max_record_size = get_max_record_size(request->configuration());
+		const auto max_record_size = get_max_record_size(request->configuration(), logger);
 
 		table_def table_name {db_name, get_schema_name(request), request->table().name()};
 
@@ -882,7 +916,7 @@ grpc::Status DestinationSdkImpl::Test(::grpc::ServerContext*, const ::fivetran_s
 		// it more actionable.
 		RequestContext ctx("Test", connection_factory, request->configuration());
 
-		auto test_result = config_tester::run_test(test_name, ctx.GetConnection());
+		auto test_result = config_tester::run_test(test_name, ctx.GetConnection(), request->configuration());
 		if (test_result.success) {
 			response->set_success(true);
 		} else {

@@ -15,6 +15,7 @@ inline constexpr std::uint32_t MAX_PARALLEL_REQUESTS = 8;
 /// come too close to the limit, so we pick 768 MiB here. Originally, this was
 /// set to 512 MiB, but one user actually had a record size of over 20 MiB.
 inline constexpr std::uint32_t MAX_RECORD_SIZE_DEFAULT = 768 / MAX_PARALLEL_REQUESTS / 4; // 24 MiB
+inline constexpr std::uint32_t MAX_RECORD_SIZE_MAX = 1024;
 
 struct IngestProperties {
 	const std::string filename;

@@ -45,6 +45,7 @@ make build_connector_debug
 You can also run the connector in Docker:
 ```shell
 docker build --build-arg GIT_COMMIT_SHA_OVERRIDE=$(git rev-parse --short HEAD) -t motherduck-connector .
+docker run --rm -p50052:50052 motherduck-connector
 ```
 
 ## Upgrading DuckDB

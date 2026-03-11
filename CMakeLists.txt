@@ -158,7 +158,6 @@ add_library(motherduck_destination_sources STATIC
         src/request_context.cpp
         src/schema_types.cpp
         src/sql_generator.cpp
-        src/stacktrace.cpp
 )
 
 target_include_directories(motherduck_destination_sources PUBLIC
@@ -184,6 +183,11 @@ target_compile_options(motherduck_destination_sources PUBLIC
         -Wall -Wextra -Wpedantic -Wnon-virtual-dtor -Wold-style-cast
         -Woverloaded-virtual -Wdouble-promotion -Wconversion -Wformat=2
         -Wnull-dereference -Werror)
+# In GCC, -Wmissing-field-initializers is too noisy because it also warns for designated initializers
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(motherduck_destination_sources PUBLIC -Wno-missing-field-initializers)
+endif()
+
 if(USE_SANITIZERS)
     target_compile_options(motherduck_destination_sources PUBLIC "-fsanitize=address,undefined")
     target_link_options(motherduck_destination_sources PUBLIC "-fsanitize=address,undefined")
