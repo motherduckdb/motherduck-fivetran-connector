@@ -618,13 +618,28 @@ void MdSqlGenerator::update_values(duckdb::Connection& con, const table_def& tab
 
 	sql << "UPDATE " << absolute_table_name << " SET ";
 
-	write_joined(sql, columns_regular,
-	             [staging_table_name, absolute_table_name, unmodified_string](const std::string quoted_col,
-	                                                                          std::ostringstream& out) {
-		             out << quoted_col << " = CASE WHEN " << staging_table_name << "." << quoted_col << " = "
-		                 << KeywordHelper::WriteQuoted(unmodified_string, '\'') << " THEN " << absolute_table_name
-		                 << "." << quoted_col << " ELSE " << staging_table_name << "." << quoted_col << " END";
-	             });
+	bool first = true;
+
+	for (const auto& col : columns_regular) {
+		if (!first) {
+			sql << ", ";
+		}
+		first = false;
+
+		auto quoted_col = KeywordHelper::WriteQuoted(col->name, '"');
+		std::ostringstream staging_col_expr;
+
+		// blobs have to be converted late for update files because unmodified_string could be used.
+		if (col->type == duckdb::LogicalTypeId::BLOB) {
+			staging_col_expr << "from_base64(" << staging_table_name << "." << quoted_col << ")";
+		} else {
+			staging_col_expr << staging_table_name << "." << quoted_col;
+		}
+
+		sql << quoted_col << " = CASE WHEN " << staging_table_name << "." << quoted_col << " = "
+		    << KeywordHelper::WriteQuoted(unmodified_string, '\'') << " THEN " << absolute_table_name << "."
+		    << quoted_col << " ELSE " << staging_col_expr.str() << " END";
+	}
 
 	sql << " FROM " << staging_table_name << " WHERE ";
 	write_joined(

@@ -310,6 +310,52 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 	}
 }
 
+TEST_CASE("WriteBatch with blob and unmodified string", "[integration][write-batch]") {
+	DestinationSdkImpl service;
+
+	const std::string table_name = "blob" + std::to_string(randint());
+
+	const std::array columns {
+	    column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
+	    column_def {.name = "title", .type = duckdb::LogicalTypeId::VARCHAR},
+	    column_def {.name = "blob", .type = duckdb::LogicalTypeId::BLOB},
+	    column_def {.name = "_fivetran_deleted", .type = duckdb::LogicalTypeId::BOOLEAN},
+	    column_def {.name = "_fivetran_synced", .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
+	};
+	create_table(service, table_name, columns);
+
+	auto con = get_test_connection(MD_TOKEN);
+	{
+		auto res = con->Query("INSERT INTO " + table_name + " VALUES (1, 'Test title', null, false, NOW())");
+		REQUIRE_NO_FAIL(res);
+	}
+
+	{
+		// update
+		::fivetran_sdk::v2::WriteBatchRequest request;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
+		request.mutable_file_params()->set_null_string("magic-nullvalue");
+		define_table(request, table_name, columns);
+		const std::string filename = "blob_update.csv";
+		const std::string filepath = TEST_RESOURCES_DIR + filename;
+
+		request.add_update_files(filepath);
+
+		::fivetran_sdk::v2::WriteBatchResponse response;
+		auto status = service.WriteBatch(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+	}
+
+	{
+		// check inserted rows
+		auto res = con->Query("SELECT id, title, blob FROM " + table_name + " ORDER BY id");
+		REQUIRE_NO_FAIL(res);
+		REQUIRE(res->RowCount() == 1);
+		check_row(res, 0, {1, "Test title", "test binary"});
+	}
+}
+
 TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
 	DestinationSdkImpl service;
 

@@ -2,6 +2,7 @@
 #include "constants.hpp"
 #include "csv_processor.hpp"
 #include "duckdb.hpp"
+#include "integration/common.hpp"
 #include "md_error.hpp"
 #include "schema_types.hpp"
 
@@ -358,32 +359,27 @@ TEST_CASE("Test reading CSV file with unmodified string setting", "[csv_processo
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
 
-	const std::vector<column_def> columns {column_def {.name = "id", .type = duckdb::LogicalType::INTEGER},
-	                                       column_def {.name = "name", .type = duckdb::LogicalType::VARCHAR},
-	                                       column_def {.name = "age", .type = duckdb::LogicalType::SMALLINT}};
+	const std::vector<column_def> columns {
+	    column_def {.name = "id", .type = duckdb::LogicalType::INTEGER},
+	    column_def {.name = "name", .type = duckdb::LogicalType::VARCHAR},
+	    column_def {.name = "age", .type = duckdb::LogicalType::SMALLINT},
+	    column_def {.name = "blob", .type = duckdb::LogicalType::BLOB},
+	};
 	IngestProperties props {.filename = test_file.string(), .columns = columns, .allow_unmodified_string = true};
 	auto logger = mdlog::Logger::CreateNopLogger();
 	csv_processor::ProcessFile(con, props, logger, [&con](const std::string& staging_table_name) {
-		const auto res = con.Query("FROM " + staging_table_name);
+		auto res = con.Query("FROM " + staging_table_name);
 		REQUIRE_FALSE(res->HasError());
-		REQUIRE(res->ColumnCount() == 3);
+		REQUIRE(res->ColumnCount() == 4);
 		REQUIRE(res->RowCount() == 2);
 
 		CHECK(res->types[0] == duckdb::LogicalTypeId::VARCHAR);
 		CHECK(res->types[1] == duckdb::LogicalTypeId::VARCHAR);
 		CHECK(res->types[2] == duckdb::LogicalTypeId::VARCHAR);
+		CHECK(res->types[3] == duckdb::LogicalTypeId::VARCHAR);
 
-		for (idx_t row = 0; row < res->RowCount(); row++) {
-			if (row == 0) {
-				REQUIRE("1" == res->GetValue(0, row).ToString());
-				REQUIRE("unmodified_string" == res->GetValue(1, row).ToString());
-				REQUIRE("30" == res->GetValue(2, row).ToString());
-			} else if (row == 1) {
-				REQUIRE("2" == res->GetValue(0, row).ToString());
-				REQUIRE("Bob" == res->GetValue(1, row).ToString());
-				REQUIRE("unmodified_string" == res->GetValue(2, row).ToString());
-			}
-		}
+		check_row(res, 0, {"1", "unmodified_string", "30", "dGVzdAo="});
+		check_row(res, 1, {"2", "Bob", "unmodified_string", "unmodified_string"});
 	});
 }
 
