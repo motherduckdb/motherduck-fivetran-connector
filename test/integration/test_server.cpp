@@ -1256,14 +1256,14 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with reordered CSV columns", "[integ
 	auto con = get_test_connection(MD_TOKEN);
 	{
 		// Verify initial data was inserted correctly despite column order mismatch
-		auto res = con->Query("SELECT id, title, magic_number, _fivetran_active"
+		auto res = con->Query("SELECT id, title, magic_number, blob, _fivetran_active"
 		                      " FROM " +
 		                      table_name + " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 2);
 
-		check_row(res, 0, {1, "Initial Book", 100, true});
-		check_row(res, 1, {2, "Second Book", 200, true});
+		check_row(res, 0, {1, "Initial Book", 100, "test", true});
+		check_row(res, 1, {2, "Second Book", 200, "test", true});
 	}
 
 	{
@@ -1289,13 +1289,13 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with reordered CSV columns", "[integ
 	{
 		// Verify the update was applied correctly - id=1 should have new values,
 		// id=2 should have preserved values from the unmodified marker
-		auto res = con->Query("SELECT id, title, magic_number FROM " + table_name +
+		auto res = con->Query("SELECT id, title, magic_number, blob FROM " + table_name +
 		                      " WHERE _fivetran_start >= '2025-03-01' ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 2);
 
-		check_row(res, 0, {1, "Updated Book", 999}); // updated
-		check_row(res, 1, {2, "Second Book", 200});  // preserved via unmodified marker
+		check_row(res, 0, {1, "Updated Book", 999, "test"});    // updated title
+		check_row(res, 1, {2, "Second Book", 200, "test new"}); // updated blob
 	}
 }
 
