@@ -14,11 +14,13 @@
 #include <map>
 #include <memory>
 #include <random>
+#include <ranges>
 #include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 using duckdb::KeywordHelper;
@@ -70,48 +72,31 @@ private:
 namespace {
 // Utility
 
-const auto print_column = [](const std::string& quoted_col, std::ostringstream& out) {
-	out << quoted_col;
+const auto to_name = [](std::ostream& out, const column_def* column) {
+	out << column->quoted();
 };
-
-void write_joined(std::ostringstream& sql, const std::vector<const column_def*>& columns,
-                  std::function<void(const std::string&, std::ostringstream&)> print_str,
-                  const std::string& separator = ", ") {
-	bool first = true;
-	for (const auto& col : columns) {
-		if (first) {
-			first = false;
-		} else {
-			sql << separator;
-		}
-		print_str(KeywordHelper::WriteQuoted(col->name, '"'), sql);
-	}
-}
 
 std::string make_full_column_list(const std::vector<const column_def*>& columns_pk,
                                   const std::vector<const column_def*>& columns_regular) {
 	std::ostringstream full_column_list;
+
 	if (!columns_pk.empty()) {
-		write_joined(full_column_list, columns_pk, print_column);
-		// tiny troubleshooting assist; primary columns are separated from regular
-		// columns by 2 spaces
+		join(full_column_list, columns_pk, to_name);
+		// tiny troubleshooting assist; primary columns are separated from regular columns by 2 spaces
 		full_column_list << ",  ";
 	}
-	write_joined(full_column_list, columns_regular, print_column);
+
+	join(full_column_list, columns_regular, to_name);
 
 	return full_column_list.str();
 }
 
 std::string primary_key_join(std::vector<const column_def*>& columns_pk, const std::string tbl1,
                              const std::string tbl2) {
-	std::ostringstream primary_key_join_condition_stream;
-	write_joined(
-	    primary_key_join_condition_stream, columns_pk,
-	    [&](const std::string& quoted_col, std::ostringstream& out) {
-		    out << tbl1 << "." << quoted_col << " = " << tbl2 << "." << quoted_col;
-	    },
-	    " AND ");
-	return primary_key_join_condition_stream.str();
+	return join(columns_pk, " AND ", [&tbl1, &tbl2](std::ostream& out, const column_def* col) {
+		const auto quoted = col->quoted();
+		out << tbl1 << "." << quoted << " = " << tbl2 << "." << quoted;
+	});
 }
 } // namespace
 
@@ -279,7 +264,7 @@ void MdSqlGenerator::create_table(duckdb::Connection& con, const table_def& tabl
 
 	if (!columns_pk.empty()) {
 		ddl << "PRIMARY KEY (";
-		write_joined(ddl, columns_pk, print_column);
+		join(ddl, columns_pk, to_name);
 		ddl << ")";
 	}
 
@@ -573,10 +558,11 @@ void MdSqlGenerator::upsert(duckdb::Connection& con, const table_def& table, con
 
 	if (!columns_pk.empty()) {
 		sql << " ON CONFLICT (";
-		write_joined(sql, columns_pk, print_column);
+		join(sql, columns_pk, to_name);
 		sql << " ) DO UPDATE SET ";
 
-		write_joined(sql, columns_regular, [](const std::string& quoted_col, std::ostringstream& out) {
+		join(sql, columns_regular, [](std::ostream& out, const column_def* column) {
+			const auto quoted_col = column->quoted();
 			out << quoted_col << " = excluded." << quoted_col;
 		});
 	}
@@ -618,22 +604,19 @@ void MdSqlGenerator::update_values(duckdb::Connection& con, const table_def& tab
 
 	sql << "UPDATE " << absolute_table_name << " SET ";
 
-	write_joined(sql, columns_regular,
-	             [staging_table_name, absolute_table_name, unmodified_string](const std::string quoted_col,
-	                                                                          std::ostringstream& out) {
-		             out << quoted_col << " = CASE WHEN " << staging_table_name << "." << quoted_col << " = "
-		                 << KeywordHelper::WriteQuoted(unmodified_string, '\'') << " THEN " << absolute_table_name
-		                 << "." << quoted_col << " ELSE " << staging_table_name << "." << quoted_col << " END";
-	             });
+	join(sql, columns_regular, [&](std::ostream& out, const column_def* column) {
+		const auto quoted_col = column->quoted();
+		out << quoted_col << " = CASE WHEN " << staging_table_name << "." << quoted_col << " = "
+		    << KeywordHelper::WriteQuoted(unmodified_string, '\'') << " THEN " << absolute_table_name << "."
+		    << quoted_col << " ELSE " << staging_table_name << "." << quoted_col << " END";
+	});
 
 	sql << " FROM " << staging_table_name << " WHERE ";
-	write_joined(
-	    sql, columns_pk,
-	    [&](const std::string& quoted_col, std::ostringstream& out) {
-		    out << KeywordHelper::WriteQuoted(table.table_name, '"') << "." << quoted_col << " = " << staging_table_name
-		        << "." << quoted_col;
-	    },
-	    " AND ");
+	join(sql, columns_pk, " AND ", [&](std::ostream& out, const column_def* column) {
+		const auto quoted_col = column->quoted();
+		out << KeywordHelper::WriteQuoted(table.table_name, '"') << "." << quoted_col << " = " << staging_table_name
+		    << "." << quoted_col;
+	});
 
 	auto query = sql.str();
 	logger.info("update: " + query);
@@ -678,18 +661,18 @@ void MdSqlGenerator::add_partial_historical_values(duckdb::Connection& con, cons
 	sql << "INSERT INTO " << absolute_table_name << " (" << full_column_list << ") ( SELECT ";
 
 	// use primary keys as is, without checking for unmodified value
-	write_joined(
-	    sql, columns_pk,
-	    [&](const std::string& quoted_col, std::ostringstream& out) { out << staging_table_name << "." << quoted_col; },
-	    ", ");
+	join(sql, columns_pk, [&staging_table_name](std::ostream& out, const column_def* column) {
+		out << staging_table_name << "." << column->quoted();
+	});
+
 	sql << ",  ";
 
-	write_joined(sql, columns_regular,
-	             [staging_table_name, unmodified_string](const std::string quoted_col, std::ostringstream& out) {
-		             out << "CASE WHEN " << staging_table_name << "." << quoted_col << " = "
-		                 << KeywordHelper::WriteQuoted(unmodified_string, '\'') << " THEN lar." << quoted_col
-		                 << " ELSE " << staging_table_name << "." << quoted_col << " END as " << quoted_col;
-	             });
+	join(sql, columns_regular, [&](std::ostream& out, const column_def* column) {
+		const auto quoted_col = column->quoted();
+		out << "CASE WHEN " << staging_table_name << "." << quoted_col << " = "
+		    << KeywordHelper::WriteQuoted(unmodified_string, '\'') << " THEN lar." << quoted_col << " ELSE "
+		    << staging_table_name << "." << quoted_col << " END as " << quoted_col;
+	});
 
 	sql << " FROM " << staging_table_name << " LEFT JOIN " << lar_table_name << " AS lar ON "
 	    << primary_key_join(columns_pk, "lar", staging_table_name) << ")";
@@ -710,13 +693,11 @@ void MdSqlGenerator::delete_rows(duckdb::Connection& con, const table_def& table
 	std::ostringstream sql;
 	sql << "DELETE FROM " + absolute_table_name << " USING " << staging_table_name << " WHERE ";
 
-	write_joined(
-	    sql, columns_pk,
-	    [&](const std::string& quoted_col, std::ostringstream& out) {
-		    out << KeywordHelper::WriteQuoted(table.table_name, '"') << "." << quoted_col << " = " << staging_table_name
-		        << "." << quoted_col;
-	    },
-	    " AND ");
+	join(sql, columns_pk, " AND ", [&](std::ostream& out, const column_def* column) {
+		const auto quoted_col = column->quoted();
+		out << KeywordHelper::WriteQuoted(table.table_name, '"') << "." << quoted_col << " = " << staging_table_name
+		    << "." << quoted_col;
+	});
 
 	auto query = sql.str();
 	logger.info("delete_rows: " + query);
@@ -762,8 +743,8 @@ void MdSqlGenerator::deactivate_historical_records(duckdb::Connection& con, cons
 		const std::string short_table_name = KeywordHelper::WriteQuoted(table.table_name, '"');
 		sql << "WITH ranked_records AS (SELECT " << short_table_name << ".*,";
 		sql << " row_number() OVER (PARTITION BY ";
-		write_joined(sql, columns_pk, [&](const std::string& quoted_col, std::ostringstream& out) {
-			out << absolute_table_name << "." << quoted_col;
+		join(sql, columns_pk, [absolute_table_name](std::ostream& out, const column_def* column) {
+			out << absolute_table_name << "." << column->quoted();
 		});
 		sql << " ORDER BY " << absolute_table_name << "._fivetran_start DESC) as row_num FROM " << absolute_table_name;
 		// inner join to earliest table to only select rows that are in this batch
@@ -1001,7 +982,7 @@ void MdSqlGenerator::add_pks(duckdb::Connection& con, const std::vector<const co
 	std::ostringstream sql;
 
 	sql << "ALTER TABLE " << table_name << " ADD PRIMARY KEY (";
-	write_joined(sql, columns_pk, print_column);
+	join(sql, columns_pk, to_name);
 	sql << ");";
 	run_query(con, log_prefix, sql.str(), "Could not add pks to table " + table_name);
 }
@@ -1335,7 +1316,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(duckdb::Connection& con, con
 
 		// Keep only the latest record for a primary key based on the highest _fivetran_start, using QUALIFY
 		sql << " QUALIFY row_number() OVER (partition by ";
-		write_joined(sql, columns_pk, print_column);
+		join(sql, columns_pk, to_name);
 		sql << " ORDER BY \"_fivetran_start\" DESC) = 1";
 
 		run_query(con, "migrate_history_to_soft_delete create", sql.str(), "Could not create soft_deleted table");
@@ -1347,7 +1328,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(duckdb::Connection& con, con
 		    << quoted_deleted_col << "), false as \"_fivetran_deleted\" FROM " << table.to_escaped_string();
 
 		sql << " QUALIFY row_number() OVER (partition by ";
-		write_joined(sql, columns_pk, print_column);
+		join(sql, columns_pk, to_name);
 		sql << " ORDER BY \"_fivetran_start\" DESC) = 1";
 
 		run_query(con, "migrate_history_to_soft_delete create", sql.str(), "Could not create soft_deleted table");
