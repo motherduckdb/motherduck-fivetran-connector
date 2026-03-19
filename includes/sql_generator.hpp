@@ -4,6 +4,7 @@
 #include "md_logging.hpp"
 #include "schema_types.hpp"
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <set>
