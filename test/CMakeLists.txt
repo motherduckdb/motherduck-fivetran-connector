@@ -13,6 +13,7 @@ add_executable(integration_tests
         test_memory_backed_file.cpp
         test_md_error.cpp
         test_process_file.cpp
+        test_helpers.cpp
         integration/common.cpp
         integration/test_config_tester.cpp
         integration/test_migrate.cpp
