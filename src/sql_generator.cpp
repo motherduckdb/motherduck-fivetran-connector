@@ -673,6 +673,8 @@ void MdSqlGenerator::add_partial_historical_values(duckdb::Connection& con, cons
 		out << staging_table_name << "." << column->quoted();
 	});
 
+	sql << ",  ";
+
 	join(sql, columns_regular, [&](std::ostream& out, const column_def* column) {
 		auto quoted_col = KeywordHelper::WriteQuoted(column->name, '"');
 		std::ostringstream staging_col_expr;
