@@ -27,7 +27,7 @@ TEST_CASE("Test join strings", "[helpers]") {
 	}
 
 	{
-		const std::vector<const column_def> test_vec {
+		const std::vector test_vec {
 		    column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
 		    column_def {.name = "title", .type = duckdb::LogicalTypeId::VARCHAR},
 		    column_def {.name = "magic_number", .type = duckdb::LogicalTypeId::INTEGER},
