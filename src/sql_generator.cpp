@@ -605,10 +605,18 @@ void MdSqlGenerator::update_values(duckdb::Connection& con, const table_def& tab
 	sql << "UPDATE " << absolute_table_name << " SET ";
 
 	join(sql, columns_regular, [&](std::ostream& out, const column_def* column) {
-		const auto quoted_col = column->quoted();
+		auto quoted_col = KeywordHelper::WriteQuoted(column->name, '"');
+		std::ostringstream staging_col_expr;
+
+		if (column->type == duckdb::LogicalTypeId::BLOB) {
+			staging_col_expr << "from_base64(" << staging_table_name << "." << quoted_col << ")";
+		} else {
+			staging_col_expr << staging_table_name << "." << quoted_col;
+		}
+
 		out << quoted_col << " = CASE WHEN " << staging_table_name << "." << quoted_col << " = "
 		    << KeywordHelper::WriteQuoted(unmodified_string, '\'') << " THEN " << absolute_table_name << "."
-		    << quoted_col << " ELSE " << staging_table_name << "." << quoted_col << " END";
+		    << quoted_col << " ELSE " << staging_col_expr.str() << " END";
 	});
 
 	sql << " FROM " << staging_table_name << " WHERE ";
@@ -668,10 +676,18 @@ void MdSqlGenerator::add_partial_historical_values(duckdb::Connection& con, cons
 	sql << ",  ";
 
 	join(sql, columns_regular, [&](std::ostream& out, const column_def* column) {
-		const auto quoted_col = column->quoted();
+		auto quoted_col = KeywordHelper::WriteQuoted(column->name, '"');
+		std::ostringstream staging_col_expr;
+
+		if (column->type == duckdb::LogicalTypeId::BLOB) {
+			staging_col_expr << "from_base64(" << staging_table_name << "." << quoted_col << ")";
+		} else {
+			staging_col_expr << staging_table_name << "." << quoted_col;
+		}
+
 		out << "CASE WHEN " << staging_table_name << "." << quoted_col << " = "
 		    << KeywordHelper::WriteQuoted(unmodified_string, '\'') << " THEN lar." << quoted_col << " ELSE "
-		    << staging_table_name << "." << quoted_col << " END as " << quoted_col;
+		    << staging_col_expr.str() << " END as " << quoted_col;
 	});
 
 	sql << " FROM " << staging_table_name << " LEFT JOIN " << lar_table_name << " AS lar ON "

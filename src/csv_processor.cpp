@@ -118,16 +118,18 @@ CompressionType determine_compression_type(const std::string& file_path) {
 }
 
 /// Adds a SELECT clause with the specified columns to the query
-void add_projections(std::ostringstream& query, const std::vector<column_def>& columns) {
+void add_projections(std::ostringstream& query, const std::vector<column_def>& columns,
+                     const bool allow_unmodified_string) {
 	query << " SELECT";
 
 	if (columns.empty()) {
 		query << " *";
 	} else {
 		for (const auto& column : columns) {
-			if (column.type == duckdb::LogicalTypeId::BLOB) {
-				// The CSV reader reads BLOBs as VARCHARs. We have to convert them with
-				// from_base64.
+			if (!allow_unmodified_string && column.type == duckdb::LogicalTypeId::BLOB) {
+				// The CSV reader reads BLOBs as VARCHARs. We have to convert them with from_base64.
+				// However, when there could be unmodified_strings, we should not convert the strings back to their
+				// original types yet.
 				query << " from_base64(" << duckdb::KeywordHelper::WriteQuoted(column.name, '"') << ") AS "
 				      << duckdb::KeywordHelper::WriteQuoted(column.name, '"');
 			} else {
@@ -249,7 +251,7 @@ std::string generate_read_csv_query(const std::string& filepath, const IngestPro
 	query << ")";
 
 	// Select columns explicitly to enforce order
-	add_projections(query, props.columns);
+	add_projections(query, props.columns, props.allow_unmodified_string);
 
 	return query.str();
 }
