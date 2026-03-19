@@ -23,6 +23,8 @@ struct column_def {
 	// Scale is a number from 0 to the width that indicates the number of digits that can be stored after the decimal
 	// point. In other words, it can be zero.
 	std::optional<std::uint8_t> scale;
+
+	[[nodiscard]] std::string quoted() const;
 };
 
 inline std::string format_type(const column_def& col) {

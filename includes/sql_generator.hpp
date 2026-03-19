@@ -4,6 +4,7 @@
 #include "md_logging.hpp"
 #include "schema_types.hpp"
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <set>
@@ -13,6 +14,66 @@
 void find_primary_keys(const std::vector<column_def>& cols, std::vector<const column_def*>& columns_pk,
                        std::vector<const column_def*>* columns_regular = nullptr,
                        const std::string& ignored_primary_key = "");
+
+/// join() makes it easy to reduce a generic vector to a string with a specified pattern:
+///
+///  std::vector<std::string> words = {"hello", "world", "foo"};
+///  std::string s = join(words);                    // "hello, world, foo"
+///
+///  std::vector<int> nums = {1, 2, 3};
+///  std::string s = join(nums, " + ");              // "1 + 2 + 3"
+///
+///  std::vector<Person> people = {{"Alice", 30}, {"Bob", 25}};
+///  std::string s = join(people, ", ", [](std::ostream& out, const Person& p) {
+///      out << p.name << "(" << std::to_string(p.age) << ")";
+///  });                                             // "Alice(30), Bob(25)"
+///
+///  std::ostringstream oss;
+///  oss << "SELECT ";
+///  join(oss, words, ", ", [](std::ostream& out, const column_def* c) { return c->name; });
+///  oss << " FROM my_table;";						// "SELECT hello, world, foo FROM my_table;"
+///
+
+template <typename F, typename T>
+concept mapper = std::is_invocable_v<F, std::ostream&, const T&> || std::is_invocable_v<F, const T&>;
+
+template <typename T, mapper<T> F = std::identity>
+void join(std::ostream& os, const std::vector<T>& vec, const std::string& sep = ", ", const F& map = {}) {
+	if (vec.empty())
+		return;
+
+	auto write = [&](const T& elem) {
+		if constexpr (std::is_invocable_v<F, std::ostream&, const T&>) {
+			map(os, elem);
+		} else {
+			os << elem;
+		}
+	};
+
+	write(vec[0]);
+	for (auto it = std::next(vec.begin()); it != vec.end(); ++it) {
+		os << sep;
+		write(*it);
+	}
+}
+
+template <typename T, mapper<T> F = std::identity>
+void join(std::ostream& os, const std::vector<T>& vec, const F& map = {}) {
+	join(os, vec, ", ", map);
+}
+
+template <typename T, mapper<T> F = std::identity>
+std::string join(const std::vector<T>& vec, const std::string& sep, const F& map = {}) {
+	std::ostringstream out;
+	join(out, vec, sep, map);
+
+	return out.str();
+}
+
+template <typename T, mapper<T> F = std::identity>
+std::string join(const std::vector<T>& vec, const F& map = {}) {
+	return join(vec, ", ", map);
+}
 
 class MdSqlGenerator {
 
