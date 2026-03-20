@@ -110,6 +110,7 @@ const std::array HISTORY_TEST_COLUMNS = {
     column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
     column_def {.name = "title", .type = duckdb::LogicalTypeId::VARCHAR},
     column_def {.name = "magic_number", .type = duckdb::LogicalTypeId::INTEGER},
+    column_def {.name = "blob", .type = duckdb::LogicalTypeId::BLOB},
     column_def {.name = "_fivetran_synced", .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
     column_def {.name = "_fivetran_active", .type = duckdb::LogicalTypeId::BOOLEAN},
     column_def {.name = "_fivetran_start", .type = duckdb::LogicalTypeId::TIMESTAMP_TZ, .primary_key = true},
@@ -195,6 +196,7 @@ void define_history_test_table_reordered(T& request, const std::string& table_na
 	add_col(request, "_fivetran_synced", ::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
 	add_col(request, "_fivetran_start", ::fivetran_sdk::v2::DataType::UTC_DATETIME, true);
 	add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
+	add_col(request, "blob", ::fivetran_sdk::v2::DataType::BINARY, false);
 }
 
 template <std::size_t N>
