@@ -602,8 +602,7 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
 		REQUIRE(res2->GetValue(0, 0).ToString() == "default_value");
 	}
 
-	// Add column with default "NULL", that should become a string "NULL", not
-	// NULL.
+	// Add column with default "NULL", that should become a string "NULL", not NULL.
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
@@ -658,10 +657,33 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
 		                     " Fivetran support.");
 	}
 
+	// Adding an existing column should change the default value
+	{
+		::fivetran_sdk::v2::MigrateRequest request;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		auto add_col = request.mutable_details()->mutable_add()->mutable_add_column_with_default_value();
+		add_col->set_column("new_col");
+		add_col->set_column_type(::fivetran_sdk::v2::DataType::STRING);
+		add_col->set_default_value("new_default_value");
+
+		::fivetran_sdk::v2::MigrateResponse response;
+		auto status = service.Migrate(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+	}
+
 	{
 		auto res = con->Query("INSERT INTO " + table_name + " (id) VALUES (4)");
 		REQUIRE_NO_FAIL(res);
-		auto res2 = con->Query("SELECT new_col3 FROM " + table_name + " WHERE id = 4");
+		auto res2 = con->Query("SELECT new_col FROM " + table_name + " WHERE id = 4");
+		REQUIRE_NO_FAIL(res2);
+		REQUIRE(res2->RowCount() == 1);
+		REQUIRE(res2->GetValue(0, 0).ToString() == "new_default_value");
+	}
+
+	{
+		auto res = con->Query("INSERT INTO " + table_name + " (id) VALUES (5)");
+		REQUIRE_NO_FAIL(res);
+		auto res2 = con->Query("SELECT new_col3 FROM " + table_name + " WHERE id = 5");
 		REQUIRE_NO_FAIL(res2);
 		REQUIRE(res2->RowCount() == 1);
 		REQUIRE(res2->GetValue(0, 0).ToString().empty());

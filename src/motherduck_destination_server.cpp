@@ -800,19 +800,34 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 				logger.info("Endpoint <Migrate>: ADD_COLUMN_WITH_DEFAULT_VALUE");
 				const auto& add_col = add.add_column_with_default_value();
 
-				column_def column {
+				column_def new_column {
 				    .name = add_col.column(),
 				    .type = get_duckdb_type(add_col.column_type()),
 				    .column_default = add_col.default_value(),
 				    .primary_key = false,
 				};
 
-				if (is_fivetran_system_column(column.name)) {
-					throw std::invalid_argument("Cannot add column with reserved name <" + column.name +
+				if (is_fivetran_system_column(new_column.name)) {
+					throw std::invalid_argument("Cannot add column with reserved name <" + new_column.name +
 					                            ">. Please contact Fivetran support.");
 				}
 
-				sql_generator->add_column(con, table, column, "add_column");
+				const auto columns = sql_generator->describe_table(con, table);
+				bool existing = false;
+
+				for (auto& col : columns) {
+					if (col.name == new_column.name) {
+						sql_generator->add_defaults(con, {new_column}, table_name, "add_column");
+						existing = true;
+						break;
+					}
+				}
+
+				if (!existing) {
+					// After seeing errors, Fivetran told us they invoke AddColumnWithDefaultValue even when the column
+					// exists, but expect the default value to change in that case.
+					sql_generator->add_column(con, table, new_column, "add_column", true);
+				}
 				break;
 			}
 			case fivetran_sdk::v2::AddOperation::EntityCase::kAddColumnInHistoryMode: {

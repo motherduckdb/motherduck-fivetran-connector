@@ -970,15 +970,15 @@ void MdSqlGenerator::add_defaults(duckdb::Connection& con, const std::vector<col
 	// Copies the default of every column that has a default defined to the destination table_name. This assumes all
 	// columns are present in the destination table.
 	for (const auto& col : columns) {
-		// This also sets the default value of the soft_deleted_column if it was not
-		// equal to _fivetran_deleted
+		// This also sets the default value of the soft_deleted_column if it was not equal to _fivetran_deleted
 		if (!col.column_default.has_value() || col.column_default.value() == "NULL") {
 			continue;
 		}
 
 		std::ostringstream sql;
 		sql << "ALTER TABLE " << table_name << " ALTER COLUMN " << KeywordHelper::WriteQuoted(col.name, '"')
-		    << " SET DEFAULT " << KeywordHelper::WriteQuoted(col.column_default.value(), '\'') << ";";
+		    << " SET DEFAULT CAST(" << KeywordHelper::WriteQuoted(col.column_default.value(), '\'') << " AS "
+		    << format_type(col) << ");";
 		run_query(con, log_prefix, sql.str(), "Could not add default to column " + col.name);
 	}
 }
