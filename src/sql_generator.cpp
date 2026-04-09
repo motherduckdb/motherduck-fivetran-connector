@@ -966,7 +966,7 @@ void MdSqlGenerator::copy_table(duckdb::Connection& con, const table_def& from_t
 }
 
 void MdSqlGenerator::add_defaults(duckdb::Connection& con, const std::vector<column_def>& columns,
-                                  const std::string& table_name, const std::string& log_prefix) {
+                                  const std::string& table_name, const std::string& log_prefix, const bool with_cast) {
 	// Copies the default of every column that has a default defined to the destination table_name. This assumes all
 	// columns are present in the destination table.
 	for (const auto& col : columns) {
@@ -976,9 +976,17 @@ void MdSqlGenerator::add_defaults(duckdb::Connection& con, const std::vector<col
 		}
 
 		std::ostringstream sql;
-		sql << "ALTER TABLE " << table_name << " ALTER COLUMN " << KeywordHelper::WriteQuoted(col.name, '"')
-		    << " SET DEFAULT CAST(" << KeywordHelper::WriteQuoted(col.column_default.value(), '\'') << " AS "
-		    << format_type(col) << ");";
+
+		if (with_cast) {
+			sql << "ALTER TABLE " << table_name << " ALTER COLUMN " << KeywordHelper::WriteQuoted(col.name, '"')
+			    << " SET DEFAULT CAST(" << KeywordHelper::WriteQuoted(col.column_default.value(), '\'') << " AS "
+			    << format_type(col) << ");";
+		} else {
+			// If the defaults come from describe_table, the default values will already contain a CAST statement.
+			sql << "ALTER TABLE " << table_name << " ALTER COLUMN " << KeywordHelper::WriteQuoted(col.name, '"')
+			    << " SET DEFAULT " << KeywordHelper::WriteQuoted(col.column_default.value(), '\'') << ";";
+		}
+
 		run_query(con, log_prefix, sql.str(), "Could not add default to column " + col.name);
 	}
 }
@@ -1358,7 +1366,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(duckdb::Connection& con, con
 	                 .type = duckdb::LogicalTypeId::BOOLEAN,
 	                 .column_default = "false",
 	             }},
-	             temp_table_name, "migrate_history_to_soft_delete set_deleted_default");
+	             temp_table_name, "migrate_history_to_soft_delete set_deleted_default", true);
 
 	// _fivetran_start, _fivetran_end and _fivetran_active are not present in temp_table.
 	std::vector<column_def> new_columns;

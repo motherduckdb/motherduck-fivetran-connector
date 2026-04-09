@@ -817,7 +817,7 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 
 				for (auto& col : columns) {
 					if (col.name == new_column.name) {
-						sql_generator->add_defaults(con, {new_column}, table_name, "add_column");
+						sql_generator->add_defaults(con, {new_column}, table_name, "add_column", true);
 						existing = true;
 						break;
 					}

@@ -211,7 +211,7 @@ public:
 	void migrate_soft_delete_to_history(duckdb::Connection& con, const table_def& original_table,
 	                                    const std::string& soft_deleted_column);
 	void add_defaults(duckdb::Connection& con, const std::vector<column_def>& columns, const std::string& table_name,
-	                  const std::string& log_prefix);
+	                  const std::string& log_prefix, const bool with_cast = false);
 	void add_pks(duckdb::Connection& con, const std::vector<const column_def*>& columns_pk,
 	             const std::string& table_name, const std::string& log_prefix) const;
 
