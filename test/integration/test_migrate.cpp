@@ -296,7 +296,7 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
 		// duckdb::Value() creates a NULL value
 		check_row(res, 0, {duckdb::Value(), "PRI", "INTEGER"});                 // id
 		check_row(res, 1, {duckdb::Value(), duckdb::Value(), "VARCHAR"});       // data
-		check_row(res, 2, {"\'42\'", duckdb::Value(), "DECIMAL(17,4)"});        // value
+		check_row(res, 2, {"CAST(\'42\' AS DECIMAL(17,4))", duckdb::Value(), "DECIMAL(17,4)"});        // value
 		check_row(res, 3, {duckdb::Value(), duckdb::Value(), "DECIMAL(31,6)"}); // amount
 	}
 
@@ -487,7 +487,7 @@ TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration
 		REQUIRE(res->RowCount() == 6);
 
 		// _fivetran_active is not a pk and has a default
-		check_row(res, 0, {duckdb::Value(), "'CAST(''true'' AS BOOLEAN)'"});
+		check_row(res, 0, {duckdb::Value(), "CAST('CAST(''true'' AS BOOLEAN)' AS BOOLEAN)"});
 		check_row(res, 1, {duckdb::Value(), duckdb::Value()}); // _fivetran_end is not a pk
 		check_row(res, 2, {"PRI", duckdb::Value()});           // _fivetran_start is a pk
 		check_row(res, 3, {duckdb::Value(), duckdb::Value()}); // _fivetran_synced is not a pk

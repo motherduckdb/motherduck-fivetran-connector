@@ -966,7 +966,7 @@ void MdSqlGenerator::copy_table(duckdb::Connection& con, const table_def& from_t
 }
 
 void MdSqlGenerator::add_defaults(duckdb::Connection& con, const std::vector<column_def>& columns,
-                                  const std::string& table_name, const std::string& log_prefix, const bool with_cast) {
+                                  const std::string& table_name, const std::string& log_prefix) {
 	// Copies the default of every column that has a default defined to the destination table_name. This assumes all
 	// columns are present in the destination table.
 	for (const auto& col : columns) {
@@ -977,17 +977,13 @@ void MdSqlGenerator::add_defaults(duckdb::Connection& con, const std::vector<col
 
 		std::ostringstream sql;
 
-		if (with_cast) {
-			sql << "ALTER TABLE " << table_name << " ALTER COLUMN " << KeywordHelper::WriteQuoted(col.name, '"')
-			    << " SET DEFAULT CAST(" << KeywordHelper::WriteQuoted(col.column_default.value(), '\'') << " AS "
-			    << format_type(col) << ");";
-		} else {
-			// The default in col.column_default can already contain a CAST-statement, because the columns passed to
-			// this method were generate with describe_table(). This resulted in e.g. "CAST(CAST(\'42\' as int))" being
-			// generated. To prevent this, the caller can specify if it needs an extra CAST around the default values.
-			sql << "ALTER TABLE " << table_name << " ALTER COLUMN " << KeywordHelper::WriteQuoted(col.name, '"')
-			    << " SET DEFAULT " << KeywordHelper::WriteQuoted(col.column_default.value(), '\'') << ";";
-		}
+		// The default in col.column_default can already contain a CAST-statement, because the columns passed to
+		// this method were generated with describe_table(). This results in e.g. "CAST(CAST(\'42\' as int) as int)"
+		// being generated. We decided that we are find with this edge-case for now since this is still a valid default
+		// and makes this method more usable.
+		sql << "ALTER TABLE " << table_name << " ALTER COLUMN " << KeywordHelper::WriteQuoted(col.name, '"')
+		    << " SET DEFAULT CAST(" << KeywordHelper::WriteQuoted(col.column_default.value(), '\'') << " AS "
+		    << format_type(col) << ");";
 
 		run_query(con, log_prefix, sql.str(), "Could not add default to column " + col.name);
 	}
@@ -1368,7 +1364,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(duckdb::Connection& con, con
 	                 .type = duckdb::LogicalTypeId::BOOLEAN,
 	                 .column_default = "false",
 	             }},
-	             temp_table_name, "migrate_history_to_soft_delete set_deleted_default", true);
+	             temp_table_name, "migrate_history_to_soft_delete set_deleted_default");
 
 	// _fivetran_start, _fivetran_end and _fivetran_active are not present in temp_table.
 	std::vector<column_def> new_columns;
