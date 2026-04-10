@@ -982,7 +982,9 @@ void MdSqlGenerator::add_defaults(duckdb::Connection& con, const std::vector<col
 			    << " SET DEFAULT CAST(" << KeywordHelper::WriteQuoted(col.column_default.value(), '\'') << " AS "
 			    << format_type(col) << ");";
 		} else {
-			// If the defaults come from describe_table, the default values will already contain a CAST statement.
+			// The default in col.column_default can already contain a CAST-statement, because the columns passed to
+			// this method were generate with describe_table(). This resulted in e.g. "CAST(CAST(\'42\' as int))" being
+			// generated. To prevent this, the caller can specify if it needs an extra CAST around the default values.
 			sql << "ALTER TABLE " << table_name << " ALTER COLUMN " << KeywordHelper::WriteQuoted(col.name, '"')
 			    << " SET DEFAULT " << KeywordHelper::WriteQuoted(col.column_default.value(), '\'') << ";";
 		}

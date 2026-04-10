@@ -812,20 +812,18 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 					                            ">. Please contact Fivetran support.");
 				}
 
+				// After seeing errors, Fivetran told us they invoke AddColumnWithDefaultValue even when the column
+				// exists. They expect only the default value to change in that case.
+
 				const auto columns = sql_generator->describe_table(con, table);
-				bool existing = false;
+				const bool column_exists = std::any_of(columns.begin(), columns.end(), [new_column](const auto& col) {
+					return col.name == new_column.name;
+				});
 
-				for (auto& col : columns) {
-					if (col.name == new_column.name) {
-						sql_generator->add_defaults(con, {new_column}, table_name, "add_column", true);
-						existing = true;
-						break;
-					}
-				}
-
-				if (!existing) {
-					// After seeing errors, Fivetran told us they invoke AddColumnWithDefaultValue even when the column
-					// exists, but expect the default value to change in that case.
+				if (column_exists) {
+					// If the column already exists, only the default value should be changed.
+					sql_generator->add_defaults(con, {new_column}, table_name, "add_column", true);
+				} else {
 					sql_generator->add_column(con, table, new_column, "add_column", true);
 				}
 				break;
