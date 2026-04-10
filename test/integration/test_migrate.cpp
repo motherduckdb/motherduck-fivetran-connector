@@ -296,7 +296,7 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
 		// duckdb::Value() creates a NULL value
 		check_row(res, 0, {duckdb::Value(), "PRI", "INTEGER"});                 // id
 		check_row(res, 1, {duckdb::Value(), duckdb::Value(), "VARCHAR"});       // data
-		check_row(res, 2, {"\'42\'", duckdb::Value(), "DECIMAL(17,4)"});        // value
+		check_row(res, 2, {"CAST(\'42\' AS DECIMAL(17,4))", duckdb::Value(), "DECIMAL(17,4)"});        // value
 		check_row(res, 3, {duckdb::Value(), duckdb::Value(), "DECIMAL(31,6)"}); // amount
 	}
 
@@ -487,7 +487,7 @@ TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration
 		REQUIRE(res->RowCount() == 6);
 
 		// _fivetran_active is not a pk and has a default
-		check_row(res, 0, {duckdb::Value(), "'CAST(''true'' AS BOOLEAN)'"});
+		check_row(res, 0, {duckdb::Value(), "CAST('CAST(''true'' AS BOOLEAN)' AS BOOLEAN)"});
 		check_row(res, 1, {duckdb::Value(), duckdb::Value()}); // _fivetran_end is not a pk
 		check_row(res, 2, {"PRI", duckdb::Value()});           // _fivetran_start is a pk
 		check_row(res, 3, {duckdb::Value(), duckdb::Value()}); // _fivetran_synced is not a pk
@@ -602,8 +602,7 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
 		REQUIRE(res2->GetValue(0, 0).ToString() == "default_value");
 	}
 
-	// Add column with default "NULL", that should become a string "NULL", not
-	// NULL.
+	// Add column with default "NULL", that should become a string "NULL", not NULL.
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
@@ -658,10 +657,33 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
 		                     " Fivetran support.");
 	}
 
+	// Adding an existing column should change the default value
+	{
+		::fivetran_sdk::v2::MigrateRequest request;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		auto add_col = request.mutable_details()->mutable_add()->mutable_add_column_with_default_value();
+		add_col->set_column("new_col");
+		add_col->set_column_type(::fivetran_sdk::v2::DataType::STRING);
+		add_col->set_default_value("new_default_value");
+
+		::fivetran_sdk::v2::MigrateResponse response;
+		auto status = service.Migrate(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+	}
+
 	{
 		auto res = con->Query("INSERT INTO " + table_name + " (id) VALUES (4)");
 		REQUIRE_NO_FAIL(res);
-		auto res2 = con->Query("SELECT new_col3 FROM " + table_name + " WHERE id = 4");
+		auto res2 = con->Query("SELECT new_col FROM " + table_name + " WHERE id = 4");
+		REQUIRE_NO_FAIL(res2);
+		REQUIRE(res2->RowCount() == 1);
+		REQUIRE(res2->GetValue(0, 0).ToString() == "new_default_value");
+	}
+
+	{
+		auto res = con->Query("INSERT INTO " + table_name + " (id) VALUES (5)");
+		REQUIRE_NO_FAIL(res);
+		auto res2 = con->Query("SELECT new_col3 FROM " + table_name + " WHERE id = 5");
 		REQUIRE_NO_FAIL(res2);
 		REQUIRE(res2->RowCount() == 1);
 		REQUIRE(res2->GetValue(0, 0).ToString().empty());
