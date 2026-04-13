@@ -874,7 +874,7 @@ void MdSqlGenerator::drop_column_in_history_mode(duckdb::Connection& con, const 
 	const std::string quoted_column = KeywordHelper::WriteQuoted(column, '"');
 	const std::string quoted_timestamp = KeywordHelper::WriteQuoted(operation_timestamp, '\'') + "::TIMESTAMPTZ";
 
-	if (!history_table_is_valid(con, absolute_table_name, quoted_timestamp)) {
+	if (!history_table_is_valid(con, table, quoted_timestamp)) {
 		// The table is empty
 		return;
 	}
@@ -959,14 +959,14 @@ void MdSqlGenerator::copy_table(duckdb::Connection& con, const table_def& from_t
 	combined_pks.insert(combined_pks.end(), columns_pk.begin(), columns_pk.end());
 	combined_pks.insert(combined_pks.end(), additional_pks.begin(), additional_pks.end());
 
-	add_defaults(con, columns, to_table.to_escaped_string(), log_prefix);
-	add_pks(con, combined_pks, to_table.to_escaped_string(), log_prefix);
+	add_defaults(con, columns, to_table, log_prefix);
+	add_pks(con, combined_pks, to_table, log_prefix);
 
 	transaction_context.Commit();
 }
 
 void MdSqlGenerator::add_defaults(duckdb::Connection& con, const std::vector<column_def>& columns,
-                                  const std::string& table_name, const std::string& log_prefix) {
+                                  const table_def& table, const std::string& log_prefix) {
 	// Copies the default of every column that has a default defined to the destination table_name. This assumes all
 	// columns are present in the destination table.
 	for (const auto& col : columns) {
@@ -981,38 +981,38 @@ void MdSqlGenerator::add_defaults(duckdb::Connection& con, const std::vector<col
 		// this method were generated with describe_table(). This results in e.g. "CAST(CAST(\'42\' as int) as int)"
 		// being generated. We decided that we are find with this edge-case for now since this is still a valid default
 		// and makes this method more usable.
-		sql << "ALTER TABLE " << table_name << " ALTER COLUMN " << KeywordHelper::WriteQuoted(col.name, '"')
-		    << " SET DEFAULT CAST(" << KeywordHelper::WriteQuoted(col.column_default.value(), '\'') << " AS "
-		    << format_type(col) << ");";
+		sql << "ALTER TABLE " << table.to_escaped_string() << " ALTER COLUMN "
+		    << KeywordHelper::WriteQuoted(col.name, '"') << " SET DEFAULT CAST("
+		    << KeywordHelper::WriteQuoted(col.column_default.value(), '\'') << " AS " << format_type(col) << ");";
 
 		run_query(con, log_prefix, sql.str(), "Could not add default to column " + col.name);
 	}
 }
 
 void MdSqlGenerator::add_pks(duckdb::Connection& con, const std::vector<const column_def*>& columns_pk,
-                             const std::string& table_name, const std::string& log_prefix) const {
+                             const table_def& table, const std::string& log_prefix) const {
 	if (columns_pk.empty()) {
 		// All modes require a primary key to be present, because we cannot switch
 		// to history mode without a primary key. Fivetran has confirmed that the
 		// partner sdk assures existence of a primary key, and else adds a primary
 		// key itself.
-		throw std::runtime_error("No primary keys found for table " + table_name);
+		throw std::runtime_error("No primary keys found for table " + table.to_escaped_string());
 	}
 
 	// Add the right primary key. Note that "CREATE TABLE AS SELECT" does not
 	// add any primary key constraints.
 	std::ostringstream sql;
 
-	sql << "ALTER TABLE " << table_name << " ADD PRIMARY KEY (";
+	sql << "ALTER TABLE " << table.to_escaped_string() << " ADD PRIMARY KEY (";
 	join(sql, columns_pk, to_name);
 	sql << ");";
-	run_query(con, log_prefix, sql.str(), "Could not add pks to table " + table_name);
+	run_query(con, log_prefix, sql.str(), "Could not add pks to table " + table.to_escaped_string());
 }
 
 void MdSqlGenerator::copy_column(duckdb::Connection& con, const table_def& table, const std::string& from_column,
-                                 const std::string& to_name) {
+                                 const std::string& to_column_name) {
 	const std::string quoted_from = KeywordHelper::WriteQuoted(from_column, '"');
-	const std::string quoted_to = KeywordHelper::WriteQuoted(to_name, '"');
+	const std::string quoted_to = KeywordHelper::WriteQuoted(to_column_name, '"');
 
 	// Get the column type from the source column
 	auto query = "SELECT data_type_id, column_default, numeric_precision, numeric_scale "
@@ -1034,7 +1034,7 @@ void MdSqlGenerator::copy_column(duckdb::Connection& con, const table_def& table
 	auto type = static_cast<duckdb::LogicalTypeId>(result->GetValue(0, 0).GetValue<int8_t>());
 
 	column_def to_column {
-	    .name = to_name,
+	    .name = to_column_name,
 	    .type = type,
 	    .column_default = result->GetValue(1, 0).GetValue<duckdb::string>(),
 	};
@@ -1048,8 +1048,8 @@ void MdSqlGenerator::copy_column(duckdb::Connection& con, const table_def& table
 
 	add_column(con, table, to_column, "copy_column add");
 	run_query(con, "copy_column update",
-	          "UPDATE " + table.to_escaped_string() + " SET " + KeywordHelper::WriteQuoted(to_name, '"') + " = " +
-	              quoted_from,
+	          "UPDATE " + table.to_escaped_string() + " SET " + KeywordHelper::WriteQuoted(to_column_name, '"') +
+	              " = " + quoted_from,
 	          "Could not copy column values");
 
 	transaction_context.Commit();
@@ -1093,7 +1093,7 @@ void MdSqlGenerator::rename_column(duckdb::Connection& con, const table_def& tab
 	              ">");
 }
 
-bool MdSqlGenerator::history_table_is_valid(duckdb::Connection& con, const std::string& absolute_table_name,
+bool MdSqlGenerator::history_table_is_valid(duckdb::Connection& con, const table_def& table,
                                             const std::string& quoted_timestamp) {
 	// This performs the "Validation before starting the migration" part of
 	// add/drop column in history mode as specified in the docs:
@@ -1105,7 +1105,7 @@ bool MdSqlGenerator::history_table_is_valid(duckdb::Connection& con, const std::
 	// else we return true. This also allows us to cleanly redirect to performing
 	// a regular add/drop column when the table is empty.
 
-	auto result = con.Query("SELECT COUNT(*) FROM " + absolute_table_name);
+	auto result = con.Query("SELECT COUNT(*) FROM " + table.to_escaped_string());
 
 	if (result->HasError()) {
 		throw std::runtime_error("Could not query table size: " + result->GetError());
@@ -1117,7 +1117,7 @@ bool MdSqlGenerator::history_table_is_valid(duckdb::Connection& con, const std::
 	}
 
 	auto max_result = con.Query("SELECT MAX(\"_fivetran_start\") <= " + quoted_timestamp + " FROM " +
-	                            absolute_table_name + " WHERE \"_fivetran_active\" = true");
+	                            table.to_escaped_string() + " WHERE \"_fivetran_active\" = true");
 
 	if (max_result->HasError()) {
 		throw std::runtime_error("Could not query _fivetran_start value: " + max_result->GetError());
@@ -1141,7 +1141,7 @@ void MdSqlGenerator::add_column_in_history_mode(duckdb::Connection& con, const t
 	TransactionContext transaction_context(con);
 	add_column(con, table, column, "add_column_in_history_mode create");
 
-	if (!history_table_is_valid(con, absolute_table_name, quoted_timestamp)) {
+	if (!history_table_is_valid(con, table, quoted_timestamp)) {
 		// The table is empty and the column has been added
 		transaction_context.Commit();
 		return;
@@ -1364,7 +1364,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(duckdb::Connection& con, con
 	                 .type = duckdb::LogicalTypeId::BOOLEAN,
 	                 .column_default = "false",
 	             }},
-	             temp_table_name, "migrate_history_to_soft_delete set_deleted_default");
+	             temp_table, "migrate_history_to_soft_delete set_deleted_default");
 
 	// _fivetran_start, _fivetran_end and _fivetran_active are not present in temp_table.
 	std::vector<column_def> new_columns;
@@ -1373,8 +1373,8 @@ void MdSqlGenerator::migrate_history_to_soft_delete(duckdb::Connection& con, con
 			new_columns.push_back(col);
 		}
 	}
-	add_defaults(con, new_columns, temp_table_name, "migrate_history_to_soft_delete set_default");
-	add_pks(con, columns_pk, temp_table_name, "migrate_history_to_soft_delete set_pk");
+	add_defaults(con, new_columns, temp_table, "migrate_history_to_soft_delete set_default");
+	add_pks(con, columns_pk, temp_table, "migrate_history_to_soft_delete set_pk");
 
 	// Swap the original and temporary table
 	drop_table(con, table, "migrate_history_to_soft_delete drop");
@@ -1425,10 +1425,10 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection& con, const tabl
 			new_columns.push_back(col);
 		}
 	}
-	add_defaults(con, new_columns, temp_table_name, "migrate_history_to_live set_default");
+	add_defaults(con, new_columns, temp_table, "migrate_history_to_live set_default");
 
 	if (!keep_deleted_rows) {
-		add_pks(con, columns_pk, temp_table_name, "migrate_history_to_live add_pks");
+		add_pks(con, columns_pk, temp_table, "migrate_history_to_live add_pks");
 	}
 
 	// Swap the original and temporary table
