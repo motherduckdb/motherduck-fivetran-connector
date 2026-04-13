@@ -160,7 +160,7 @@ public:
 	                const std::string& log_prefix, const std::vector<const column_def*>& additional_pks = {});
 
 	// Copy a column in the destination.
-	void copy_column(duckdb::Connection& con, const table_def& table, const std::string& from_column,
+	void copy_column(duckdb::Connection& con, const table_def& table, const std::string& from_column_name,
 	                 const std::string& to_column_name);
 
 	// For a table that is in either in live- or soft-delete-mode, copy it into a
@@ -175,8 +175,8 @@ public:
 	                  const std::string& log_prefix);
 
 	// Rename a destination column
-	void rename_column(duckdb::Connection& con, const table_def& table, const std::string& from_column,
-	                   const std::string& to_column);
+	void rename_column(duckdb::Connection& con, const table_def& table, const std::string& from_column_name,
+	                   const std::string& to_column_name);
 
 	// Verify the state of the history table before performing schema migrations
 	static bool history_table_is_valid(duckdb::Connection& con, const table_def& table,

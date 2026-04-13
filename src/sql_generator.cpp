@@ -1009,9 +1009,9 @@ void MdSqlGenerator::add_pks(duckdb::Connection& con, const std::vector<const co
 	run_query(con, log_prefix, sql.str(), "Could not add pks to table " + table.to_escaped_string());
 }
 
-void MdSqlGenerator::copy_column(duckdb::Connection& con, const table_def& table, const std::string& from_column,
+void MdSqlGenerator::copy_column(duckdb::Connection& con, const table_def& table, const std::string& from_column_name,
                                  const std::string& to_column_name) {
-	const std::string quoted_from = KeywordHelper::WriteQuoted(from_column, '"');
+	const std::string quoted_from = KeywordHelper::WriteQuoted(from_column_name, '"');
 	const std::string quoted_to = KeywordHelper::WriteQuoted(to_column_name, '"');
 
 	// Get the column type from the source column
@@ -1021,7 +1021,7 @@ void MdSqlGenerator::copy_column(duckdb::Connection& con, const table_def& table
 	             KeywordHelper::WriteQuoted(table.db_name, '\'') +
 	             " AND schema_name = " + KeywordHelper::WriteQuoted(table.schema_name, '\'') +
 	             " AND table_name = " + KeywordHelper::WriteQuoted(table.table_name, '\'') +
-	             " AND column_name = " + KeywordHelper::WriteQuoted(from_column, '\'');
+	             " AND column_name = " + KeywordHelper::WriteQuoted(from_column_name, '\'');
 	auto result = con.Query(query);
 
 	if (result->HasError()) {
@@ -1081,15 +1081,15 @@ void MdSqlGenerator::rename_table(duckdb::Connection& con, const table_def& from
 	run_query(con, log_prefix, sql.str(), "Could not rename table <" + from_table.to_escaped_string() + ">");
 }
 
-void MdSqlGenerator::rename_column(duckdb::Connection& con, const table_def& table, const std::string& from_column,
-                                   const std::string& to_column) {
+void MdSqlGenerator::rename_column(duckdb::Connection& con, const table_def& table, const std::string& from_column_name,
+                                   const std::string& to_column_name) {
 	const std::string absolute_table_name = table.to_escaped_string();
 	std::ostringstream sql;
-	sql << "ALTER TABLE " << absolute_table_name << " RENAME COLUMN " << KeywordHelper::WriteQuoted(from_column, '"')
-	    << " TO " << KeywordHelper::WriteQuoted(to_column, '"');
+	sql << "ALTER TABLE " << absolute_table_name << " RENAME COLUMN " << KeywordHelper::WriteQuoted(from_column_name, '"')
+	    << " TO " << KeywordHelper::WriteQuoted(to_column_name, '"');
 
 	run_query(con, "rename_column", sql.str(),
-	          "Could not rename column <" + from_column + "> to <" + to_column + "> in table <" + absolute_table_name +
+	          "Could not rename column <" + from_column_name + "> to <" + to_column_name + "> in table <" + absolute_table_name +
 	              ">");
 }
 
