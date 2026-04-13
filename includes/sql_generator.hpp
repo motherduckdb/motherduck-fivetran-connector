@@ -160,8 +160,8 @@ public:
 	                const std::string& log_prefix, const std::vector<const column_def*>& additional_pks = {});
 
 	// Copy a column in the destination.
-	void copy_column(duckdb::Connection& con, const table_def& table, const std::string& from_column,
-	                 const std::string& to_column);
+	void copy_column(duckdb::Connection& con, const table_def& table, const std::string& from_column_name,
+	                 const std::string& to_column_name);
 
 	// For a table that is in either in live- or soft-delete-mode, copy it into a
 	// new table in history mode. For soft-delete-mode, in which case
@@ -175,11 +175,11 @@ public:
 	                  const std::string& log_prefix);
 
 	// Rename a destination column
-	void rename_column(duckdb::Connection& con, const table_def& table, const std::string& from_column,
-	                   const std::string& to_column);
+	void rename_column(duckdb::Connection& con, const table_def& table, const std::string& from_column_name,
+	                   const std::string& to_column_name);
 
 	// Verify the state of the history table before performing schema migrations
-	static bool history_table_is_valid(duckdb::Connection& con, const std::string& absolute_table_name,
+	static bool history_table_is_valid(duckdb::Connection& con, const table_def& table,
 	                                   const std::string& quoted_timestamp);
 
 	// Add a column in history mode, which means we copy all active tables over to
@@ -210,10 +210,10 @@ public:
 	// sync as the initial insert into the historic table.
 	void migrate_soft_delete_to_history(duckdb::Connection& con, const table_def& original_table,
 	                                    const std::string& soft_deleted_column);
-	void add_defaults(duckdb::Connection& con, const std::vector<column_def>& columns, const std::string& table_name,
+	void add_defaults(duckdb::Connection& con, const std::vector<column_def>& columns, const table_def& table,
 	                  const std::string& log_prefix);
-	void add_pks(duckdb::Connection& con, const std::vector<const column_def*>& columns_pk,
-	             const std::string& table_name, const std::string& log_prefix) const;
+	void add_pks(duckdb::Connection& con, const std::vector<const column_def*>& columns_pk, const table_def& table,
+	             const std::string& log_prefix) const;
 
 	// Switch between sync modes: history to soft-delete. This means keeping only
 	// the last entries based on per MAX("_fivetran_start") per primary key,

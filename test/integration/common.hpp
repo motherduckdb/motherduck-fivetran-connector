@@ -160,6 +160,7 @@ void add_config(T& request, const std::string& token, const std::string& databas
 	(*request.mutable_configuration())["motherduck_token"] = token;
 	(*request.mutable_configuration())["motherduck_database"] = database;
 	request.mutable_table()->set_name(table);
+	request.set_schema_name(test::constants::TEST_SCHEMA_NAME);
 }
 
 inline void add_config(fivetran_sdk::v2::MigrateRequest& request, const std::string& token, const std::string& database,
@@ -167,6 +168,7 @@ inline void add_config(fivetran_sdk::v2::MigrateRequest& request, const std::str
 	(*request.mutable_configuration())["motherduck_token"] = token;
 	(*request.mutable_configuration())["motherduck_database"] = database;
 	request.mutable_details()->set_table(table);
+	request.mutable_details()->set_schema(test::constants::TEST_SCHEMA_NAME);
 }
 
 template <typename T>
@@ -176,12 +178,14 @@ void add_config(T& request, const std::string& token, const std::string& databas
 	(*request.mutable_configuration())["motherduck_token"] = token;
 	(*request.mutable_configuration())["motherduck_database"] = database;
 	request.set_table_name(table);
+	request.set_schema_name(test::constants::TEST_SCHEMA_NAME);
 }
 
 template <typename T>
 void add_config(T& request, const std::string& token, const std::string& database) {
 	(*request.mutable_configuration())["motherduck_token"] = token;
 	(*request.mutable_configuration())["motherduck_database"] = database;
+	request.set_schema_name(test::constants::TEST_SCHEMA_NAME);
 }
 
 // Same columns as define_history_test_table but in a DIFFERENT order.

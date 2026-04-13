@@ -35,6 +35,13 @@ int main(const int argc, char* argv[]) {
 			          << std::endl;
 			exit(5);
 		}
+		const auto create_schema_res =
+		    con.Query("CREATE SCHEMA \"" + db_name + "\".\"" + test::constants::TEST_SCHEMA_NAME + "\"");
+		if (create_schema_res->HasError()) {
+			std::cerr << "Could not create schema " << test::constants::TEST_SCHEMA_NAME
+			          << " at test start: " << create_schema_res->GetError() << std::endl;
+			exit(5);
+		}
 	}
 
 	const int result = Catch::Session().run(argc, argv);

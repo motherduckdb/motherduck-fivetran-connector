@@ -26,12 +26,12 @@ TEST_CASE("Migrate - drop table", "[integration][migrate]") {
 
 	auto con = get_test_connection(MD_TOKEN);
 	{
-		auto res = con->Query("INSERT INTO " + table_name + " VALUES (1, 'Alice')");
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + " VALUES (1, 'Alice')");
 		REQUIRE_NO_FAIL(res);
 	}
 
 	{
-		auto res = con->Query("SELECT COUNT(*) FROM " + table_name);
+		auto res = con->Query("SELECT COUNT(*) FROM " + TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->GetValue(0, 0) == 1);
 	}
@@ -63,7 +63,8 @@ TEST_CASE("Migrate - drop table", "[integration][migrate]") {
 		::fivetran_sdk::v2::MigrateResponse response;
 		auto status = service.Migrate(nullptr, &request, &response);
 		REQUIRE_FAIL(status, Catch::Matchers::ContainsSubstring("Could not drop table <\"" + TEST_DATABASE_NAME +
-		                                                        "\".\"main\".\"fake_table_name\">: "
+		                                                        "\".\"" + TEST_SCHEMA_NAME +
+		                                                        "\".\"fake_table_name\">: "
 		                                                        "Catalog Error: Table with name fake_table_name "
 		                                                        "does not exist!\n"));
 	}
@@ -80,7 +81,7 @@ TEST_CASE("Migrate - rename table", "[integration][migrate]") {
 
 	// Insert data
 	{
-		auto res = con->Query("INSERT INTO " + from_table + " VALUES (1, 'test_data')");
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + from_table + " VALUES (1, 'test_data')");
 		REQUIRE_NO_FAIL(res);
 	}
 
@@ -105,7 +106,7 @@ TEST_CASE("Migrate - rename table", "[integration][migrate]") {
 
 	// Verify new table exists with data
 	{
-		auto res = con->Query("SELECT value FROM " + to_table + " WHERE id = 1");
+		auto res = con->Query("SELECT value FROM " + TEST_SCHEMA_NAME + "." + to_table + " WHERE id = 1");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 1);
 		REQUIRE(res->GetValue(0, 0).ToString() == "test_data");
@@ -120,10 +121,11 @@ TEST_CASE("Migrate - rename table", "[integration][migrate]") {
 
 		::fivetran_sdk::v2::MigrateResponse response;
 		auto status = service.Migrate(nullptr, &request, &response);
-		REQUIRE_FAIL(status, Catch::Matchers::ContainsSubstring("Could not rename table <\"" + TEST_DATABASE_NAME +
-		                                                        "\".\"main\".\"fake_table_name\">: " +
-		                                                        "Catalog Error: Table with name fake_table_name "
-		                                                        "does not exist!\n"));
+		REQUIRE_FAIL(status,
+		             Catch::Matchers::ContainsSubstring("Could not rename table <\"" + TEST_DATABASE_NAME + "\".\"" +
+		                                                TEST_SCHEMA_NAME + "\".\"fake_table_name\">: " +
+		                                                "Catalog Error: Table with name fake_table_name "
+		                                                "does not exist!\n"));
 	}
 
 	// Create another source table
@@ -138,9 +140,9 @@ TEST_CASE("Migrate - rename table", "[integration][migrate]") {
 
 		::fivetran_sdk::v2::MigrateResponse response;
 		auto status = service.Migrate(nullptr, &request, &response);
-		REQUIRE_FAIL(status, "Could not rename table <\"" + TEST_DATABASE_NAME + "\".\"main\".\"" + second_from_table +
-		                         "\">: Catalog Error: Could not rename \"" + second_from_table + "\" to \"" + to_table +
-		                         "\": another entry with this name already exists!");
+		REQUIRE_FAIL(status, "Could not rename table <\"" + TEST_DATABASE_NAME + "\".\"" + TEST_SCHEMA_NAME + "\".\"" +
+		                         second_from_table + "\">: Catalog Error: Could not rename \"" + second_from_table +
+		                         "\" to \"" + to_table + "\": another entry with this name already exists!");
 	}
 
 	// Clean up
@@ -156,7 +158,7 @@ TEST_CASE("Migrate - rename column", "[integration][migrate]") {
 	auto con = get_test_connection(MD_TOKEN);
 	// Insert data
 	{
-		auto res = con->Query("INSERT INTO " + table_name + " VALUES (1, 'test_value')");
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + " VALUES (1, 'test_value')");
 		REQUIRE_NO_FAIL(res);
 	}
 
@@ -175,7 +177,7 @@ TEST_CASE("Migrate - rename column", "[integration][migrate]") {
 
 	// Verify column was renamed and data preserved
 	{
-		auto res = con->Query("SELECT new_name FROM " + table_name + " WHERE id = 1");
+		auto res = con->Query("SELECT new_name FROM " + TEST_SCHEMA_NAME + "." + table_name + " WHERE id = 1");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 1);
 		REQUIRE(res->GetValue(0, 0).ToString() == "test_value");
@@ -183,7 +185,7 @@ TEST_CASE("Migrate - rename column", "[integration][migrate]") {
 
 	// Verify old column name doesn't work
 	{
-		auto res = con->Query("SELECT old_name FROM " + table_name);
+		auto res = con->Query("SELECT old_name FROM " + TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE(res->HasError());
 		REQUIRE_THAT(res->GetError(),
 		             Catch::Matchers::ContainsSubstring("Binder Error: Referenced column \"old_name\" not found "
@@ -201,8 +203,8 @@ TEST_CASE("Migrate - rename column", "[integration][migrate]") {
 		auto status = service.Migrate(nullptr, &request, &response);
 		REQUIRE_FAIL(status, "Could not rename column <fake_column_name> to "
 		                     "<another_new_name> in table <\"" +
-		                         TEST_DATABASE_NAME + "\".\"main\".\"" + table_name + "\">: Binder Error: Table \"" +
-		                         table_name +
+		                         TEST_DATABASE_NAME + "\".\"" + TEST_SCHEMA_NAME + "\".\"" + table_name +
+		                         "\">: Binder Error: Table \"" + table_name +
 		                         "\" does not have a column with name "
 		                         "\"fake_column_name\"\n\nDid you mean: \"new_name\"");
 	}
@@ -216,8 +218,8 @@ TEST_CASE("Migrate - rename column", "[integration][migrate]") {
 
 		::fivetran_sdk::v2::MigrateResponse response;
 		auto status = service.Migrate(nullptr, &request, &response);
-		REQUIRE_FAIL(status, "Could not rename column <id> to <new_name> in table <\"" + TEST_DATABASE_NAME +
-		                         "\".\"main\".\"" + table_name +
+		REQUIRE_FAIL(status, "Could not rename column <id> to <new_name> in table <\"" + TEST_DATABASE_NAME + "\".\"" +
+		                         TEST_SCHEMA_NAME + "\".\"" + table_name +
 		                         "\">: Catalog Error: Column with name new_name already exists!");
 	}
 
@@ -236,7 +238,7 @@ TEST_CASE("Migrate - rename column", "[integration][migrate]") {
 	}
 
 	// Clean up
-	con->Query("DROP TABLE IF EXISTS " + table_name);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + table_name);
 }
 
 TEST_CASE("Migrate - copy table", "[integration][migrate]") {
@@ -248,7 +250,7 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
 
 	// Create the source table
 	{
-		auto res = con->Query("CREATE TABLE " + from_table +
+		auto res = con->Query("CREATE TABLE " + TEST_SCHEMA_NAME + "." + from_table +
 		                      " (id INT, data VARCHAR, value DECIMAL(17,4) default "
 		                      "42, amount DECIMAL(31,6), primary key (id))");
 		REQUIRE_NO_FAIL(res);
@@ -256,7 +258,8 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
 
 	// Insert data
 	{
-		auto res = con->Query("INSERT INTO " + from_table + " VALUES (1, 'data1', 3.1415, 3), (2, 'data2', 10.0, 49)");
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + from_table +
+		                      " VALUES (1, 'data1', 3.1415, 3), (2, 'data2', 10.0, 49)");
 		REQUIRE_NO_FAIL(res);
 	}
 
@@ -275,12 +278,12 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
 
 	// Verify both tables exist with correct data
 	{
-		auto res = con->Query("SELECT COUNT(*) FROM " + from_table);
+		auto res = con->Query("SELECT COUNT(*) FROM " + TEST_SCHEMA_NAME + "." + from_table);
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->GetValue(0, 0) == 2);
 	}
 	{
-		auto res = con->Query("SELECT COUNT(*) FROM " + to_table);
+		auto res = con->Query("SELECT COUNT(*) FROM " + TEST_SCHEMA_NAME + "." + to_table);
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->GetValue(0, 0) == 2);
 	}
@@ -288,21 +291,20 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
 	// Check decimal precision
 
 	{
-		auto res = con->Query("SELECT \"default\", key, column_type FROM (describe " +
-		                      duckdb::KeywordHelper::WriteQuoted(to_table, '\'') + ")");
+		auto res = con->Query("SELECT \"default\", key, column_type FROM (describe " + TEST_SCHEMA_NAME + "." + to_table + ")");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 4); // The order is: id, data, value, amount
 
 		// duckdb::Value() creates a NULL value
-		check_row(res, 0, {duckdb::Value(), "PRI", "INTEGER"});                 // id
-		check_row(res, 1, {duckdb::Value(), duckdb::Value(), "VARCHAR"});       // data
-		check_row(res, 2, {"CAST(\'42\' AS DECIMAL(17,4))", duckdb::Value(), "DECIMAL(17,4)"});        // value
-		check_row(res, 3, {duckdb::Value(), duckdb::Value(), "DECIMAL(31,6)"}); // amount
+		check_row(res, 0, {duckdb::Value(), "PRI", "INTEGER"});                                 // id
+		check_row(res, 1, {duckdb::Value(), duckdb::Value(), "VARCHAR"});                       // data
+		check_row(res, 2, {"CAST(\'42\' AS DECIMAL(17,4))", duckdb::Value(), "DECIMAL(17,4)"}); // value
+		check_row(res, 3, {duckdb::Value(), duckdb::Value(), "DECIMAL(31,6)"});                 // amount
 	}
 
 	// Clean up
-	con->Query("DROP TABLE IF EXISTS " + from_table);
-	con->Query("DROP TABLE IF EXISTS " + to_table);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + from_table);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + to_table);
 }
 
 TEST_CASE("Migrate - copy column", "[integration][migrate]") {
@@ -314,7 +316,7 @@ TEST_CASE("Migrate - copy column", "[integration][migrate]") {
 
 	// Insert data
 	{
-		auto res = con->Query("INSERT INTO " + table_name + " VALUES (1, 'original')");
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + " VALUES (1, 'original')");
 		REQUIRE_NO_FAIL(res);
 	}
 
@@ -333,7 +335,8 @@ TEST_CASE("Migrate - copy column", "[integration][migrate]") {
 
 	// Verify both columns exist with same data
 	{
-		auto res = con->Query("SELECT source_col, dest_col FROM " + table_name + " WHERE id = 1");
+		auto res =
+		    con->Query("SELECT source_col, dest_col FROM " + TEST_SCHEMA_NAME + "." + table_name + " WHERE id = 1");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 1);
 		check_row(res, 0, {"original", "original"});
@@ -363,7 +366,7 @@ TEST_CASE("Migrate - copy column", "[integration][migrate]") {
 
 		REQUIRE_FAIL(status, "Could not add column <dest_col> to table "
 		                     "<\"" +
-		                         TEST_DATABASE_NAME + "\".\"main\".\"" + table_name +
+		                         TEST_DATABASE_NAME + "\".\"" + TEST_SCHEMA_NAME + "\".\"" + table_name +
 		                         "\">: "
 		                         "Catalog Error: Column with name dest_col already exists!");
 	}
@@ -395,30 +398,31 @@ TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration
 	auto con = get_test_connection(MD_TOKEN);
 
 	// Create source table with soft delete column
-	con->Query("DROP TABLE IF EXISTS " + source_table);
-	con->Query("DROP TABLE IF EXISTS " + dest_table);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + source_table);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + dest_table);
 	{
-		auto res = con->Query("CREATE TABLE " + source_table +
+		auto res = con->Query("CREATE TABLE " + TEST_SCHEMA_NAME + "." + source_table +
 		                      " (id INT, name VARCHAR, _fivetran_deleted BOOLEAN, "
 		                      "_fivetran_synced TIMESTAMPTZ, primary key (id))");
 		REQUIRE_NO_FAIL(res);
 
 		if (soft_deleted_column != "_fivetran_deleted") {
-			auto res2 = con->Query("ALTER TABLE " + source_table + " ADD COLUMN " + soft_deleted_column + " BOOLEAN");
+			auto res2 = con->Query("ALTER TABLE " + TEST_SCHEMA_NAME + "." + source_table + " ADD COLUMN " +
+			                       soft_deleted_column + " BOOLEAN");
 			REQUIRE_NO_FAIL(res2);
 		}
 	}
 
 	// Insert data with some deleted rows
 	if (soft_deleted_column != "_fivetran_deleted") {
-		auto res = con->Query("INSERT INTO " + source_table + " (id, name, _fivetran_deleted, _fivetran_synced, " +
-		                      soft_deleted_column +
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + source_table +
+		                      " (id, name, _fivetran_deleted, _fivetran_synced, " + soft_deleted_column +
 		                      ") VALUES (1, 'Alice', false, NOW(), false), "
 		                      "(2, 'Bob', true, NOW(), true), "
 		                      "(3, 'Charlie', false, NOW(), false)");
 		REQUIRE_NO_FAIL(res);
 	} else {
-		auto res = con->Query("INSERT INTO " + source_table +
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + source_table +
 		                      " (id, name, _fivetran_deleted, _fivetran_synced) "
 		                      "VALUES (1, 'Alice', false, NOW()), "
 		                      "(2, 'Bob', true, NOW()), "
@@ -443,7 +447,7 @@ TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration
 
 	// Verify destination table has history columns
 	{
-		auto res = con->Query("SELECT id, name, _fivetran_active FROM " + dest_table + " ORDER BY id");
+		auto res = con->Query("SELECT id, name, _fivetran_active FROM " + TEST_SCHEMA_NAME + "." + dest_table + " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 3);
 		// Alice (not deleted) -> active
@@ -454,16 +458,15 @@ TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration
 		REQUIRE(res->GetValue(2, 2) == true);
 	}
 
-	// Verify soft_deleted_column is NOT in the destination when it's the
-	// "_fivetran_deleted" column
+	// Verify soft_deleted_column is NOT in the destination when it's the "_fivetran_deleted" column
 	if (soft_deleted_column == "_fivetran_deleted") {
-		auto res = con->Query("SELECT " + soft_deleted_column + " FROM " + dest_table);
+		auto res = con->Query("SELECT " + soft_deleted_column + " FROM " + TEST_SCHEMA_NAME + "." + dest_table);
 		REQUIRE(res->HasError());
 	} else {
 		// We want check here that soft_deleted_column is not a PK, so we can ignore
 		// this column when we verify the whole PK below
-		auto res = con->Query("SELECT key FROM (describe " + duckdb::KeywordHelper::WriteQuoted(dest_table, '\'') +
-		                      ") WHERE column_name = \'" + soft_deleted_column + "\'");
+		auto res = con->Query("SELECT key FROM (describe " + TEST_SCHEMA_NAME + "." + dest_table + ") WHERE column_name = \'" +
+		                      soft_deleted_column + "\'");
 		REQUIRE_NO_FAIL(res);
 
 		// soft_deleted_column is not a pk
@@ -472,15 +475,14 @@ TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration
 
 	// Verify history columns exist
 	{
-		auto res = con->Query("SELECT _fivetran_start, _fivetran_end FROM " + dest_table);
+		auto res = con->Query("SELECT _fivetran_start, _fivetran_end FROM " + TEST_SCHEMA_NAME + "." + dest_table);
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 3);
 	}
 
 	// Verify id is part of primary key and defaults are set
 	{
-		auto res = con->Query("SELECT key, \"default\" FROM (describe " +
-		                      duckdb::KeywordHelper::WriteQuoted(dest_table, '\'') + ") WHERE column_name != \'" +
+		auto res = con->Query("SELECT key, \"default\" FROM (describe " + TEST_SCHEMA_NAME + "." + dest_table + ") WHERE column_name != \'" +
 		                      soft_deleted_column + "\' ORDER BY column_name");
 		REQUIRE_NO_FAIL(res);
 		// The order is: _fivetran_active, _fivetran_end, _fivetran_start, _fivetran_synced, id, name
@@ -496,8 +498,8 @@ TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration
 	}
 
 	// Clean up
-	con->Query("DROP TABLE IF EXISTS " + source_table);
-	con->Query("DROP TABLE IF EXISTS " + dest_table);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + source_table);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + dest_table);
 }
 
 TEST_CASE("Migrate - copy table to history mode from live", "[integration][migrate]") {
@@ -508,16 +510,18 @@ TEST_CASE("Migrate - copy table to history mode from live", "[integration][migra
 	auto con = get_test_connection(MD_TOKEN);
 
 	// Create source table (live mode - no soft delete column)
-	con->Query("DROP TABLE IF EXISTS " + source_table);
-	con->Query("DROP TABLE IF EXISTS " + dest_table);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + source_table);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + dest_table);
 	{
-		auto res = con->Query("CREATE TABLE " + source_table + " (id INT, name VARCHAR, primary key (id))");
+		auto res = con->Query("CREATE TABLE " + TEST_SCHEMA_NAME + "." + source_table +
+		                      " (id INT, name VARCHAR, primary key (id))");
 		REQUIRE_NO_FAIL(res);
 	}
 
 	// Insert data
 	{
-		auto res = con->Query("INSERT INTO " + source_table + " VALUES (1, 'Alice'), (2, 'Bob')");
+		auto res =
+		    con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + source_table + " VALUES (1, 'Alice'), (2, 'Bob')");
 		REQUIRE_NO_FAIL(res);
 	}
 
@@ -538,7 +542,8 @@ TEST_CASE("Migrate - copy table to history mode from live", "[integration][migra
 
 	// Verify destination table has history columns and all rows are active
 	{
-		auto res = con->Query("SELECT id, name, _fivetran_active FROM " + dest_table + " ORDER BY id");
+		auto res = con->Query("SELECT id, name, _fivetran_active FROM " + TEST_SCHEMA_NAME + "." + dest_table +
+		                      " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 2);
 		// All rows should be active (live mode)
@@ -548,21 +553,21 @@ TEST_CASE("Migrate - copy table to history mode from live", "[integration][migra
 
 	// Verify history columns exist with proper values
 	{
-		auto res = con->Query("SELECT _fivetran_end FROM " + dest_table +
+		auto res = con->Query("SELECT _fivetran_end FROM " + TEST_SCHEMA_NAME + "." + dest_table +
 		                      " WHERE _fivetran_end = '9999-12-31T23:59:59.999Z'::TIMESTAMPTZ");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 2);
 	}
 	{
-		auto res = con->Query("SELECT _fivetran_start FROM " + dest_table +
+		auto res = con->Query("SELECT _fivetran_start FROM " + TEST_SCHEMA_NAME + "." + dest_table +
 		                      " WHERE _fivetran_start BETWEEN 'epoch'::TIMESTAMPTZ AND NOW();");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 2);
 	}
 
 	// Clean up
-	con->Query("DROP TABLE IF EXISTS " + source_table);
-	con->Query("DROP TABLE IF EXISTS " + dest_table);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + source_table);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + dest_table);
 }
 
 TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
@@ -574,7 +579,7 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
 
 	// Insert data
 	{
-		auto res = con->Query("INSERT INTO " + table_name + " VALUES (1)");
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + " VALUES (1)");
 		REQUIRE_NO_FAIL(res);
 	}
 
@@ -594,9 +599,9 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
 	}
 
 	{
-		auto res = con->Query("INSERT INTO " + table_name + " (id) VALUES (2)");
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + " (id) VALUES (2)");
 		REQUIRE_NO_FAIL(res);
-		auto res2 = con->Query("SELECT new_col FROM " + table_name + " WHERE id = 2");
+		auto res2 = con->Query("SELECT new_col FROM " + TEST_SCHEMA_NAME + "." + table_name + " WHERE id = 2");
 		REQUIRE_NO_FAIL(res2);
 		REQUIRE(res2->RowCount() == 1);
 		REQUIRE(res2->GetValue(0, 0).ToString() == "default_value");
@@ -618,9 +623,9 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
 	}
 
 	{
-		auto res = con->Query("INSERT INTO " + table_name + " (id) VALUES (3)");
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + " (id) VALUES (3)");
 		REQUIRE_NO_FAIL(res);
-		auto res2 = con->Query("SELECT new_col2 FROM " + table_name + " WHERE id = 3");
+		auto res2 = con->Query("SELECT new_col2 FROM " + TEST_SCHEMA_NAME + "." + table_name + " WHERE id = 3");
 		REQUIRE_NO_FAIL(res2);
 		REQUIRE(res2->RowCount() == 1);
 		REQUIRE(!res2->GetValue(0, 0).IsNull());
@@ -672,25 +677,25 @@ TEST_CASE("Migrate - add column with default value", "[integration][migrate]") {
 	}
 
 	{
-		auto res = con->Query("INSERT INTO " + table_name + " (id) VALUES (4)");
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + " (id) VALUES (4)");
 		REQUIRE_NO_FAIL(res);
-		auto res2 = con->Query("SELECT new_col FROM " + table_name + " WHERE id = 4");
+		auto res2 = con->Query("SELECT new_col FROM " + TEST_SCHEMA_NAME + "." + table_name + " WHERE id = 4");
 		REQUIRE_NO_FAIL(res2);
 		REQUIRE(res2->RowCount() == 1);
 		REQUIRE(res2->GetValue(0, 0).ToString() == "new_default_value");
 	}
 
 	{
-		auto res = con->Query("INSERT INTO " + table_name + " (id) VALUES (5)");
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + " (id) VALUES (5)");
 		REQUIRE_NO_FAIL(res);
-		auto res2 = con->Query("SELECT new_col3 FROM " + table_name + " WHERE id = 5");
+		auto res2 = con->Query("SELECT new_col3 FROM " + TEST_SCHEMA_NAME + "." + table_name + " WHERE id = 5");
 		REQUIRE_NO_FAIL(res2);
 		REQUIRE(res2->RowCount() == 1);
 		REQUIRE(res2->GetValue(0, 0).ToString().empty());
 	}
 
 	// Clean up
-	con->Query("DROP TABLE IF EXISTS " + table_name);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + table_name);
 }
 
 TEST_CASE("Migrate - update column value", "[integration][migrate]") {
@@ -702,7 +707,8 @@ TEST_CASE("Migrate - update column value", "[integration][migrate]") {
 
 	// Insert data
 	{
-		auto res = con->Query("INSERT INTO " + table_name + " VALUES (1, 'old'), (2, 'old'), (3, 'old')");
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name +
+		                      " VALUES (1, 'old'), (2, 'old'), (3, 'old')");
 		REQUIRE_NO_FAIL(res);
 	}
 
@@ -721,7 +727,8 @@ TEST_CASE("Migrate - update column value", "[integration][migrate]") {
 
 	// Verify all rows updated
 	{
-		auto res = con->Query("SELECT COUNT(*) FROM " + table_name + " WHERE status = 'updated'");
+		auto res =
+		    con->Query("SELECT COUNT(*) FROM " + TEST_SCHEMA_NAME + "." + table_name + " WHERE status = 'updated'");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->GetValue(0, 0) == 3);
 	}
@@ -741,7 +748,7 @@ TEST_CASE("Migrate - update column value", "[integration][migrate]") {
 
 	// Verify all rows updated
 	{
-		auto res = con->Query("SELECT COUNT(*) FROM " + table_name + " WHERE status is NULL");
+		auto res = con->Query("SELECT COUNT(*) FROM " + TEST_SCHEMA_NAME + "." + table_name + " WHERE status is NULL");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->GetValue(0, 0) == 3);
 	}
@@ -759,7 +766,7 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 	// Create a history table manually
 	con->Query("DROP TABLE IF EXISTS " + table_name);
 	{
-		auto res = con->Query("CREATE TABLE " + table_name +
+		auto res = con->Query("CREATE TABLE " + TEST_SCHEMA_NAME + "." + table_name +
 		                      " (id INT, name VARCHAR, "
 		                      "_fivetran_start TIMESTAMPTZ, "
 		                      "_fivetran_end TIMESTAMPTZ, "
@@ -770,7 +777,7 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 
 	// Insert active row
 	{
-		auto res = con->Query("INSERT INTO " + table_name +
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name +
 		                      " VALUES (1, 'Alice', '2024-01-01'::TIMESTAMPTZ, "
 		                      "'9999-12-31T23:59:59.999Z'::TIMESTAMPTZ, true)");
 		REQUIRE_NO_FAIL(res);
@@ -840,14 +847,15 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 
 	// Verify: should have 3 rows now (old inactive + new active)
 	{
-		auto res = con->Query("SELECT COUNT(*) FROM " + table_name);
+		auto res = con->Query("SELECT COUNT(*) FROM " + TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->GetValue(0, 0) == 3);
 	}
 
 	// Verify: new active row has the new columns with default values
 	{
-		auto res = con->Query("SELECT age, switch, final FROM " + table_name + " WHERE _fivetran_active = TRUE");
+		auto res = con->Query("SELECT age, switch, final FROM " + TEST_SCHEMA_NAME + "." + table_name +
+		                      " WHERE _fivetran_active = TRUE");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 1);
 		check_row(res, 0, {25, false, "NULL"});
@@ -856,7 +864,7 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 
 	// Verify: old row is now inactive
 	{
-		auto res = con->Query("SELECT _fivetran_active FROM " + table_name +
+		auto res = con->Query("SELECT _fivetran_active FROM " + TEST_SCHEMA_NAME + "." + table_name +
 		                      " WHERE _fivetran_start = '2024-01-01'::TIMESTAMPTZ");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 1);
@@ -864,7 +872,7 @@ TEST_CASE("Migrate - add column in history mode", "[integration][migrate]") {
 	}
 
 	// Clean up
-	con->Query("DROP TABLE IF EXISTS " + table_name);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + table_name);
 }
 
 TEST_CASE("Migrate - add/drop column in history mode to empty table", "[integration][migrate]") {
@@ -874,9 +882,9 @@ TEST_CASE("Migrate - add/drop column in history mode to empty table", "[integrat
 	auto con = get_test_connection(MD_TOKEN);
 
 	// Create a history table manually
-	con->Query("DROP TABLE IF EXISTS " + table_name);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + table_name);
 	{
-		auto res = con->Query("CREATE TABLE " + table_name +
+		auto res = con->Query("CREATE TABLE " + TEST_SCHEMA_NAME + "." + table_name +
 		                      " (id INT, name VARCHAR, "
 		                      "_fivetran_start TIMESTAMPTZ, "
 		                      "_fivetran_end TIMESTAMPTZ, "
@@ -902,7 +910,7 @@ TEST_CASE("Migrate - add/drop column in history mode to empty table", "[integrat
 	}
 
 	{
-		auto res = con->Query("SELECT COUNT(*) FROM " + table_name);
+		auto res = con->Query("SELECT COUNT(*) FROM " + TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->GetValue(0, 0) == 0);
 	}
@@ -924,13 +932,13 @@ TEST_CASE("Migrate - add/drop column in history mode to empty table", "[integrat
 	{
 		// This asserts the column still exists and the fact that the table is empty
 		// at the same time
-		auto res = con->Query("SELECT name FROM " + table_name);
+		auto res = con->Query("SELECT name FROM " + TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 0);
 	}
 
 	// Clean up
-	con->Query("DROP TABLE IF EXISTS " + table_name);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + table_name);
 }
 
 TEST_CASE("Migrate - drop column in history mode", "[integration][migrate]") {
@@ -940,9 +948,9 @@ TEST_CASE("Migrate - drop column in history mode", "[integration][migrate]") {
 	auto con = get_test_connection(MD_TOKEN);
 
 	// Create a history table manually with an extra column
-	con->Query("DROP TABLE IF EXISTS " + table_name);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + table_name);
 	{
-		auto res = con->Query("CREATE TABLE " + table_name +
+		auto res = con->Query("CREATE TABLE " + TEST_SCHEMA_NAME + "." + table_name +
 		                      " (id INT, name VARCHAR, email VARCHAR, "
 		                      "_fivetran_start TIMESTAMPTZ, "
 		                      "_fivetran_end TIMESTAMPTZ, "
@@ -953,7 +961,7 @@ TEST_CASE("Migrate - drop column in history mode", "[integration][migrate]") {
 
 	// Insert active row
 	{
-		auto res = con->Query("INSERT INTO " + table_name +
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name +
 		                      " VALUES (1, 'Alice', 'alice@example.com', '2024-01-01'::TIMESTAMPTZ, "
 		                      "'9999-12-31T23:59:59.999Z'::TIMESTAMPTZ, true)");
 		REQUIRE_NO_FAIL(res);
@@ -975,14 +983,15 @@ TEST_CASE("Migrate - drop column in history mode", "[integration][migrate]") {
 
 	// Verify: should have 2 rows now (old inactive + new active)
 	{
-		auto res = con->Query("SELECT COUNT(*) FROM " + table_name);
+		auto res = con->Query("SELECT COUNT(*) FROM " + TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->GetValue(0, 0) == 2);
 	}
 
 	// Verify: new active row has NULL for the dropped column
 	{
-		auto res = con->Query("SELECT email FROM " + table_name + " WHERE _fivetran_active = TRUE");
+		auto res =
+		    con->Query("SELECT email FROM " + TEST_SCHEMA_NAME + "." + table_name + " WHERE _fivetran_active = TRUE");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 1);
 		REQUIRE(res->GetValue(0, 0).IsNull());
@@ -990,7 +999,7 @@ TEST_CASE("Migrate - drop column in history mode", "[integration][migrate]") {
 
 	// Verify: old row is now inactive but still has email value
 	{
-		auto res = con->Query("SELECT email, _fivetran_active FROM " + table_name +
+		auto res = con->Query("SELECT email, _fivetran_active FROM " + TEST_SCHEMA_NAME + "." + table_name +
 		                      " WHERE _fivetran_start = '2024-01-01'::TIMESTAMPTZ");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 1);
@@ -998,7 +1007,7 @@ TEST_CASE("Migrate - drop column in history mode", "[integration][migrate]") {
 	}
 
 	// Clean up
-	con->Query("DROP TABLE IF EXISTS " + table_name);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + table_name);
 }
 
 TEST_CASE("Migrate - live to soft delete", "[integration][migrate]") {
@@ -1011,7 +1020,8 @@ TEST_CASE("Migrate - live to soft delete", "[integration][migrate]") {
 
 	// Insert data
 	{
-		auto res = con->Query("INSERT INTO " + table_name + " VALUES (1, 'Alice'), (2, 'Bob')");
+		auto res =
+		    con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + " VALUES (1, 'Alice'), (2, 'Bob')");
 		REQUIRE_NO_FAIL(res);
 	}
 
@@ -1031,7 +1041,8 @@ TEST_CASE("Migrate - live to soft delete", "[integration][migrate]") {
 
 	// Verify _fivetran_deleted column exists and all rows are not deleted
 	{
-		auto res = con->Query("SELECT id, _fivetran_deleted FROM " + table_name + " ORDER BY id");
+		auto res =
+		    con->Query("SELECT id, _fivetran_deleted FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 2);
 		REQUIRE(res->GetValue(1, 0) == false);
@@ -1039,7 +1050,7 @@ TEST_CASE("Migrate - live to soft delete", "[integration][migrate]") {
 	}
 
 	// Clean up
-	con->Query("DROP TABLE IF EXISTS " + table_name);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + table_name);
 }
 
 TEST_CASE("Migrate - soft delete to live", "[integration][migrate]") {
@@ -1050,7 +1061,7 @@ TEST_CASE("Migrate - soft delete to live", "[integration][migrate]") {
 
 	// Create a table with soft delete column
 	{
-		auto res = con->Query("CREATE TABLE " + table_name +
+		auto res = con->Query("CREATE TABLE " + TEST_SCHEMA_NAME + "." + table_name +
 		                      " (id INT PRIMARY KEY, name VARCHAR, "
 		                      "_fivetran_deleted BOOLEAN)");
 		REQUIRE_NO_FAIL(res);
@@ -1058,7 +1069,7 @@ TEST_CASE("Migrate - soft delete to live", "[integration][migrate]") {
 
 	// Insert data with some deleted rows
 	{
-		auto res = con->Query("INSERT INTO " + table_name +
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name +
 		                      " VALUES (1, 'Alice', false), "
 		                      "(2, 'Bob', true), "
 		                      "(3, 'Charlie', false)");
@@ -1081,7 +1092,7 @@ TEST_CASE("Migrate - soft delete to live", "[integration][migrate]") {
 
 	// Verify deleted row is gone
 	{
-		auto res = con->Query("SELECT id, name FROM " + table_name + " ORDER BY id");
+		auto res = con->Query("SELECT id, name FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 2);
 		REQUIRE(res->GetValue(0, 0) == 1);
@@ -1090,12 +1101,12 @@ TEST_CASE("Migrate - soft delete to live", "[integration][migrate]") {
 
 	// Verify _fivetran_deleted column is gone
 	{
-		auto res = con->Query("SELECT _fivetran_deleted FROM " + table_name);
+		auto res = con->Query("SELECT _fivetran_deleted FROM " + TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE(res->HasError());
 	}
 
 	// Clean up
-	con->Query("DROP TABLE IF EXISTS " + table_name);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + table_name);
 }
 
 TEST_CASE("Migrate - live to history", "[integration][migrate]") {
@@ -1108,7 +1119,7 @@ TEST_CASE("Migrate - live to history", "[integration][migrate]") {
 
 	// Insert data
 	{
-		auto res = con->Query("INSERT INTO " + table_name + " VALUES (1, 'initial')");
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + " VALUES (1, 'initial')");
 		REQUIRE_NO_FAIL(res);
 	}
 
@@ -1128,7 +1139,7 @@ TEST_CASE("Migrate - live to history", "[integration][migrate]") {
 	{
 		auto res = con->Query("SELECT id, value, _fivetran_start, _fivetran_end, "
 		                      "_fivetran_active FROM " +
-		                      table_name);
+		                      TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 1);
 		REQUIRE(res->GetValue(0, 0) == 1);
@@ -1139,7 +1150,7 @@ TEST_CASE("Migrate - live to history", "[integration][migrate]") {
 	}
 
 	// Clean up
-	con->Query("DROP TABLE IF EXISTS " + table_name);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + table_name);
 }
 
 TEST_CASE("Migrate - history to live", "[integration][migrate]") {
@@ -1149,9 +1160,9 @@ TEST_CASE("Migrate - history to live", "[integration][migrate]") {
 	auto con = get_test_connection(MD_TOKEN);
 
 	// Drop and create a history table manually (no primary key to allow duplicate ids)
-	con->Query("DROP TABLE IF EXISTS " + table_name);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + table_name);
 	{
-		auto res = con->Query("CREATE TABLE " + table_name +
+		auto res = con->Query("CREATE TABLE " + TEST_SCHEMA_NAME + "." + table_name +
 		                      " (id INT, value VARCHAR, "
 		                      "_fivetran_start TIMESTAMPTZ, "
 		                      "_fivetran_end TIMESTAMPTZ, "
@@ -1163,7 +1174,7 @@ TEST_CASE("Migrate - history to live", "[integration][migrate]") {
 	// Insert data with active and inactive records (same id can appear multiple
 	// times in history)
 	{
-		auto res = con->Query("INSERT INTO " + table_name +
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name +
 		                      " VALUES (1, 'current', NOW(), '9999-12-31 "
 		                      "23:59:59'::TIMESTAMPTZ, true),"
 		                      "(1, 'old', '2020-01-01'::TIMESTAMPTZ, NOW(), false),"
@@ -1186,7 +1197,7 @@ TEST_CASE("Migrate - history to live", "[integration][migrate]") {
 
 	// Verify only active record remains
 	{
-		auto res = con->Query("SELECT id, value FROM " + table_name);
+		auto res = con->Query("SELECT id, value FROM " + TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 1);
 		check_row(res, 0, {1, "current"});
@@ -1194,12 +1205,12 @@ TEST_CASE("Migrate - history to live", "[integration][migrate]") {
 
 	// Verify history columns are gone
 	{
-		auto res = con->Query("SELECT _fivetran_start FROM " + table_name);
+		auto res = con->Query("SELECT _fivetran_start FROM " + TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE(res->HasError());
 	}
 
 	// Clean up
-	con->Query("DROP TABLE IF EXISTS " + table_name);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + table_name);
 }
 
 TEST_CASE("Migrate - history to soft delete", "[integration][migrate]") {
@@ -1209,9 +1220,9 @@ TEST_CASE("Migrate - history to soft delete", "[integration][migrate]") {
 	auto con = get_test_connection(MD_TOKEN);
 
 	// Drop and create a history table manually (no primary key to allow duplicate ids)
-	con->Query("DROP TABLE IF EXISTS " + table_name);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + table_name);
 	{
-		auto res = con->Query("CREATE TABLE " + table_name +
+		auto res = con->Query("CREATE TABLE " + TEST_SCHEMA_NAME + "." + table_name +
 		                      " (id INT, id2 INT, value VARCHAR default 'abc', "
 		                      "_fivetran_start TIMESTAMPTZ, "
 		                      "_fivetran_end TIMESTAMPTZ, "
@@ -1222,7 +1233,7 @@ TEST_CASE("Migrate - history to soft delete", "[integration][migrate]") {
 
 	// Insert data with active and inactive records
 	{
-		auto res = con->Query("INSERT INTO " + table_name +
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name +
 		                      " VALUES (1, 1, 'active_row', NOW(), '9999-12-31 "
 		                      "23:59:59'::TIMESTAMPTZ, true),"
 		                      "(1, 1, 'inactive_row', '2020-01-01'::TIMESTAMPTZ, NOW(), false), "
@@ -1247,7 +1258,8 @@ TEST_CASE("Migrate - history to soft delete", "[integration][migrate]") {
 
 	// Verify _fivetran_deleted column exists with correct values
 	{
-		auto res = con->Query("SELECT id, value, _fivetran_deleted FROM " + table_name + " ORDER BY id");
+		auto res = con->Query("SELECT id, value, _fivetran_deleted FROM " + TEST_SCHEMA_NAME + "." + table_name +
+		                      " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 2);
 		REQUIRE(res->GetValue(2, 0) == false); // id=1 was active, so not deleted
@@ -1256,24 +1268,24 @@ TEST_CASE("Migrate - history to soft delete", "[integration][migrate]") {
 
 	// Verify history columns are gone
 	{
-		auto res = con->Query("SELECT _fivetran_start FROM " + table_name);
+		auto res = con->Query("SELECT _fivetran_start FROM " + TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE(res->HasError());
 		CHECK_THAT(res->GetError(), Catch::Matchers::ContainsSubstring("\"_fivetran_start\" not found in FROM clause"));
 	}
 	{
-		auto res = con->Query("SELECT _fivetran_end FROM " + table_name);
+		auto res = con->Query("SELECT _fivetran_end FROM " + TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE(res->HasError());
 		CHECK_THAT(res->GetError(), Catch::Matchers::ContainsSubstring("\"_fivetran_end\" not found in FROM clause"));
 	}
 	{
-		auto res = con->Query("SELECT _fivetran_active FROM " + table_name);
+		auto res = con->Query("SELECT _fivetran_active FROM " + TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE(res->HasError());
 		CHECK_THAT(res->GetError(),
 		           Catch::Matchers::ContainsSubstring("\"_fivetran_active\" not found in FROM clause"));
 	}
 
 	// Clean up
-	con->Query("DROP TABLE IF EXISTS " + table_name);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + table_name);
 }
 
 TEST_CASE("Migrate - history to soft delete with custom soft deleted column", "[integration][migrate]") {
@@ -1284,7 +1296,7 @@ TEST_CASE("Migrate - history to soft delete with custom soft deleted column", "[
 
 	// Create a history table with a pre-existing custom column
 	{
-		auto res = con->Query("CREATE TABLE " + table_name +
+		auto res = con->Query("CREATE TABLE " + TEST_SCHEMA_NAME + "." + table_name +
 		                      " (id INT, value VARCHAR, is_removed BOOLEAN, "
 		                      "_fivetran_start TIMESTAMPTZ, "
 		                      "_fivetran_end TIMESTAMPTZ, "
@@ -1296,7 +1308,7 @@ TEST_CASE("Migrate - history to soft delete with custom soft deleted column", "[
 	// Insert data: two versions of id=1 (one active, one inactive), id=2 inactive and deleted. Note that in soft delete
 	// mode, we ignore the timestamps.
 	{
-		auto res = con->Query("INSERT INTO " + table_name +
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name +
 		                      " VALUES "
 		                      "(1, 'active_row', false, NOW(), '9999-12-31 23:59:59'::TIMESTAMPTZ, true),"
 		                      "(1, 'inactive_row', false, '2020-01-01'::TIMESTAMPTZ, NOW(), false),"
@@ -1320,7 +1332,8 @@ TEST_CASE("Migrate - history to soft delete with custom soft deleted column", "[
 
 	// Verify is_removed is set based on _fivetran_active (only latest records kept)
 	{
-		auto res = con->Query("SELECT id, value, is_removed FROM " + table_name + " ORDER BY id");
+		auto res =
+		    con->Query("SELECT id, value, is_removed FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 2);
 		check_row(res, 0, {1, "active_row", false}); // id=1 had an active row
@@ -1329,16 +1342,16 @@ TEST_CASE("Migrate - history to soft delete with custom soft deleted column", "[
 
 	// Verify history columns are gone
 	{
-		auto res = con->Query("SELECT _fivetran_start FROM " + table_name);
+		auto res = con->Query("SELECT _fivetran_start FROM " + TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE(res->HasError());
 	}
 	{
-		auto res = con->Query("SELECT _fivetran_active FROM " + table_name);
+		auto res = con->Query("SELECT _fivetran_active FROM " + TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE(res->HasError());
 	}
 
 	// Clean up
-	con->Query("DROP TABLE IF EXISTS " + table_name);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + table_name);
 }
 
 TEST_CASE("Migrate - soft delete to history", "[integration][migrate]") {
@@ -1349,10 +1362,10 @@ TEST_CASE("Migrate - soft delete to history", "[integration][migrate]") {
 
 	// Create a table with soft delete column
 	con->BeginTransaction();
-	con->Query("CREATE TABLE " + table_name +
+	con->Query("CREATE TABLE " + TEST_SCHEMA_NAME + "." + table_name +
 	           " (id INT PRIMARY KEY, name VARCHAR, "
 	           "_fivetran_deleted BOOLEAN, _fivetran_synced TIMESTAMPTZ);");
-	con->Query("INSERT INTO " + table_name +
+	con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name +
 	           " VALUES (1, 'active', false, NOW()), "
 	           "(2, 'deleted', true, NOW());");
 	con->Commit();
@@ -1373,7 +1386,8 @@ TEST_CASE("Migrate - soft delete to history", "[integration][migrate]") {
 
 	// Verify history columns exist with correct values
 	{
-		auto res = con->Query("SELECT id, name, _fivetran_active FROM " + table_name + " ORDER BY id");
+		auto res = con->Query("SELECT id, name, _fivetran_active FROM " + TEST_SCHEMA_NAME + "." + table_name +
+		                      " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 2);
 		REQUIRE(res->GetValue(2, 0) == true);  // id=1 was not deleted, so active
@@ -1382,12 +1396,12 @@ TEST_CASE("Migrate - soft delete to history", "[integration][migrate]") {
 
 	// Verify _fivetran_deleted column is gone
 	{
-		auto res = con->Query("SELECT _fivetran_deleted FROM " + table_name);
+		auto res = con->Query("SELECT _fivetran_deleted FROM " + TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE(res->HasError());
 	}
 
 	// Clean up
-	con->Query("DROP TABLE IF EXISTS " + table_name);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + table_name);
 }
 
 TEST_CASE("Migrate - soft delete to history with custom soft deleted column", "[integration][migrate]") {
@@ -1397,10 +1411,10 @@ TEST_CASE("Migrate - soft delete to history with custom soft deleted column", "[
 	auto con = get_test_connection(MD_TOKEN);
 
 	// Create a table with a custom soft delete column alongside _fivetran_deleted
-	con->Query("CREATE TABLE " + table_name +
+	con->Query("CREATE TABLE " + TEST_SCHEMA_NAME + "." + table_name +
 	           " (id INT PRIMARY KEY, name VARCHAR, is_removed BOOLEAN, "
 	           "_fivetran_deleted BOOLEAN, _fivetran_synced TIMESTAMPTZ);");
-	con->Query("INSERT INTO " + table_name +
+	con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name +
 	           " VALUES (1, 'active', false, false, NOW()), "
 	           "(2, 'removed', true, false, NOW()), "
 	           "(3, 'also_active', false, false, NOW());");
@@ -1421,7 +1435,8 @@ TEST_CASE("Migrate - soft delete to history with custom soft deleted column", "[
 
 	// Verify _fivetran_active is based on is_removed (active = NOT is_removed)
 	{
-		auto res = con->Query("SELECT id, name, _fivetran_active, is_removed FROM " + table_name + " ORDER BY id");
+		auto res = con->Query("SELECT id, name, _fivetran_active, is_removed FROM " + TEST_SCHEMA_NAME + "." +
+		                      table_name + " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 3);
 		// _fivetran_deleted is false everywhere, so the right values are set here.
@@ -1432,19 +1447,19 @@ TEST_CASE("Migrate - soft delete to history with custom soft deleted column", "[
 
 	// Verify _fivetran_deleted column is gone (always dropped)
 	{
-		auto res = con->Query("SELECT _fivetran_deleted FROM " + table_name);
+		auto res = con->Query("SELECT _fivetran_deleted FROM " + TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE(res->HasError());
 	}
 
 	// Verify history columns exist
 	{
-		auto res = con->Query("SELECT _fivetran_start, _fivetran_end FROM " + table_name);
+		auto res = con->Query("SELECT _fivetran_start, _fivetran_end FROM " + TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 3);
 	}
 
 	// Clean up
-	con->Query("DROP TABLE IF EXISTS " + table_name);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + table_name);
 }
 
 TEST_CASE("Migrate - fails with empty table name", "[integration][migrate]") {
@@ -1483,7 +1498,7 @@ TEST_CASE("Migrate - unsupported operation returns unsupported", "[integration][
 
 	// Clean up
 	auto con = get_test_connection(MD_TOKEN);
-	con->Query("DROP TABLE IF EXISTS " + table_name);
+	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + table_name);
 }
 
 TEST_CASE("Migrate - works with schema", "[integration][migrate]") {

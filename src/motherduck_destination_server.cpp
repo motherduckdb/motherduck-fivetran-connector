@@ -822,7 +822,7 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 
 				if (column_exists) {
 					// If the column already exists, only the default value should be changed.
-					sql_generator->add_defaults(con, {new_column}, table_name, "add_column");
+					sql_generator->add_defaults(con, {new_column}, table, "add_column");
 				} else {
 					sql_generator->add_column(con, table, new_column, "add_column");
 				}
