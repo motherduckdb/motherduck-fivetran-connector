@@ -1085,12 +1085,13 @@ void MdSqlGenerator::rename_column(duckdb::Connection& con, const table_def& tab
                                    const std::string& to_column_name) {
 	const std::string absolute_table_name = table.to_escaped_string();
 	std::ostringstream sql;
-	sql << "ALTER TABLE " << absolute_table_name << " RENAME COLUMN " << KeywordHelper::WriteQuoted(from_column_name, '"')
-	    << " TO " << KeywordHelper::WriteQuoted(to_column_name, '"');
+	sql << "ALTER TABLE " << absolute_table_name << " RENAME COLUMN "
+	    << KeywordHelper::WriteQuoted(from_column_name, '"') << " TO "
+	    << KeywordHelper::WriteQuoted(to_column_name, '"');
 
 	run_query(con, "rename_column", sql.str(),
-	          "Could not rename column <" + from_column_name + "> to <" + to_column_name + "> in table <" + absolute_table_name +
-	              ">");
+	          "Could not rename column <" + from_column_name + "> to <" + to_column_name + "> in table <" +
+	              absolute_table_name + ">");
 }
 
 bool MdSqlGenerator::history_table_is_valid(duckdb::Connection& con, const table_def& table,
@@ -1242,7 +1243,6 @@ void MdSqlGenerator::migrate_soft_delete_to_history(duckdb::Connection& con, con
 	const std::string quoted_deleted_col = KeywordHelper::WriteQuoted(soft_deleted_column, '"');
 
 	table_def temp_table {original_table.db_name, original_table.schema_name, original_table.table_name + "_temp"};
-	const std::string temp_absolute_table_name = temp_table.to_escaped_string();
 
 	{
 		TransactionContext transaction_context(con);

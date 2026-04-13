@@ -44,7 +44,7 @@ TEST_CASE("Parallel WriteBatch requests", "[integration][write-batch][parallel]"
 
 	auto con = get_test_connection(MD_TOKEN);
 	for (const auto& table_name : table_names) {
-		auto res = con->Query("SELECT id, title FROM " + table_name + " ORDER BY id");
+		auto res = con->Query("SELECT id, title FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 3);
 	}
