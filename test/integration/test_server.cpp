@@ -139,7 +139,8 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 
 	{
 		// check inserted rows
-		auto res = con->Query("SELECT id, title, magic_number FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
+		auto res =
+		    con->Query("SELECT id, title, magic_number FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 2);
 		check_row(res, 0, {1, "The Hitchhiker's Guide to the Galaxy", 42});
@@ -164,7 +165,8 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 
 	{
 		// check after upsert
-		auto res = con->Query("SELECT id, title, magic_number FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
+		auto res =
+		    con->Query("SELECT id, title, magic_number FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 
 		REQUIRE(res->RowCount() == 4);
@@ -192,7 +194,8 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 
 	{
 		// check after delete
-		auto res = con->Query("SELECT id, title, magic_number FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
+		auto res =
+		    con->Query("SELECT id, title, magic_number FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 3);
 		// row 1 got deleted
@@ -220,7 +223,8 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 
 	{
 		// check after update
-		auto res = con->Query("SELECT id, title, magic_number FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
+		auto res =
+		    con->Query("SELECT id, title, magic_number FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 3);
 		check_row(res, 0, {2, "The empire strikes back", 1});
@@ -256,7 +260,8 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 
 	{
 		// check the rows did not get physically deleted
-		auto res = con->Query("SELECT title, id, magic_number FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
+		auto res =
+		    con->Query("SELECT title, id, magic_number FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 3);
 	}
@@ -275,7 +280,8 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 
 	{
 		// check truncated table is the same as before
-		auto res = con->Query("SELECT title FROM " + TEST_SCHEMA_NAME + "." + table_name + " WHERE _fivetran_deleted = false ORDER BY id");
+		auto res = con->Query("SELECT title FROM " + TEST_SCHEMA_NAME + "." + table_name +
+		                      " WHERE _fivetran_deleted = false ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 1);
 		REQUIRE(res->GetValue(0, 0) == "The empire strikes back");
@@ -283,7 +289,8 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 
 	{
 		// check again that the rows did not get physically deleted
-		auto res = con->Query("SELECT title, id, magic_number FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
+		auto res =
+		    con->Query("SELECT title, id, magic_number FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 3);
 	}
@@ -304,7 +311,8 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 
 	{
 		// check the rows got physically deleted
-		auto res = con->Query("SELECT title, id, magic_number FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
+		auto res =
+		    con->Query("SELECT title, id, magic_number FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 0);
 	}
@@ -326,7 +334,8 @@ TEST_CASE("WriteBatch with blob and unmodified string", "[integration][write-bat
 
 	auto con = get_test_connection(MD_TOKEN);
 	{
-		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + " VALUES (1, 'Test title', null, false, NOW())");
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name +
+		                      " VALUES (1, 'Test title', null, false, NOW())");
 		REQUIRE_NO_FAIL(res);
 	}
 
@@ -403,7 +412,8 @@ TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
 
 	{
 		// check inserted rows
-		auto res = con->Query("SELECT id1, id2, text FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id1, id2");
+		auto res =
+		    con->Query("SELECT id1, id2, text FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id1, id2");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 3);
 		check_row(res, 0, {1, 100, "first row"});
@@ -430,7 +440,8 @@ TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
 
 	{
 		// check after update, including a soft delete
-		auto res = con->Query("SELECT id1, id2, text, _fivetran_deleted FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id1, id2");
+		auto res = con->Query("SELECT id1, id2, text, _fivetran_deleted FROM " + TEST_SCHEMA_NAME + "." + table_name +
+		                      " ORDER BY id1, id2");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 3);
 		check_row(res, 0, {1, 100, "first row", false});
@@ -455,7 +466,8 @@ TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
 
 	{
 		// check after hard delete
-		auto res = con->Query("SELECT id1, id2, text, _fivetran_deleted FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id1, id2");
+		auto res = con->Query("SELECT id1, id2, text, _fivetran_deleted FROM " + TEST_SCHEMA_NAME + "." + table_name +
+		                      " ORDER BY id1, id2");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 1);
 		check_row(res, 0, {2, 200, "second row updated", false});
@@ -722,9 +734,11 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 
 	{
 		// Insert some test data to validate after primary key modification
-		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + "(id, name, id_new) VALUES (1, 'one', 101)");
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name +
+		                      "(id, name, id_new) VALUES (1, 'one', 101)");
 		REQUIRE_NO_FAIL(res);
-		auto res2 = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + "(id, name, id_new) VALUES (2, 'two', 102)");
+		auto res2 = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name +
+		                       "(id, name, id_new) VALUES (2, 'two', 102)");
 		REQUIRE_NO_FAIL(res2);
 	}
 
@@ -963,8 +977,8 @@ TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
 		// the date in books_history_earliest.csv
 		auto res = con->Query("SELECT id, title, magic_number, _fivetran_synced, "
 		                      "_fivetran_active, _fivetran_start, _fivetran_end"
-		                      " FROM " + TEST_SCHEMA_NAME + "." +
-		                      table_name + " ORDER BY id, _fivetran_start");
+		                      " FROM " +
+		                      TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id, _fivetran_start");
 		REQUIRE_NO_FAIL(res);
 
 		REQUIRE(res->RowCount() == 3);
@@ -1008,8 +1022,8 @@ TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
 		// the date in books_history_earliest.csv
 		auto res = con->Query("SELECT id, title, magic_number, _fivetran_synced, "
 		                      "_fivetran_active, _fivetran_start, _fivetran_end"
-		                      " FROM " + TEST_SCHEMA_NAME + "." +
-		                      table_name + " ORDER BY id, _fivetran_start");
+		                      " FROM " +
+		                      TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id, _fivetran_start");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 5);
 
@@ -1092,8 +1106,8 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 	{
 		auto res = con->Query("SELECT id, title, magic_number, _fivetran_synced, "
 		                      "_fivetran_active, _fivetran_start, _fivetran_end"
-		                      " FROM " + TEST_SCHEMA_NAME + "." +
-		                      table_name + " ORDER BY id, _fivetran_start");
+		                      " FROM " +
+		                      TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id, _fivetran_start");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 1);
 
@@ -1162,8 +1176,8 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 		// the date in books_history_earliest.csv
 		auto res = con->Query("SELECT id, title, magic_number, _fivetran_synced, "
 		                      "_fivetran_active, _fivetran_start, _fivetran_end"
-		                      " FROM " + TEST_SCHEMA_NAME + "." +
-		                      table_name + " ORDER BY id, _fivetran_start");
+		                      " FROM " +
+		                      TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id, _fivetran_start");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 1);
 
@@ -1217,7 +1231,8 @@ TEST_CASE("WriteHistoryBatch should delete overlapping records", "[integration][
 	{
 		auto con = get_test_connection(MD_TOKEN);
 
-		auto res = con->Query("SELECT title, _fivetran_start FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
+		auto res =
+		    con->Query("SELECT title, _fivetran_start FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 3);
 		REQUIRE(res->GetValue(0, 1) == "The Two Towers Updated Title");
@@ -1257,8 +1272,8 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with reordered CSV columns", "[integ
 	{
 		// Verify initial data was inserted correctly despite column order mismatch
 		auto res = con->Query("SELECT id, title, magic_number, blob, _fivetran_active"
-		                      " FROM " + TEST_SCHEMA_NAME + "." +
-		                      table_name + " ORDER BY id");
+		                      " FROM " +
+		                      TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 2);
 
@@ -1364,8 +1379,8 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with upsert", "[integration][write-b
 
 	auto con = get_test_connection(MD_TOKEN);
 	{
-		auto res = con->Query("SELECT id, amount, \"desc\", _fivetran_synced, FROM " + TEST_SCHEMA_NAME + "." + transaction_table_name +
-		                      " ORDER BY id");
+		auto res = con->Query("SELECT id, amount, \"desc\", _fivetran_synced, FROM " + TEST_SCHEMA_NAME + "." +
+		                      transaction_table_name + " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 6);
 
@@ -1391,9 +1406,10 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with upsert", "[integration][write-b
 	{
 		// check that id=2 ("The Two Towers") got deleted because it's newer than
 		// the date in books_history_earliest.csv
-		auto res = con->Query("SELECT id, amount, _fivetran_active"
-		                      " FROM " + TEST_SCHEMA_NAME + "." +
-		                      transaction_history_table_name + " ORDER BY id, _fivetran_start");
+		auto res =
+		    con->Query("SELECT id, amount, _fivetran_active"
+		               " FROM " +
+		               TEST_SCHEMA_NAME + "." + transaction_history_table_name + " ORDER BY id, _fivetran_start");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 7);
 
@@ -1630,7 +1646,8 @@ TEST_CASE("AlterTable decimal width change", "[integration]") {
 	             });
 	{
 		// Insert test data
-		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + " (id, amount) VALUES (1, 1234567890123.4567)");
+		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name +
+		                      " (id, amount) VALUES (1, 1234567890123.4567)");
 		REQUIRE_NO_FAIL(res);
 	}
 

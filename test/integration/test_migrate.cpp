@@ -291,7 +291,8 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
 	// Check decimal precision
 
 	{
-		auto res = con->Query("SELECT \"default\", key, column_type FROM (describe " + TEST_SCHEMA_NAME + "." + to_table + ")");
+		auto res = con->Query("SELECT \"default\", key, column_type FROM (describe " + TEST_SCHEMA_NAME + "." +
+		                      to_table + ")");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 4); // The order is: id, data, value, amount
 
@@ -447,7 +448,8 @@ TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration
 
 	// Verify destination table has history columns
 	{
-		auto res = con->Query("SELECT id, name, _fivetran_active FROM " + TEST_SCHEMA_NAME + "." + dest_table + " ORDER BY id");
+		auto res = con->Query("SELECT id, name, _fivetran_active FROM " + TEST_SCHEMA_NAME + "." + dest_table +
+		                      " ORDER BY id");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 3);
 		// Alice (not deleted) -> active
@@ -465,8 +467,8 @@ TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration
 	} else {
 		// We want check here that soft_deleted_column is not a PK, so we can ignore
 		// this column when we verify the whole PK below
-		auto res = con->Query("SELECT key FROM (describe " + TEST_SCHEMA_NAME + "." + dest_table + ") WHERE column_name = \'" +
-		                      soft_deleted_column + "\'");
+		auto res = con->Query("SELECT key FROM (describe " + TEST_SCHEMA_NAME + "." + dest_table +
+		                      ") WHERE column_name = \'" + soft_deleted_column + "\'");
 		REQUIRE_NO_FAIL(res);
 
 		// soft_deleted_column is not a pk
@@ -482,8 +484,8 @@ TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration
 
 	// Verify id is part of primary key and defaults are set
 	{
-		auto res = con->Query("SELECT key, \"default\" FROM (describe " + TEST_SCHEMA_NAME + "." + dest_table + ") WHERE column_name != \'" +
-		                      soft_deleted_column + "\' ORDER BY column_name");
+		auto res = con->Query("SELECT key, \"default\" FROM (describe " + TEST_SCHEMA_NAME + "." + dest_table +
+		                      ") WHERE column_name != \'" + soft_deleted_column + "\' ORDER BY column_name");
 		REQUIRE_NO_FAIL(res);
 		// The order is: _fivetran_active, _fivetran_end, _fivetran_start, _fivetran_synced, id, name
 		REQUIRE(res->RowCount() == 6);
