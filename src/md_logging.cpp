@@ -51,7 +51,9 @@ Logger::Logger(duckdb::Connection* con_) : enabled_sinks(SinkType::STDOUT | Sink
 }
 
 void Logger::log_to_stdout(const LogLevel level, const std::string& message) const {
-	std::cout << "{\"level\":\"" << level_to_string(level) << "\",\"message\":\""
+	// Fivetran does not support DEBUG level on stdout, emit as INFO instead.
+	const LogLevel stdout_level = level == LogLevel::DEBUG ? LogLevel::INFO : level;
+	std::cout << "{\"level\":\"" << level_to_string(stdout_level) << "\",\"message\":\""
 	          << duckdb::KeywordHelper::EscapeQuotes(message, '"') << ", duckdb_id=<" << duckdb_id
 	          << ">, connection_id=<" << connection_id << ">\",\"message-origin\":\"sdk_destination\"}" << std::endl;
 }
