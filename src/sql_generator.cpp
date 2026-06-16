@@ -374,9 +374,72 @@ void MdSqlGenerator::drop_column(duckdb::Connection& con, const table_def& table
 	                 "Could not drop column <" + column_name + "> of table <" + table.to_escaped_string() + ">");
 }
 
+void MdSqlGenerator::check_no_duplicate_primary_keys(duckdb::Connection& con, const table_def& table,
+                                                     const std::vector<column_def>& all_new_columns,
+                                                     const std::set<std::string>& existing_columns_in_new_table) const {
+	// When the primary key changes, we only need to check that the existing columns that are part of it are unique.
+	std::vector<std::string> new_pk_cols;
+	std::vector<std::string> existing_pk_columns_in_new_table;
+	for (const auto& col : all_new_columns) {
+		if (col.primary_key) {
+			new_pk_cols.push_back(col.name);
+			if (existing_columns_in_new_table.find(col.name) != existing_columns_in_new_table.end()) {
+				existing_pk_columns_in_new_table.push_back(col.name);
+			}
+		}
+	}
+
+	// No primary key on the new table means no uniqueness constraint to violate.
+	if (new_pk_cols.empty()) {
+		return;
+	}
+
+	const auto absolute_table_name = table.to_escaped_string();
+	bool has_duplicates;
+
+	if (!existing_pk_columns_in_new_table.empty()) {
+		std::ostringstream sql;
+		sql << "SELECT 1 FROM " << absolute_table_name << " GROUP BY ";
+		join(sql, existing_pk_columns_in_new_table,
+		     [](std::ostream& out, const std::string& col) { out << KeywordHelper::WriteQuoted(col, '"'); });
+		sql << " HAVING COUNT(*) > 1 LIMIT 1";
+
+		const auto query = sql.str();
+		logger.info("check_no_duplicate_primary_keys: " + query);
+		const auto result = con.Query(query);
+		if (result->HasError()) {
+			throw std::runtime_error("Could not check for duplicate primary keys in table <" + absolute_table_name +
+			                         ">: " + result->GetError());
+		}
+		has_duplicates = result->RowCount() > 0;
+	} else {
+		// All new primary key columns are newly added, so every existing row would
+		// share the same (constant default) key. Any more than one row is a duplicate.
+		const std::string query = "SELECT COUNT(*) FROM " + absolute_table_name;
+		logger.info("check_no_duplicate_primary_keys: " + query);
+		const auto result = con.Query(query);
+		if (result->HasError()) {
+			throw std::runtime_error("Could not check for duplicate primary keys in table <" + absolute_table_name +
+			                         ">: " + result->GetError());
+		}
+		has_duplicates = result->GetValue(0, 0).GetValue<int64_t>() > 1;
+	}
+
+	if (has_duplicates) {
+		throw md_error::RecoverableError(
+		    "The requested primary key change on " + table.schema_name + "." + table.table_name +
+		    " would create duplicate rows. To proceed, either manually remove the duplicate records or drop the table "
+		    "and trigger a historical re-sync.");
+	}
+}
+
 void MdSqlGenerator::alter_table_recreate(duckdb::Connection& con, const table_def& table,
-                                          const std::vector<column_def>& all_columns,
-                                          const std::set<std::string>& common_columns) {
+                                          const std::vector<column_def>& all_new_columns,
+                                          const std::set<std::string>& existing_columns_in_new_table) {
+	// Bail out before any DDL if the new primary key would not be unique over the
+	// existing data; the surrounding transaction rolls back cleanly on throw.
+	check_no_duplicate_primary_keys(con, table, all_new_columns, existing_columns_in_new_table);
+
 	long timestamp =
 	    std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 	auto temp_table =
@@ -388,18 +451,18 @@ void MdSqlGenerator::alter_table_recreate(duckdb::Connection& con, const table_d
 
 	// new primary keys have to get a default value as they cannot be null
 	std::set<std::string> new_primary_key_cols;
-	for (const auto& col : all_columns) {
-		if (col.primary_key && common_columns.find(col.name) == common_columns.end()) {
+	for (const auto& col : all_new_columns) {
+		if (col.primary_key && existing_columns_in_new_table.find(col.name) == existing_columns_in_new_table.end()) {
 			new_primary_key_cols.insert(col.name);
 		}
 	}
 
-	create_table(con, table, all_columns, new_primary_key_cols);
+	create_table(con, table, all_new_columns, new_primary_key_cols);
 
 	// reinsert the data from the old table
 	std::ostringstream out_column_list;
 	bool first = true;
-	for (auto& col : common_columns) {
+	for (auto& col : existing_columns_in_new_table) {
 		if (first) {
 			first = false;
 		} else {
