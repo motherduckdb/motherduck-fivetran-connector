@@ -434,11 +434,11 @@ void MdSqlGenerator::check_no_duplicate_primary_keys(duckdb::Connection& con, co
 }
 
 void MdSqlGenerator::alter_table_recreate(duckdb::Connection& con, const table_def& table,
-                                          const std::vector<column_def>& all_new_columns,
+                                          const std::vector<column_def>& all_columns_in_new_table,
                                           const std::set<std::string>& existing_columns_in_new_table) {
 	// Bail out before any DDL if the new primary key would not be unique over the
 	// existing data; the surrounding transaction rolls back cleanly on throw.
-	check_no_duplicate_primary_keys(con, table, all_new_columns, existing_columns_in_new_table);
+	check_no_duplicate_primary_keys(con, table, all_columns_in_new_table, existing_columns_in_new_table);
 
 	long timestamp =
 	    std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -451,13 +451,13 @@ void MdSqlGenerator::alter_table_recreate(duckdb::Connection& con, const table_d
 
 	// new primary keys have to get a default value as they cannot be null
 	std::set<std::string> new_primary_key_cols;
-	for (const auto& col : all_new_columns) {
+	for (const auto& col : all_columns_in_new_table) {
 		if (col.primary_key && existing_columns_in_new_table.find(col.name) == existing_columns_in_new_table.end()) {
 			new_primary_key_cols.insert(col.name);
 		}
 	}
 
-	create_table(con, table, all_new_columns, new_primary_key_cols);
+	create_table(con, table, all_columns_in_new_table, new_primary_key_cols);
 
 	// reinsert the data from the old table
 	std::ostringstream out_column_list;

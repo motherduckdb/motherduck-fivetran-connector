@@ -251,8 +251,8 @@ private:
 	void alter_table_recreate(duckdb::Connection& con, const table_def& table,
 	                          const std::vector<column_def>& all_columns_in_new_table, const std::set<std::string>& common_columns);
 	void check_no_duplicate_primary_keys(duckdb::Connection& con, const table_def& table,
-	                                     const std::vector<column_def>& all_columns,
-	                                     const std::set<std::string>& common_columns) const;
+	                                     const std::vector<column_def>& all_columns_in_new_table,
+	                                     const std::set<std::string>& existing_columns_in_new_table) const;
 	void alter_table_in_place(duckdb::Connection& con, const table_def& table,
 	                          const std::vector<column_def>& added_columns,
 	                          const std::set<std::string>& deleted_columns, const std::set<std::string>& alter_types,
