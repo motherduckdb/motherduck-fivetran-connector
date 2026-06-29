@@ -169,6 +169,9 @@ target_include_directories(motherduck_destination_sources SYSTEM PUBLIC
 
 target_link_libraries(motherduck_destination_sources PUBLIC
         duckdb_static
+        duckdb_generated_extension_loader
+        parquet_extension
+        core_functions_extension
         fivetran_sdk
         OpenSSL::Crypto
         fmt::fmt
