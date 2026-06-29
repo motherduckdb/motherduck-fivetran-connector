@@ -55,7 +55,7 @@ set(FETCHCONTENT_QUIET OFF)
 FetchContent_Declare(
         fmt
         GIT_REPOSITORY https://github.com/fmtlib/fmt
-        GIT_TAG        407c905e45ad75fc29bf0f9bb7c5c2fd3475976f # 12.1.0
+        GIT_TAG        1be298e1bd68957e4cd352e1f676f00e07dcfb57 # 12.2.0
         GIT_SHALLOW TRUE
         SYSTEM
 )
@@ -65,7 +65,7 @@ FetchContent_MakeAvailable(fmt)
 FetchContent_Declare(
     duckdb
     GIT_REPOSITORY https://github.com/duckdb/duckdb.git
-    GIT_TAG 6ddac802ffa9bcfbcc3f5f0d71de5dff9b0bc250 # v1.4.4
+    GIT_TAG 08e34c447bae34eaee3723cac61f2878b6bdf787 # v1.5.4
     GIT_SHALLOW TRUE
     SYSTEM
 )
