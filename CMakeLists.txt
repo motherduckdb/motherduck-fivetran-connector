@@ -91,7 +91,7 @@ FetchContent_MakeAvailable(duckdb)
 # Restore build type
 set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE_BACKUP})
 
-get_target_property(DuckDB_INCLUDE_DIRS duckdb_static INTERFACE_INCLUDE_DIRECTORIES)
+set(DuckDB_INCLUDE_DIRS ${DuckDB_SOURCE_DIR}/src/include)
 
 ### Store latest git commit SHA ###
 if(DEFINED GIT_COMMIT_SHA_OVERRIDE AND NOT GIT_COMMIT_SHA_OVERRIDE STREQUAL "")
