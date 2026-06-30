@@ -93,6 +93,13 @@ set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE_BACKUP})
 
 set(DuckDB_INCLUDE_DIRS ${DuckDB_SOURCE_DIR}/src/include)
 
+# duckdb_static references duckdb::ExtensionHelper::LoadAllExtensions
+# which is defined in duckdb_generated_extension_loader.
+set_property(TARGET duckdb_static APPEND PROPERTY
+        INTERFACE_LINK_LIBRARIES duckdb_generated_extension_loader)
+set_property(TARGET duckdb_generated_extension_loader APPEND PROPERTY
+        INTERFACE_LINK_LIBRARIES core_functions_extension parquet_extension)
+
 ### Store latest git commit SHA ###
 if(DEFINED GIT_COMMIT_SHA_OVERRIDE AND NOT GIT_COMMIT_SHA_OVERRIDE STREQUAL "")
     set(GIT_COMMIT_SHA ${GIT_COMMIT_SHA_OVERRIDE})
@@ -169,9 +176,6 @@ target_include_directories(motherduck_destination_sources SYSTEM PUBLIC
 
 target_link_libraries(motherduck_destination_sources PUBLIC
         duckdb_static
-        duckdb_generated_extension_loader
-        parquet_extension
-        core_functions_extension
         fivetran_sdk
         OpenSSL::Crypto
         fmt::fmt
