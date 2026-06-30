@@ -16,12 +16,13 @@ jobs:
       - uses: actions/checkout@v5
 
       - uses: actions/cache@v6
+        name: Cache dependencies
         id: cache-deps
         with:
           key: fivetran-deps-${{ hashFiles('./Makefile') }}
           path: ./install
 
-      - name: build the dependencies
+      - name: Build the dependencies
         if: ${{ steps.cache-deps.outputs.cache-hit != 'true' }}
         env:
           CC: clang-15
@@ -30,7 +31,7 @@ jobs:
         run: |
           make build_openssl_native build_grpc build_test_dependencies
 
-      - name: build the connector
+      - name: Build the connector
         env:
           CC: clang-15
           CXX: clang++-15
@@ -39,7 +40,7 @@ jobs:
           make get_fivetran_protos
           make build_connector_debug
 
-      - name: run tests
+      - name: Run tests
         env:
           motherduck_token: ${{ secrets.CI_TESTING_TOKEN }}
         run: ./build/Debug/integration_tests
