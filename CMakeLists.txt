@@ -55,7 +55,7 @@ set(FETCHCONTENT_QUIET OFF)
 FetchContent_Declare(
         fmt
         GIT_REPOSITORY https://github.com/fmtlib/fmt
-        GIT_TAG        407c905e45ad75fc29bf0f9bb7c5c2fd3475976f # 12.1.0
+        GIT_TAG        1be298e1bd68957e4cd352e1f676f00e07dcfb57 # 12.2.0
         GIT_SHALLOW TRUE
         SYSTEM
 )
@@ -65,7 +65,7 @@ FetchContent_MakeAvailable(fmt)
 FetchContent_Declare(
     duckdb
     GIT_REPOSITORY https://github.com/duckdb/duckdb.git
-    GIT_TAG 6ddac802ffa9bcfbcc3f5f0d71de5dff9b0bc250 # v1.4.4
+    GIT_TAG 08e34c447bae34eaee3723cac61f2878b6bdf787 # v1.5.4
     GIT_SHALLOW TRUE
     SYSTEM
 )
@@ -91,7 +91,14 @@ FetchContent_MakeAvailable(duckdb)
 # Restore build type
 set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE_BACKUP})
 
-get_target_property(DuckDB_INCLUDE_DIRS duckdb_static INTERFACE_INCLUDE_DIRECTORIES)
+set(DuckDB_INCLUDE_DIRS ${DuckDB_SOURCE_DIR}/src/include)
+
+# duckdb_static references duckdb::ExtensionHelper::LoadAllExtensions
+# which is defined in duckdb_generated_extension_loader.
+set_property(TARGET duckdb_static APPEND PROPERTY
+        INTERFACE_LINK_LIBRARIES duckdb_generated_extension_loader)
+set_property(TARGET duckdb_generated_extension_loader APPEND PROPERTY
+        INTERFACE_LINK_LIBRARIES core_functions_extension parquet_extension)
 
 ### Store latest git commit SHA ###
 if(DEFINED GIT_COMMIT_SHA_OVERRIDE AND NOT GIT_COMMIT_SHA_OVERRIDE STREQUAL "")
