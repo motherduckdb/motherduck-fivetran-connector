@@ -26,7 +26,8 @@ TestResult run_authentication_test(duckdb::Connection& con) {
 }
 
 /// Checks that the selected database can be written to
-TestResult run_database_type_test(duckdb::Connection& con, const google::protobuf::Map<std::string, std::string>& configuration) {
+TestResult run_database_type_test(duckdb::Connection& con,
+                                  const google::protobuf::Map<std::string, std::string>& configuration) {
 	const auto current_db_res = con.Query("SELECT current_database()");
 	if (current_db_res->HasError()) {
 		return TestResult(false, "Failed to retrieve current database name: " + current_db_res->GetError());
@@ -72,8 +73,10 @@ TestResult run_database_type_test(duckdb::Connection& con, const google::protobu
 		                             "\" is a read-only MotherDuck share. Please use a "
 		                             "writable database for Fivetran ingestion jobs.");
 	}
-	if (db_type == "motherduck ducklake" && config::find_bool_property(configuration, config::PROP_STRICT_PRIMARY_KEYS, true) == true) {
-		return TestResult(false, "Strict primary keys cannot be enabled when using a Ducklake database. Please turn off the \"Strict Primary Keys\" option.");
+	if (db_type == "motherduck ducklake" &&
+	    config::find_bool_property(configuration, config::PROP_STRICT_PRIMARY_KEYS, true) == true) {
+		return TestResult(false, "Strict primary keys cannot be enabled when using a Ducklake database. Please turn "
+		                         "off the \"Strict Primary Keys\" option.");
 	}
 	if (db_type.find("motherduck") == std::string::npos) {
 		// We expect to run against type "motherduck" or "motherduck <something>"

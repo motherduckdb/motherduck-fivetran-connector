@@ -105,7 +105,8 @@ TEST_CASE("Test fails when motherduck_database is a share", "[integration][confi
 	REQUIRE_THAT(response.failure(), Catch::Matchers::ContainsSubstring("is a read-only MotherDuck share"));
 }
 
-TEST_CASE("Test fails when motherduck_database is Ducklake and strict primary keys are enabled", "[integration][configtest]") {
+TEST_CASE("Test fails when motherduck_database is Ducklake and strict primary keys are enabled",
+          "[integration][configtest]") {
 	auto con = get_test_connection(MD_TOKEN);
 	ensure_workspace_mode(*con);
 
@@ -128,7 +129,8 @@ TEST_CASE("Test fails when motherduck_database is Ducklake and strict primary ke
 
 	REQUIRE_NO_FAIL(status);
 	CAPTURE(response.failure());
-	REQUIRE_THAT(response.failure(), Catch::Matchers::ContainsSubstring("Strict primary keys cannot be enabled when using a Ducklake database"));
+	REQUIRE_THAT(response.failure(), Catch::Matchers::ContainsSubstring(
+	                                     "Strict primary keys cannot be enabled when using a Ducklake database"));
 }
 
 TEST_CASE("Test config tester for max_record_size values", "[integration][configtest]") {

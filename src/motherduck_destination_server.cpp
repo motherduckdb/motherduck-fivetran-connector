@@ -187,9 +187,11 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(::grpc::ServerContext*,
 	strict_primary_keys_field.set_name(config::PROP_STRICT_PRIMARY_KEYS);
 	strict_primary_keys_field.set_label("Strict Primary Keys");
 	strict_primary_keys_field.set_description(
-		"When enabled, tables are created with an enforced PRIMARY KEY constraint. Consequently, an index has to be built and maintained on the target table. Leave this OFF (the "
-		"default) to mark primary key columns NOT NULL without a uniqueness constraint. This is helpful if uniqueness is already enforced at the source, and required "
-		"for backends that do not support primary keys (such as DuckLake).");
+	    "When enabled, tables are created with an enforced PRIMARY KEY constraint. Consequently, an index has to be "
+	    "built and maintained on the target table. Leave this OFF (the "
+	    "default) to mark primary key columns NOT NULL without a uniqueness constraint. This is helpful if uniqueness "
+	    "is already enforced at the source, and required "
+	    "for backends that do not support primary keys (such as DuckLake).");
 	strict_primary_keys_field.mutable_toggle_field();
 	strict_primary_keys_field.set_required(false);
 	strict_primary_keys_field.set_default_value("false");
