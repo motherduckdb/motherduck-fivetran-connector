@@ -91,7 +91,7 @@ std::string make_full_column_list(const std::vector<const column_def*>& columns_
 	return full_column_list.str();
 }
 
-std::string primary_key_join(std::vector<const column_def*>& columns_pk, const std::string tbl1,
+std::string primary_key_join(const std::vector<const column_def*>& columns_pk, const std::string tbl1,
                              const std::string tbl2) {
 	return join(columns_pk, " AND ", [&tbl1, &tbl2](std::ostream& out, const column_def* col) {
 		const auto quoted = col->quoted();
@@ -100,7 +100,7 @@ std::string primary_key_join(std::vector<const column_def*>& columns_pk, const s
 }
 } // namespace
 
-MdSqlGenerator::MdSqlGenerator(mdlog::Logger& logger_) : logger(logger_) {
+MdSqlGenerator::MdSqlGenerator(mdlog::Logger& logger_, PrimaryKeyMode pk_mode_) : logger(logger_), pk_mode(pk_mode_) {
 }
 
 std::string MdSqlGenerator::generate_temp_table_name(duckdb::Connection& con, const std::string& prefix) const {
@@ -258,11 +258,18 @@ void MdSqlGenerator::create_table(duckdb::Connection& con, const table_def& tabl
 		if (columns_with_default_value.find(col.name) != columns_with_default_value.end()) {
 			ddl << " DEFAULT " + get_default_value(col.type);
 		}
+		// In NotNull mode key columns are enforced with a per-column NOT NULL. In
+		// Strict mode a table-level PRIMARY KEY (below) implies NOT NULL, so we do
+		// not repeat it here. Either way key columns end up NOT NULL, which is what
+		// describe_table() relies on to recover the key set.
+		if (col.primary_key && pk_mode == PrimaryKeyMode::NotNull) {
+			ddl << " NOT NULL";
+		}
 
 		ddl << ", "; // DuckDB allows trailing commas
 	}
 
-	if (!columns_pk.empty()) {
+	if (!columns_pk.empty() && pk_mode == PrimaryKeyMode::Strict) {
 		ddl << "PRIMARY KEY (";
 		join(ddl, columns_pk, to_name);
 		ddl << ")";
@@ -485,12 +492,30 @@ void MdSqlGenerator::alter_table_in_place(duckdb::Connection& con, const table_d
                                           const std::vector<column_def>& added_columns,
                                           const std::set<std::string>& deleted_columns,
                                           const std::set<std::string>& alter_types,
-                                          const std::map<std::string, column_def>& new_column_map) {
-	for (const auto& col : added_columns) {
-		add_column(con, table, col, "alter_table add");
-	}
-
+                                          const std::map<std::string, column_def>& new_column_map,
+                                          const std::set<std::string>& key_added,
+                                          const std::set<std::string>& key_removed) {
 	auto absolute_table_name = table.to_escaped_string();
+
+	for (const auto& col : added_columns) {
+		if (pk_mode == PrimaryKeyMode::NotNull && col.primary_key && !col.column_default.has_value()) {
+			// A newly added key column must end up NOT NULL, so existing rows need a
+			// non-null value. Add it with the same literal default create_table uses
+			// (a raw DEFAULT expression, unlike the CAST-wrapped value add_column
+			// applies to Fivetran-provided defaults), then enforce NOT NULL below.
+			std::ostringstream out;
+			out << "ALTER TABLE " << absolute_table_name << " ADD COLUMN " << KeywordHelper::WriteQuoted(col.name, '"')
+			    << " " << format_type(col) << " DEFAULT " << get_default_value(col.type);
+			run_query(con, "alter_table add key column", out.str(),
+			          "Could not add key column <" + col.name + "> to table <" + absolute_table_name + ">");
+		} else {
+			add_column(con, table, col, "alter_table add");
+		}
+
+		if (pk_mode == PrimaryKeyMode::NotNull && col.primary_key) {
+			set_not_null(con, table, col.name, true, "alter_table add set_not_null");
+		}
+	}
 
 	for (const auto& col_name : alter_types) {
 		std::ostringstream out;
@@ -503,6 +528,16 @@ void MdSqlGenerator::alter_table_in_place(duckdb::Connection& con, const table_d
 		          "Could not alter type for column <" + col_name + "> in table <" + absolute_table_name + ">");
 	}
 
+	// Toggle NOT NULL for existing columns whose key membership changed. These
+	// sets are only populated in NotNull mode; in Strict mode key changes go
+	// through the recreate path instead.
+	for (const auto& col_name : key_added) {
+		set_not_null(con, table, col_name, true, "alter_table set_not_null");
+	}
+	for (const auto& col_name : key_removed) {
+		set_not_null(con, table, col_name, false, "alter_table drop_not_null");
+	}
+
 	for (const auto& col_name : deleted_columns) {
 		drop_column(con, table, col_name, "alter_table drop", false);
 	}
@@ -510,13 +545,18 @@ void MdSqlGenerator::alter_table_in_place(duckdb::Connection& con, const table_d
 
 void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table,
                                  const std::vector<column_def>& requested_columns, const bool drop_columns) {
-	bool recreate_table = false;
-
 	auto absolute_table_name = table.to_escaped_string();
 	std::set<std::string> alter_types;
 	std::set<std::string> added_columns;
 	std::set<std::string> deleted_columns;
 	std::set<std::string> common_columns;
+	// Existing columns whose key membership changed; consumed in place in NotNull
+	// mode (empty in Strict mode, where key changes trigger a recreate).
+	std::set<std::string> key_added;
+	std::set<std::string> key_removed;
+	// True if the key set changes at all (a key column added, removed, or
+	// dropped). Only Strict mode reacts by recreating the table.
+	bool key_changed = false;
 
 	logger.info("    in MdSqlGenerator::alter_table for " + absolute_table_name);
 	const auto& existing_columns = describe_table(con, table);
@@ -542,7 +582,7 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 				deleted_columns.emplace(col.name);
 
 				if (col.primary_key) {
-					recreate_table = true;
+					key_changed = true;
 				}
 			} else {
 				logger.info("Source connector requested that table " + absolute_table_name + " column " + col.name +
@@ -551,15 +591,15 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 			}
 		} else if (new_col_it->second.primary_key != col.primary_key) {
 			logger.info("Altering primary key requested for column <" + new_col_it->second.name + ">");
-			recreate_table = true;
+			key_changed = true;
+			// Track the membership change so NotNull mode can toggle NOT NULL in place.
+			(new_col_it->second.primary_key ? key_added : key_removed).emplace(col.name);
 		} else if (new_col_it->second.type != col.type ||
 		           (new_col_it->second.type == duckdb::LogicalTypeId::DECIMAL &&
 		            (new_col_it->second.scale != col.scale || new_col_it->second.width != col.width))) {
 			alter_types.emplace(col.name);
 		}
 	}
-	logger.info("    inventoried columns; recreate_table = " + std::to_string(recreate_table) +
-	            "; num alter_types = " + std::to_string(alter_types.size()));
 
 	auto primary_key_added_it =
 	    std::find_if(added_columns.begin(), added_columns.end(), [&new_column_map](const std::string& column_name) {
@@ -567,8 +607,15 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 	    });
 	if (primary_key_added_it != added_columns.end()) {
 		logger.info("Adding primary key requested for column <" + *primary_key_added_it + ">");
-		recreate_table = true;
+		key_changed = true;
 	}
+
+	// An enforced PRIMARY KEY cannot be altered in place and must stay unique, so
+	// Strict mode recreates the table on any key change (and checks uniqueness).
+	// NotNull mode applies every key change in place via SET/DROP NOT NULL.
+	const bool recreate_table = pk_mode == PrimaryKeyMode::Strict && key_changed;
+	logger.info("    inventoried columns; recreate_table = " + std::to_string(recreate_table) +
+	            "; num alter_types = " + std::to_string(alter_types.size()));
 
 	// list added columns in order
 	std::vector<column_def> added_columns_ordered;
@@ -603,7 +650,8 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 		alter_table_recreate(con, table, all_columns, common_columns);
 	} else {
 		logger.info("    altering table in place");
-		alter_table_in_place(con, table, added_columns_ordered, deleted_columns, alter_types, new_column_map);
+		alter_table_in_place(con, table, added_columns_ordered, deleted_columns, alter_types, new_column_map, key_added,
+		                     key_removed);
 	}
 
 	transaction_context.Commit();
@@ -613,22 +661,43 @@ void MdSqlGenerator::upsert(duckdb::Connection& con, const table_def& table, con
                             const std::vector<const column_def*>& columns_pk,
                             const std::vector<const column_def*>& columns_regular) {
 
-	auto full_column_list = make_full_column_list(columns_pk, columns_regular);
 	const std::string absolute_table_name = table.to_escaped_string();
+
+	// Fivetran guarantees a primary key for every synced table, but stay
+	// defensive: without key columns there is nothing to match on, so fall back
+	// to a plain insert (matching the historical behaviour of this method).
+	if (columns_pk.empty()) {
+		insert(con, table, staging_table_name, columns_pk, columns_regular);
+		return;
+	}
+
+	// We upsert with MERGE INTO rather than INSERT ... ON CONFLICT so that no
+	// UNIQUE/PRIMARY KEY constraint is required on the target (ON CONFLICT needs
+	// one; MERGE matches on the ON condition). This is what lets upserts work
+	// both in the default NOT NULL mode and on backends like DuckLake that do not
+	// support key constraints.
+	std::vector<const column_def*> all_columns;
+	all_columns.reserve(columns_pk.size() + columns_regular.size());
+	all_columns.insert(all_columns.end(), columns_pk.begin(), columns_pk.end());
+	all_columns.insert(all_columns.end(), columns_regular.begin(), columns_regular.end());
+
 	std::ostringstream sql;
-	sql << "INSERT INTO " << absolute_table_name << "(" << full_column_list << ") SELECT " << full_column_list
-	    << " FROM " << staging_table_name;
+	sql << "MERGE INTO " << absolute_table_name << " AS target USING " << staging_table_name << " AS source ON "
+	    << primary_key_join(columns_pk, "target", "source");
 
-	if (!columns_pk.empty()) {
-		sql << " ON CONFLICT (";
-		join(sql, columns_pk, to_name);
-		sql << " ) DO UPDATE SET ";
-
+	if (!columns_regular.empty()) {
+		sql << " WHEN MATCHED THEN UPDATE SET ";
 		join(sql, columns_regular, [](std::ostream& out, const column_def* column) {
 			const auto quoted_col = column->quoted();
-			out << quoted_col << " = excluded." << quoted_col;
+			out << quoted_col << " = source." << quoted_col;
 		});
 	}
+
+	sql << " WHEN NOT MATCHED THEN INSERT (";
+	join(sql, all_columns, to_name);
+	sql << ") VALUES (";
+	join(sql, all_columns, [](std::ostream& out, const column_def* column) { out << "source." << column->quoted(); });
+	sql << ")";
 
 	auto query = sql.str();
 	logger.info("upsert: " + query);
@@ -1023,7 +1092,7 @@ void MdSqlGenerator::copy_table(duckdb::Connection& con, const table_def& from_t
 	combined_pks.insert(combined_pks.end(), additional_pks.begin(), additional_pks.end());
 
 	add_defaults(con, columns, to_table, log_prefix);
-	add_pks(con, combined_pks, to_table, log_prefix);
+	apply_key_constraint(con, combined_pks, to_table, log_prefix);
 
 	transaction_context.Commit();
 }
@@ -1052,8 +1121,8 @@ void MdSqlGenerator::add_defaults(duckdb::Connection& con, const std::vector<col
 	}
 }
 
-void MdSqlGenerator::add_pks(duckdb::Connection& con, const std::vector<const column_def*>& columns_pk,
-                             const table_def& table, const std::string& log_prefix) const {
+void MdSqlGenerator::apply_key_constraint(duckdb::Connection& con, const std::vector<const column_def*>& columns_pk,
+                                          const table_def& table, const std::string& log_prefix) const {
 	if (columns_pk.empty()) {
 		// All modes require a primary key to be present, because we cannot switch
 		// to history mode without a primary key. Fivetran has confirmed that the
@@ -1062,14 +1131,29 @@ void MdSqlGenerator::add_pks(duckdb::Connection& con, const std::vector<const co
 		throw std::runtime_error("No primary keys found for table " + table.to_escaped_string());
 	}
 
-	// Add the right primary key. Note that "CREATE TABLE AS SELECT" does not
-	// add any primary key constraints.
-	std::ostringstream sql;
+	// Note that "CREATE TABLE AS SELECT" does not carry over any constraints, so
+	// the key columns have to be (re)marked here.
+	if (pk_mode == PrimaryKeyMode::Strict) {
+		std::ostringstream sql;
+		sql << "ALTER TABLE " << table.to_escaped_string() << " ADD PRIMARY KEY (";
+		join(sql, columns_pk, to_name);
+		sql << ");";
+		run_query(con, log_prefix, sql.str(), "Could not add pks to table " + table.to_escaped_string());
+	} else {
+		for (const auto& col : columns_pk) {
+			set_not_null(con, table, col->name, true, log_prefix);
+		}
+	}
+}
 
-	sql << "ALTER TABLE " << table.to_escaped_string() << " ADD PRIMARY KEY (";
-	join(sql, columns_pk, to_name);
-	sql << ");";
-	run_query(con, log_prefix, sql.str(), "Could not add pks to table " + table.to_escaped_string());
+void MdSqlGenerator::set_not_null(duckdb::Connection& con, const table_def& table, const std::string& column_name,
+                                  const bool not_null, const std::string& log_prefix) const {
+	std::ostringstream sql;
+	sql << "ALTER TABLE " << table.to_escaped_string() << " ALTER COLUMN "
+	    << KeywordHelper::WriteQuoted(column_name, '"') << (not_null ? " SET NOT NULL" : " DROP NOT NULL");
+	run_query(con, log_prefix, sql.str(),
+	          "Could not " + std::string(not_null ? "set" : "drop") + " NOT NULL on column <" + column_name +
+	              "> of table <" + table.to_escaped_string() + ">");
 }
 
 void MdSqlGenerator::copy_column(duckdb::Connection& con, const table_def& table, const std::string& from_column_name,
@@ -1437,7 +1521,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(duckdb::Connection& con, con
 		}
 	}
 	add_defaults(con, new_columns, temp_table, "migrate_history_to_soft_delete set_default");
-	add_pks(con, columns_pk, temp_table, "migrate_history_to_soft_delete set_pk");
+	apply_key_constraint(con, columns_pk, temp_table, "migrate_history_to_soft_delete set_pk");
 
 	// Swap the original and temporary table
 	drop_table(con, table, "migrate_history_to_soft_delete drop");
@@ -1491,7 +1575,7 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection& con, const tabl
 	add_defaults(con, new_columns, temp_table, "migrate_history_to_live set_default");
 
 	if (!keep_deleted_rows) {
-		add_pks(con, columns_pk, temp_table, "migrate_history_to_live add_pks");
+		apply_key_constraint(con, columns_pk, temp_table, "migrate_history_to_live apply_key_constraint");
 	}
 
 	// Swap the original and temporary table

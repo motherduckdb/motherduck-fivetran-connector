@@ -11,9 +11,26 @@
 #include <string>
 #include <vector>
 
+/// Selects the key columns of a table into `columns_pk` (and, if provided, the
+/// remaining columns into `columns_regular`).
+///
+/// Invariant: a "key column" is exactly a column whose `column_def.primary_key`
+/// is set. On the wire this comes from Fivetran; on readback `describe_table()`
+/// reconstructs it from `NOT is_nullable`, because the connector marks its key
+/// columns (and only those) NOT NULL. `ignored_primary_key` lets callers exclude
+/// a column that is a key in the destination but should not be treated as one
+/// here (used for `_fivetran_start` in history mode).
 void find_primary_keys(const std::vector<column_def>& cols, std::vector<const column_def*>& columns_pk,
                        std::vector<const column_def*>* columns_regular = nullptr,
                        const std::string& ignored_primary_key = "");
+
+/// Controls how key columns are enforced in the destination.
+/// - NotNull: key columns are declared NOT NULL only (no uniqueness). This is
+///   the default; it works with DuckLake and lets the key set change over
+///   non-unique existing data.
+/// - Strict: an enforced PRIMARY KEY constraint is added. Upserts still use
+///   MERGE INTO regardless of the mode.
+enum class PrimaryKeyMode { NotNull, Strict };
 
 /// join() makes it easy to reduce a generic vector to a string with a specified pattern:
 ///
@@ -78,7 +95,7 @@ std::string join(const std::vector<T>& vec, const F& map = {}) {
 class MdSqlGenerator {
 
 public:
-	explicit MdSqlGenerator(mdlog::Logger& logger_);
+	explicit MdSqlGenerator(mdlog::Logger& logger_, PrimaryKeyMode pk_mode_ = PrimaryKeyMode::NotNull);
 
 	/// Generates a randomized table name which is not used yet in the database
 	std::string generate_temp_table_name(duckdb::Connection& con, const std::string& prefix) const;
@@ -212,8 +229,13 @@ public:
 	                                    const std::string& soft_deleted_column);
 	void add_defaults(duckdb::Connection& con, const std::vector<column_def>& columns, const table_def& table,
 	                  const std::string& log_prefix);
-	void add_pks(duckdb::Connection& con, const std::vector<const column_def*>& columns_pk, const table_def& table,
-	             const std::string& log_prefix) const;
+
+	/// Materializes the key-column constraint on a table that was just created
+	/// via CTAS (which carries no constraints). In Strict mode this adds a
+	/// PRIMARY KEY; otherwise it marks each key column NOT NULL. Throws if there
+	/// are no key columns, since every sync mode requires at least one.
+	void apply_key_constraint(duckdb::Connection& con, const std::vector<const column_def*>& columns_pk,
+	                          const table_def& table, const std::string& log_prefix) const;
 
 	// Switch between sync modes: history to soft-delete. This means keeping only
 	// the last entries based on per MAX("_fivetran_start") per primary key,
@@ -245,16 +267,24 @@ public:
 
 private:
 	mdlog::Logger& logger;
+	PrimaryKeyMode pk_mode;
 
 	void run_query(duckdb::Connection& con, const std::string& log_prefix, const std::string& query,
 	               const std::string& error_message) const;
+
+	/// Emits `ALTER TABLE ... ALTER COLUMN <col> SET/DROP NOT NULL`.
+	void set_not_null(duckdb::Connection& con, const table_def& table, const std::string& column_name, bool not_null,
+	                  const std::string& log_prefix) const;
 	void alter_table_recreate(duckdb::Connection& con, const table_def& table,
 	                          const std::vector<column_def>& all_columns_in_new_table, const std::set<std::string>& common_columns);
 	void check_no_duplicate_primary_keys(duckdb::Connection& con, const table_def& table,
 	                                     const std::vector<column_def>& all_columns_in_new_table,
 	                                     const std::set<std::string>& existing_columns_in_new_table) const;
+	// `key_added`/`key_removed` name existing columns whose key membership changed
+	// (used only in NotNull mode to toggle NOT NULL in place).
 	void alter_table_in_place(duckdb::Connection& con, const table_def& table,
 	                          const std::vector<column_def>& added_columns,
 	                          const std::set<std::string>& deleted_columns, const std::set<std::string>& alter_types,
-	                          const std::map<std::string, column_def>& new_column_map);
+	                          const std::map<std::string, column_def>& new_column_map,
+	                          const std::set<std::string>& key_added, const std::set<std::string>& key_removed);
 };

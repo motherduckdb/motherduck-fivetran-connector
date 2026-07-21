@@ -144,6 +144,11 @@ std::uint32_t get_max_record_size(const google::protobuf::Map<std::string, std::
 
 	return max_record_size;
 }
+
+PrimaryKeyMode get_pk_mode(const google::protobuf::Map<std::string, std::string>& configuration) {
+	const bool strict = config::find_bool_property(configuration, config::PROP_STRICT_PRIMARY_KEYS, false);
+	return strict ? PrimaryKeyMode::Strict : PrimaryKeyMode::NotNull;
+}
 } // namespace
 
 grpc::Status DestinationSdkImpl::ConfigurationForm(::grpc::ServerContext*,
@@ -182,6 +187,19 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(::grpc::ServerContext*,
 	max_record_size_field.set_text_field(fivetran_sdk::v2::PlainText);
 	max_record_size_field.set_required(false);
 	response->add_fields()->CopyFrom(max_record_size_field);
+
+	fivetran_sdk::v2::FormField strict_primary_keys_field;
+	strict_primary_keys_field.set_name(config::PROP_STRICT_PRIMARY_KEYS);
+	strict_primary_keys_field.set_label("Strict Primary Keys");
+	strict_primary_keys_field.set_description(
+	    "When enabled, tables are created with an enforced PRIMARY KEY constraint. Leave this OFF (the "
+	    "default) to mark primary key columns NOT NULL without a uniqueness constraint. This is required "
+	    "for backends that do not support primary keys (such as DuckLake), and it lets the primary key "
+	    "change over existing data that is not unique on the new key. Upserts use MERGE INTO either way.");
+	strict_primary_keys_field.mutable_toggle_field();
+	strict_primary_keys_field.set_required(false);
+	strict_primary_keys_field.set_default_value("false");
+	response->add_fields()->CopyFrom(strict_primary_keys_field);
 
 	for (const auto& test_case : config_tester::get_test_cases()) {
 		auto connection_test = response->add_tests();
@@ -271,7 +289,7 @@ grpc::Status DestinationSdkImpl::CreateTable(::grpc::ServerContext*,
 	auto& logger = ctx->GetLogger();
 
 	try {
-		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
+		auto sql_generator = std::make_unique<MdSqlGenerator>(logger, get_pk_mode(request->configuration()));
 
 		std::string db_name = config::find_property(request->configuration(), config::PROP_DATABASE);
 		auto schema_name = get_schema_name(request);
@@ -312,7 +330,7 @@ grpc::Status DestinationSdkImpl::AlterTable(::grpc::ServerContext*,
 		std::string db_name = config::find_property(request->configuration(), config::PROP_DATABASE);
 		table_def table_name {db_name, get_schema_name(request), request->table().name()};
 
-		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
+		auto sql_generator = std::make_unique<MdSqlGenerator>(logger, get_pk_mode(request->configuration()));
 		sql_generator->alter_table(con, table_name, get_duckdb_columns(request->table().columns()),
 		                           request->drop_columns());
 		response->set_success(true);
@@ -698,7 +716,7 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 		}
 
 		const std::string db_name = config::find_property(request->configuration(), config::PROP_DATABASE);
-		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
+		auto sql_generator = std::make_unique<MdSqlGenerator>(logger, get_pk_mode(request->configuration()));
 
 		table_def table {db_name, schema_name, table_name};
 		logger.info("Endpoint <Migrate>: schema <" + schema_name + ">, table <" + table_name + ">");
