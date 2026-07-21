@@ -30,13 +30,13 @@ std::optional<std::string> find_optional_property(const MapLike& config, const s
 	return std::make_optional(it->second);
 }
 
-/// Reads a boolean-valued property (toggle field). Anything other than "true" (including a missing or
-/// empty value) resolves to `false`.
+/// Reads a boolean-valued property (toggle field). Only the string "true" is interpreted as true.
+/// A missing field or empty value resolved to the provided `default_value` to allow keeping the existing behavior unchanged.
 template <typename MapLike>
-bool find_bool_property(const MapLike& config, const std::string& property_name) {
+bool find_bool_property(const MapLike& config, const std::string& property_name, bool default_value) {
 	const auto it = config.find(property_name);
 	if (it == config.end() || it->second.empty()) {
-		return false;
+		return default_value;
 	}
 	return it->second == "true";
 }

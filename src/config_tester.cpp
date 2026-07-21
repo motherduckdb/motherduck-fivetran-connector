@@ -72,7 +72,7 @@ TestResult run_database_type_test(duckdb::Connection& con, const google::protobu
 		                             "\" is a read-only MotherDuck share. Please use a "
 		                             "writable database for Fivetran ingestion jobs.");
 	}
-	if (db_type == "motherduck ducklake" && config::find_bool_property(configuration, config::PROP_STRICT_PRIMARY_KEYS) == true) {
+	if (db_type == "motherduck ducklake" && config::find_bool_property(configuration, config::PROP_STRICT_PRIMARY_KEYS, true) == true) {
 		return TestResult(false, "Strict primary keys cannot be enabled when using a Ducklake database. Please turn off the \"Strict Primary Keys\" option.");
 	}
 	if (db_type.find("motherduck") == std::string::npos) {
