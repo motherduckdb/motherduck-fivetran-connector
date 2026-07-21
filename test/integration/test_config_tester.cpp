@@ -10,6 +10,17 @@
 
 using namespace test::constants;
 
+namespace {
+void ensure_workspace_mode(duckdb::Connection& con) {
+	const auto attach_mode_res = con.Query("SELECT current_setting('motherduck_attach_mode')");
+	REQUIRE_NO_FAIL(attach_mode_res);
+	REQUIRE(attach_mode_res->RowCount() == 1);
+	REQUIRE(attach_mode_res->ColumnCount() == 1);
+	const auto attach_mode = attach_mode_res->GetValue(0, 0).ToString();
+	REQUIRE(attach_mode == "workspace");
+}
+} // namespace
+
 TEST_CASE("Test fails when database missing", "[integration][configtest]") {
 	::fivetran_sdk::v2::TestRequest request;
 	(*request.mutable_configuration())["motherduck_token"] = "12345";
@@ -65,16 +76,9 @@ TEST_CASE("Test endpoint authentication test succeeds when everything is in orde
 
 TEST_CASE("Test fails when motherduck_database is a share", "[integration][configtest]") {
 	auto con = get_test_connection(MD_TOKEN);
+	ensure_workspace_mode(*con);
+
 	const std::string share_name = "fivetran_test_share";
-
-	// Make sure we are in workspace attach mode
-	const auto attach_mode_res = con->Query("SELECT current_setting('motherduck_attach_mode')");
-	REQUIRE_NO_FAIL(attach_mode_res);
-	REQUIRE(attach_mode_res->RowCount() == 1);
-	REQUIRE(attach_mode_res->ColumnCount() == 1);
-	const auto attach_mode = attach_mode_res->GetValue(0, 0).ToString();
-	REQUIRE(attach_mode == "workspace");
-
 	const auto create_res = con->Query("CREATE OR REPLACE SHARE " + share_name + " FROM " + TEST_DATABASE_NAME);
 	REQUIRE_NO_FAIL(create_res);
 	REQUIRE(create_res->RowCount() == 1);
@@ -86,7 +90,7 @@ TEST_CASE("Test fails when motherduck_database is a share", "[integration][confi
 
 	::fivetran_sdk::v2::TestRequest request;
 	request.set_name(config_tester::TEST_DATABASE_TYPE);
-	(*request.mutable_configuration())["motherduck_database"] = "fivetran_test_share";
+	(*request.mutable_configuration())["motherduck_database"] = share_name;
 	(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
 
 	DestinationSdkImpl service;
@@ -99,6 +103,32 @@ TEST_CASE("Test fails when motherduck_database is a share", "[integration][confi
 	REQUIRE_NO_FAIL(status);
 	CAPTURE(response.failure());
 	REQUIRE_THAT(response.failure(), Catch::Matchers::ContainsSubstring("is a read-only MotherDuck share"));
+}
+
+TEST_CASE("Test fails when motherduck_database is Ducklake and strict primary keys are enabled", "[integration][configtest]") {
+	auto con = get_test_connection(MD_TOKEN);
+	ensure_workspace_mode(*con);
+
+	const std::string db_name = "fivetran_test_ducklake";
+	const auto create_res = con->Query("CREATE OR REPLACE DATABASE " + db_name + " (TYPE DUCKLAKE)");
+	REQUIRE_NO_FAIL(create_res);
+
+	::fivetran_sdk::v2::TestRequest request;
+	request.set_name(config_tester::TEST_DATABASE_TYPE);
+	auto& request_config = *request.mutable_configuration();
+	request_config["motherduck_database"] = db_name;
+	request_config["motherduck_token"] = MD_TOKEN;
+	request_config["strict_primary_keys"] = "true";
+
+	DestinationSdkImpl service;
+	::fivetran_sdk::v2::TestResponse response;
+	const auto status = service.Test(nullptr, &request, &response);
+
+	CHECK_NO_FAIL(con->Query("DROP DATABASE " + db_name));
+
+	REQUIRE_NO_FAIL(status);
+	CAPTURE(response.failure());
+	REQUIRE_THAT(response.failure(), Catch::Matchers::ContainsSubstring("Strict primary keys cannot be enabled when using a Ducklake database"));
 }
 
 TEST_CASE("Test config tester for max_record_size values", "[integration][configtest]") {

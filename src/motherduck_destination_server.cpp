@@ -183,6 +183,18 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(::grpc::ServerContext*,
 	max_record_size_field.set_required(false);
 	response->add_fields()->CopyFrom(max_record_size_field);
 
+	fivetran_sdk::v2::FormField strict_primary_keys_field;
+	strict_primary_keys_field.set_name(config::PROP_STRICT_PRIMARY_KEYS);
+	strict_primary_keys_field.set_label("Strict Primary Keys");
+	strict_primary_keys_field.set_description(
+		"When enabled, tables are created with an enforced PRIMARY KEY constraint. Consequently, an index has to be built and maintained on the target table. Leave this OFF (the "
+		"default) to mark primary key columns NOT NULL without a uniqueness constraint. This is helpful if uniqueness is already enforced at the source, and required "
+		"for backends that do not support primary keys (such as DuckLake).");
+	strict_primary_keys_field.mutable_toggle_field();
+	strict_primary_keys_field.set_required(false);
+	strict_primary_keys_field.set_default_value("false");
+	response->add_fields()->CopyFrom(strict_primary_keys_field);
+
 	for (const auto& test_case : config_tester::get_test_cases()) {
 		auto connection_test = response->add_tests();
 		connection_test->set_name(test_case.name);
