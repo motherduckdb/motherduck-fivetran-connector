@@ -23,9 +23,15 @@ public:
 	mdlog::Logger& GetLogger() {
 		return logger;
 	}
+	/// Get the name of the target database for the current request
+	const std::string& GetDBName() const {
+		return db_name;
+	}
 
 private:
 	std::string endpoint_name;
+	std::string db_name;
+	std::string md_token;
 	duckdb::Connection con;
 	// Logger has to have a shorter lifetime than the connection
 	mdlog::Logger logger;

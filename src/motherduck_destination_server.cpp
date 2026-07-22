@@ -211,9 +211,8 @@ grpc::Status DestinationSdkImpl::DescribeTable(::grpc::ServerContext*,
 	auto& logger = ctx->GetLogger();
 
 	try {
-		std::string db_name = config::find_property(request->configuration(), config::PROP_DATABASE);
 		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
-		table_def table_name {db_name, get_schema_name(request), get_table_name(request)};
+		table_def table_name {ctx->GetDBName(), get_schema_name(request), get_table_name(request)};
 		logger.info("Endpoint <DescribeTable>: schema name <" + table_name.schema_name + ">");
 		logger.info("Endpoint <DescribeTable>: table name <" + table_name.table_name + ">");
 		if (!sql_generator->table_exists(con, table_name)) {
@@ -273,11 +272,10 @@ grpc::Status DestinationSdkImpl::CreateTable(::grpc::ServerContext*,
 	try {
 		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
-		std::string db_name = config::find_property(request->configuration(), config::PROP_DATABASE);
 		auto schema_name = get_schema_name(request);
-		sql_generator->create_schema_if_not_exists_with_retries(con, db_name, schema_name);
+		sql_generator->create_schema_if_not_exists_with_retries(con, ctx->GetDBName(), schema_name);
 
-		const table_def table {db_name, schema_name, request->table().name()};
+		const table_def table {ctx->GetDBName(), schema_name, request->table().name()};
 		const auto cols = get_duckdb_columns(request->table().columns());
 		sql_generator->create_table(con, table, cols, {});
 		response->set_success(true);
@@ -309,8 +307,7 @@ grpc::Status DestinationSdkImpl::AlterTable(::grpc::ServerContext*,
 	auto& logger = ctx->GetLogger();
 
 	try {
-		std::string db_name = config::find_property(request->configuration(), config::PROP_DATABASE);
-		table_def table_name {db_name, get_schema_name(request), request->table().name()};
+		table_def table_name {ctx->GetDBName(), get_schema_name(request), request->table().name()};
 
 		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 		sql_generator->alter_table(con, table_name, get_duckdb_columns(request->table().columns()),
@@ -343,8 +340,7 @@ grpc::Status DestinationSdkImpl::Truncate(::grpc::ServerContext*, const ::fivetr
 	auto& logger = ctx->GetLogger();
 
 	try {
-		std::string db_name = config::find_property(request->configuration(), config::PROP_DATABASE);
-		table_def table_name {db_name, get_schema_name(request), get_table_name(request)};
+		table_def table_name {ctx->GetDBName(), get_schema_name(request), get_table_name(request)};
 		if (request->synced_column().empty()) {
 			throw std::invalid_argument("Synced column is required");
 		}
@@ -391,10 +387,9 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 	try {
 		auto schema_name = get_schema_name(request);
 
-		const std::string db_name = config::find_property(request->configuration(), config::PROP_DATABASE);
 		const auto max_record_size = get_max_record_size(request->configuration(), logger);
 
-		table_def table_name {db_name, get_schema_name(request), request->table().name()};
+		table_def table_name {ctx->GetDBName(), get_schema_name(request), request->table().name()};
 		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
 		const auto cols = get_duckdb_columns(request->table().columns());
@@ -494,10 +489,9 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 	try {
 		auto schema_name = get_schema_name(request);
 
-		const std::string db_name = config::find_property(request->configuration(), config::PROP_DATABASE);
 		const auto max_record_size = get_max_record_size(request->configuration(), logger);
 
-		table_def table_name {db_name, get_schema_name(request), request->table().name()};
+		table_def table_name {ctx->GetDBName(), get_schema_name(request), request->table().name()};
 
 		const auto cols = get_duckdb_columns(request->table().columns());
 		std::vector<const column_def*> columns_pk;
@@ -697,7 +691,7 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 			throw std::invalid_argument("Table name cannot be empty");
 		}
 
-		const std::string db_name = config::find_property(request->configuration(), config::PROP_DATABASE);
+		const std::string& db_name = ctx->GetDBName();
 		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
 		table_def table {db_name, schema_name, table_name};
