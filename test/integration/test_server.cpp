@@ -19,10 +19,11 @@ TEST_CASE("ConfigurationForm", "[integration][config]") {
 	auto status = service.ConfigurationForm(nullptr, &request, &response);
 	REQUIRE_NO_FAIL(status);
 
-	REQUIRE(response.fields_size() == 3);
+	REQUIRE(response.fields_size() == 4);
 	REQUIRE(response.fields(0).name() == "motherduck_token");
 	REQUIRE(response.fields(1).name() == "motherduck_database");
 	REQUIRE(response.fields(2).name() == "max_record_size");
+	REQUIRE(response.fields(3).name() == "strict_primary_keys");
 
 	REQUIRE(response.tests_size() == 4);
 }
