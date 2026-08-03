@@ -167,6 +167,26 @@ bool MdSqlGenerator::table_exists(duckdb::Connection& con, const table_def& tabl
 	return materialized_result->RowCount() > 0;
 }
 
+bool MdSqlGenerator::table_has_primary_key(duckdb::Connection& con, const table_def& table) const {
+	const std::string query = "SELECT 1 FROM duckdb_constraints() WHERE "
+	                          "database_name=? AND schema_name=? AND table_name=? AND constraint_type='PRIMARY KEY'";
+	const std::string err_prefix =
+	    "Could not check for a primary key constraint on <" + table.to_escaped_string() + ">";
+	const auto statement = con.Prepare(query);
+	if (statement->HasError()) {
+		throw std::runtime_error(err_prefix + " (at bind step): " + statement->GetError());
+	}
+	duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name), duckdb::Value(table.schema_name),
+	                                        duckdb::Value(table.table_name)};
+	auto result = statement->Execute(params, false);
+	if (result->HasError()) {
+		result->ThrowError(err_prefix);
+	}
+	const auto materialized_result =
+	    duckdb::unique_ptr_cast<duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
+	return materialized_result->RowCount() > 0;
+}
+
 namespace {
 duckdb::unique_ptr<duckdb::MaterializedQueryResult> create_schema_if_not_exists(duckdb::Connection& con,
                                                                                 const std::string& db_name,
@@ -443,9 +463,14 @@ void MdSqlGenerator::check_no_duplicate_primary_keys(duckdb::Connection& con, co
 void MdSqlGenerator::alter_table_recreate(duckdb::Connection& con, const table_def& table,
                                           const std::vector<column_def>& all_columns_in_new_table,
                                           const std::set<std::string>& existing_columns_in_new_table) {
-	// Bail out before any DDL if the new primary key would not be unique over the
-	// existing data; the surrounding transaction rolls back cleanly on throw.
-	check_no_duplicate_primary_keys(con, table, all_columns_in_new_table, existing_columns_in_new_table);
+	// Only strict mode re-adds an enforced PRIMARY KEY, so only strict mode needs
+	// the new key to be unique over the existing data. In NotNull mode a recreate
+	// exists solely to drop a (legacy) PK, and the rebuilt table has no uniqueness
+	// constraint, so duplicates are tolerated. Bail out before any DDL on a strict
+	// violation; the surrounding transaction rolls back cleanly on throw.
+	if (pk_mode == PrimaryKeyMode::Strict) {
+		check_no_duplicate_primary_keys(con, table, all_columns_in_new_table, existing_columns_in_new_table);
+	}
 
 	long timestamp =
 	    std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -610,10 +635,14 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 		key_changed = true;
 	}
 
-	// An enforced PRIMARY KEY cannot be altered in place and must stay unique, so
-	// Strict mode recreates the table on any key change (and checks uniqueness).
-	// NotNull mode applies every key change in place via SET/DROP NOT NULL.
-	const bool recreate_table = pk_mode == PrimaryKeyMode::Strict && key_changed;
+	// An enforced PRIMARY KEY cannot be altered or dropped in place, so a key
+	// change needs a table recreate whenever the destination table carries one:
+	// always in strict mode, and in NotNull mode when the table still has a legacy
+	// PK from before this connector stopped creating them (a plain DROP COLUMN of a
+	// key column fails, and a widened key would keep over-constraining inserts
+	// against the stale PK). Otherwise NotNull mode applies the key change in place
+	// via SET/DROP NOT NULL. Only probe the catalog when a key actually changed.
+	const bool recreate_table = key_changed && (pk_mode == PrimaryKeyMode::Strict || table_has_primary_key(con, table));
 	logger.info("    inventoried columns; recreate_table = " + std::to_string(recreate_table) +
 	            "; num alter_types = " + std::to_string(alter_types.size()));
 
@@ -631,19 +660,18 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 
 	if (recreate_table) {
 		logger.info("    recreating table");
-		// preserve the order of the original columns
-		auto all_columns = existing_columns;
-
-		// replace definitions of existing columns with the new ones if available
-		for (size_t i = 0; i < all_columns.size(); i++) {
-			const auto& new_col_it = new_column_map.find(all_columns[i].name);
-			if (new_col_it != new_column_map.end()) {
-				all_columns[i] = new_col_it->second;
+		// Rebuild the column list in the original order: drop deleted columns,
+		// apply updated definitions for the ones that remain, then append the newly
+		// added columns.
+		std::vector<column_def> all_columns;
+		all_columns.reserve(existing_columns.size() + added_columns_ordered.size());
+		for (const auto& col : existing_columns) {
+			if (deleted_columns.find(col.name) != deleted_columns.end()) {
+				continue;
 			}
+			const auto new_col_it = new_column_map.find(col.name);
+			all_columns.push_back(new_col_it != new_column_map.end() ? new_col_it->second : col);
 		}
-
-		// add new columns to the end of the table, in order they appear in the
-		// request
 		for (const auto& col : added_columns_ordered) {
 			all_columns.push_back(col);
 		}
@@ -1151,9 +1179,28 @@ void MdSqlGenerator::set_not_null(duckdb::Connection& con, const table_def& tabl
 	std::ostringstream sql;
 	sql << "ALTER TABLE " << table.to_escaped_string() << " ALTER COLUMN "
 	    << KeywordHelper::WriteQuoted(column_name, '"') << (not_null ? " SET NOT NULL" : " DROP NOT NULL");
-	run_query(con, log_prefix, sql.str(),
-	          "Could not " + std::string(not_null ? "set" : "drop") + " NOT NULL on column <" + column_name +
-	              "> of table <" + table.to_escaped_string() + ">");
+
+	const auto query = sql.str();
+	logger.info(log_prefix + ": " + query);
+	const auto result = con.Query(query);
+	if (!result->HasError()) {
+		return;
+	}
+
+	const std::string& error_msg = result->GetError();
+
+	// An existing column can only join the primary key if every row has a value
+	// for it. Only the source can resolve that, so hand the user a task rather
+	// than failing the sync with a bare constraint error.
+	if (not_null && error_msg.find("NOT NULL constraint failed") != std::string::npos) {
+		throw md_error::RecoverableError(
+		    "Column \"" + column_name + "\" of " + table.schema_name + "." + table.table_name +
+		    " cannot be made part of the primary key because it contains NULL values. To proceed, populate or "
+		    "remove the rows where it is NULL, or drop the table and trigger a historical re-sync.");
+	}
+
+	throw std::runtime_error("Could not " + std::string(not_null ? "set" : "drop") + " NOT NULL on column <" +
+	                         column_name + "> of table <" + table.to_escaped_string() + ">: " + error_msg);
 }
 
 void MdSqlGenerator::copy_column(duckdb::Connection& con, const table_def& table, const std::string& from_column_name,

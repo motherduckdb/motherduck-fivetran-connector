@@ -105,6 +105,12 @@ public:
 
 	bool table_exists(duckdb::Connection& con, const table_def& table) const;
 
+	// Whether the destination table carries an enforced PRIMARY KEY constraint.
+	// Tables created before this connector switched to NOT NULL keys still have
+	// one; a key change on such a table must recreate it (the PK cannot be altered
+	// or dropped in place).
+	bool table_has_primary_key(duckdb::Connection& con, const table_def& table) const;
+
 	void create_table(duckdb::Connection& con, const table_def& table, const std::vector<column_def>& all_columns,
 	                  const std::set<std::string>& columns_with_default_value);
 
