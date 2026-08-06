@@ -783,8 +783,8 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 	}
 
 	{
-		// Alter Table to drop a primary key column -- should be a no-op as dropping
-		// columns is not allowed
+		// Alter Table to drop a primary key column. The column itself survives, as
+		// dropping columns is not allowed, but it stops being part of the primary key.
 		::fivetran_sdk::v2::AlterTableRequest request;
 
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
@@ -804,7 +804,8 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 		REQUIRE(response.table().columns_size() == 3);
 		check_column(response, 0, "id", ::fivetran_sdk::v2::DataType::STRING, true);
 		check_column(response, 1, "name", ::fivetran_sdk::v2::DataType::STRING, true);
-		check_column(response, 2, "id_new", ::fivetran_sdk::v2::DataType::INT, true);
+		// Kept, but no longer a key column: the request no longer lists it.
+		check_column(response, 2, "id_new", ::fivetran_sdk::v2::DataType::INT, false);
 	}
 
 	{
@@ -876,7 +877,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 		REQUIRE(response.table().columns_size() == 7);
 		check_column(response, 0, "id", ::fivetran_sdk::v2::DataType::STRING, true);
 		check_column(response, 1, "name", ::fivetran_sdk::v2::DataType::STRING, true);
-		check_column(response, 2, "id_new", ::fivetran_sdk::v2::DataType::INT, true);
+		check_column(response, 2, "id_new", ::fivetran_sdk::v2::DataType::INT, false);
 		check_column(response, 3, "id_int", ::fivetran_sdk::v2::DataType::LONG, false); // this type got updated
 		check_column(response, 4, "id_varchar", ::fivetran_sdk::v2::DataType::STRING, true);
 		check_column(response, 5, "id_date", ::fivetran_sdk::v2::DataType::NAIVE_DATE, true);
@@ -1472,8 +1473,9 @@ TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") 
 	verifyTableStructure(true);
 
 	{
-		// Alter Table to drop a primary key column -- no-op because columns must
-		// not be deleted
+		// Alter Table to drop a primary key column -- the column itself is retained
+		// because columns must not be deleted, but it stops being a key column,
+		// which recreates the table
 		::fivetran_sdk::v2::AlterTableRequest request;
 
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
@@ -1485,13 +1487,12 @@ TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") 
 		REQUIRE_NO_FAIL(status);
 	}
 
-	verifyTableStructure(true);
+	verifyTableStructure(false); // "id" lost its key status; the column is still there
 
 	{
-		// Alter Table to change the type on a primary key column and drop the
-		// regular column Still no-op but needs a separate test because changing
-		// primary key status results in table recreation, so could accidentally
-		// cause a column to be dropped
+		// Alter Table sending the (by now regular) primary key column and dropping
+		// the regular column. Still a no-op, but needs a separate test because a
+		// recreate could accidentally cause a column to be dropped
 		::fivetran_sdk::v2::AlterTableRequest request;
 
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
