@@ -513,13 +513,27 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 	bool recreate_table = false;
 
 	auto absolute_table_name = table.to_escaped_string();
-	std::set<std::string> alter_types;
+
+	// `existing` means "currently in the
+	// destination table" (from describe_table), `requested` means "named in the
+	// AlterTable request".
+	//
+	// requested, not existing -> added_columns
+	// not requested, existing -> deleted_columns if drop_columns, else retained_columns
+	// requested and existing  -> retained_columns, plus alter_types when the type
+	//                            changed
+
 	std::set<std::string> added_columns;
+	// Columns will only be inserted into deleted_columns if drop_columns == true
 	std::set<std::string> deleted_columns;
-	std::set<std::string> common_columns;
+	// Columns are retained if they are part of the requested columns or drop_columns == false
+	std::set<std::string> retained_columns;
+	// Columns with changed types. Used for the alter-in-place path only.
+	std::set<std::string> alter_types;
 
 	logger.info("    in MdSqlGenerator::alter_table for " + absolute_table_name);
 	const auto& existing_columns = describe_table(con, table);
+	// The requested columns by name, for lookups against the existing ones.
 	std::map<std::string, column_def> new_column_map;
 
 	// start by assuming all columns are new
@@ -532,14 +546,15 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 	for (const auto& col : existing_columns) {
 		const auto& new_col_it = new_column_map.find(col.name);
 
-		if (added_columns.erase(col.name)) {
-			common_columns.emplace(col.name);
-		}
+		// Every existing column is kept unless the drop below claims it.
+		added_columns.erase(col.name);
+		retained_columns.emplace(col.name);
 
 		if (new_col_it == new_column_map.end()) {
 			if (drop_columns) { // Only drop physical columns if drop_columns is true
 				                // (from the alter table request)
 				deleted_columns.emplace(col.name);
+				retained_columns.erase(col.name);
 
 				if (col.primary_key) {
 					recreate_table = true;
@@ -584,23 +599,22 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 
 	if (recreate_table) {
 		logger.info("    recreating table");
-		// preserve the order of the original columns
-		auto all_columns = existing_columns;
-
-		// replace definitions of existing columns with the new ones if available
-		for (size_t i = 0; i < all_columns.size(); i++) {
-			const auto& new_col_it = new_column_map.find(all_columns[i].name);
-			if (new_col_it != new_column_map.end()) {
-				all_columns[i] = new_col_it->second;
+		// Rebuild the column list in the original order: leave out the deleted
+		// columns, apply the updated definitions for the ones that remain, then
+		// append the newly added columns in the order the request lists them.
+		std::vector<column_def> all_columns;
+		all_columns.reserve(existing_columns.size() - deleted_columns.size() + added_columns_ordered.size());
+		for (const auto& col : existing_columns) {
+			if (deleted_columns.find(col.name) != deleted_columns.end()) {
+				continue;
 			}
+			const auto new_col_it = new_column_map.find(col.name);
+			all_columns.push_back(new_col_it != new_column_map.end() ? new_col_it->second : col);
 		}
-
-		// add new columns to the end of the table, in order they appear in the
-		// request
 		for (const auto& col : added_columns_ordered) {
 			all_columns.push_back(col);
 		}
-		alter_table_recreate(con, table, all_columns, common_columns);
+		alter_table_recreate(con, table, all_columns, retained_columns);
 	} else {
 		logger.info("    altering table in place");
 		alter_table_in_place(con, table, added_columns_ordered, deleted_columns, alter_types, new_column_map);
