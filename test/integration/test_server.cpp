@@ -837,14 +837,13 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 	}
 
 	{
-
 		// Make sure the defaults are set correctly
 		auto res = con->Query("SELECT * FROM " + TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 2);
 		REQUIRE(res->GetValue(0, 0) == "1");
 		REQUIRE(res->GetValue(1, 0) == "one");
-		REQUIRE(res->GetValue(2, 0) == 0);            // id_new that did not get deleted
+		REQUIRE(res->GetValue(2, 0) == 101);          // id_new that was kept, value and all
 		REQUIRE(res->GetValue(3, 0) == 0);            // id_int that got added
 		REQUIRE(res->GetValue(4, 0) == "");           // id_varchar that got added
 		REQUIRE(res->GetValue(5, 0) == "1970-01-01"); // id_date that got added
@@ -891,7 +890,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 		REQUIRE(res->RowCount() == 2);
 		REQUIRE(res->GetValue(0, 0) == "1");
 		REQUIRE(res->GetValue(1, 0) == "one");
-		REQUIRE(res->GetValue(2, 0) == 0);
+		REQUIRE(res->GetValue(2, 0) == 101); // id_new keeps its value across this recreate too
 		REQUIRE(res->GetValue(3, 0) == 0);
 		REQUIRE(res->GetValue(4, 0) == "");
 		REQUIRE(res->GetValue(5, 0) == "1970-01-01");
