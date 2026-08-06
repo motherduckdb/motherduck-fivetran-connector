@@ -20,8 +20,8 @@ TEST_CASE("AlterTable recreate preserves data in columns the request omits if dr
 	    con.Query("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR, to_be_deleted INTEGER)"));
 	REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1, 'a', 42)"));
 
-	// "extra" is absent from the request. The widened primary key triggers a recreate.
-	constexpr std::vector<column_def> requested = {
+	// "to_be_deleted" is absent from the request. The widened primary key triggers a recreate.
+	const std::vector<column_def> requested = {
 	    column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
 	    column_def {.name = "v", .type = duckdb::LogicalTypeId::VARCHAR},
 	    column_def {.name = "new_col", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true}};
