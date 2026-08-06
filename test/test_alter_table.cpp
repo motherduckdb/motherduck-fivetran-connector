@@ -17,7 +17,7 @@ TEST_CASE("AlterTable recreate preserves data in columns the request omits if dr
 
 	const table_def table {"memory", "main", "t"};
 	REQUIRE_NO_FAIL(
-	    con.Query("CREATE TABLE t (\"id\" INTEGER, \"v\" VARCHAR, \"to_be_deleted\" INTEGER, PRIMARY KEY (\"id\"))"));
+	    con.Query("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR, to_be_deleted INTEGER)"));
 	REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1, 'a', 42)"));
 
 	// "extra" is absent from the request. The widened primary key triggers a recreate.
@@ -32,7 +32,7 @@ TEST_CASE("AlterTable recreate preserves data in columns the request omits if dr
 	REQUIRE(columns.size() == 4);
 	REQUIRE(columns[2].name == "to_be_deleted");
 
-	auto res = con.Query("SELECT \"id\", \"v\", \"to_be_deleted\" FROM t");
+	auto res = con.Query("SELECT id, v, to_be_deleted FROM t");
 	REQUIRE_NO_FAIL(res);
 	REQUIRE(res->RowCount() == 1);
 	check_row(res, 0, {duckdb::Value::INTEGER(1), "a", duckdb::Value::INTEGER(42)});
@@ -46,7 +46,7 @@ TEST_CASE("AlterTable recreate drops the columns the request drops if drop_colum
 
 	const table_def table {"memory", "main", "t"};
 	REQUIRE_NO_FAIL(
-	    con.Query("CREATE TABLE t (\"id\" INTEGER, \"v\" VARCHAR, \"to_be_deleted\" VARCHAR, PRIMARY KEY (\"id\"))"));
+	    con.Query("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR, to_be_deleted VARCHAR)"));
 	REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1, 'a', 'remove-me')"));
 
 	// "obsolete" is absent from the request and drop_columns allows dropping it,
@@ -63,7 +63,7 @@ TEST_CASE("AlterTable recreate drops the columns the request drops if drop_colum
 		REQUIRE(column.name != "to_be_deleted");
 	}
 
-	auto res = con.Query("SELECT \"id\", \"v\" FROM t");
+	auto res = con.Query("SELECT id, v FROM t");
 	REQUIRE_NO_FAIL(res);
 	REQUIRE(res->RowCount() == 1);
 	check_row(res, 0, {duckdb::Value::INTEGER(1), "a"});
