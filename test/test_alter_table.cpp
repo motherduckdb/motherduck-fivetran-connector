@@ -16,8 +16,7 @@ TEST_CASE("AlterTable recreate preserves data in columns the request omits if dr
 	MdSqlGenerator generator(logger);
 
 	const table_def table {"memory", "main", "t"};
-	REQUIRE_NO_FAIL(
-	    con.Query("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR, to_be_deleted INTEGER)"));
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR, to_be_deleted INTEGER)"));
 	REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1, 'a', 42)"));
 
 	// "to_be_deleted" is absent from the request. The widened primary key triggers a recreate.
@@ -45,8 +44,7 @@ TEST_CASE("AlterTable recreate drops the columns the request drops if drop_colum
 	MdSqlGenerator generator(logger);
 
 	const table_def table {"memory", "main", "t"};
-	REQUIRE_NO_FAIL(
-	    con.Query("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR, to_be_deleted VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR, to_be_deleted VARCHAR)"));
 	REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1, 'a', 'remove-me')"));
 
 	// "obsolete" is absent from the request and drop_columns allows dropping it,
