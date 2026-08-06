@@ -514,15 +514,12 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 
 	auto absolute_table_name = table.to_escaped_string();
 
-	// `existing` means "currently in the
-	// destination table" (from describe_table), `requested` means "named in the
+	// `existing` means "currently in the destination table" (from describe_table), `requested` means "named in the
 	// AlterTable request".
 	//
 	// requested, not existing -> added_columns
 	// not requested, existing -> deleted_columns if drop_columns, else retained_columns
-	// requested and existing  -> retained_columns, plus alter_types when the type
-	//                            changed
-
+	// requested and existing  -> retained_columns, plus alter_types when the type changed
 	std::set<std::string> added_columns;
 	// Columns will only be inserted into deleted_columns if drop_columns == true
 	std::set<std::string> deleted_columns;
@@ -551,14 +548,16 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 		retained_columns.emplace(col.name);
 
 		if (new_col_it == new_column_map.end()) {
-			if (drop_columns) { // Only drop physical columns if drop_columns is true
-				                // (from the alter table request)
+			// If a primary key column is dropped, we recreate the table and change the primary key, even if
+			// drop_columns == false and the physical column stays in the table.
+			if (col.primary_key) {
+				recreate_table = true;
+			}
+
+			if (drop_columns) {
+				// Only drop physical column if drop_columns is true
 				deleted_columns.emplace(col.name);
 				retained_columns.erase(col.name);
-
-				if (col.primary_key) {
-					recreate_table = true;
-				}
 			} else {
 				logger.info("Source connector requested that table " + absolute_table_name + " column " + col.name +
 				            " be dropped, but dropping columns is not allowed when "
@@ -609,7 +608,16 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 				continue;
 			}
 			const auto new_col_it = new_column_map.find(col.name);
-			all_columns.push_back(new_col_it != new_column_map.end() ? new_col_it->second : col);
+			if (new_col_it != new_column_map.end()) {
+				// Column is still present in new table definition. Use new column definition.
+				all_columns.push_back(new_col_it->second);
+			} else {
+				// Retained because drop_columns is false. Keep the column and its data,
+				// but not its primary key membership.
+				column_def retained = col;
+				retained.primary_key = false;
+				all_columns.push_back(retained);
+			}
 		}
 		for (const auto& col : added_columns_ordered) {
 			all_columns.push_back(col);
