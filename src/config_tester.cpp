@@ -2,9 +2,12 @@
 
 #include "config.hpp"
 #include "duckdb.hpp"
+#include "ingest_properties.hpp"
 
 #include <array>
+#include <cctype>
 #include <google/protobuf/map.h>
+#include <optional>
 #include <string>
 
 namespace config_tester {
@@ -23,7 +26,8 @@ TestResult run_authentication_test(duckdb::Connection& con) {
 }
 
 /// Checks that the selected database can be written to
-TestResult run_database_type_test(duckdb::Connection& con) {
+TestResult run_database_type_test(duckdb::Connection& con,
+                                  const google::protobuf::Map<std::string, std::string>& configuration) {
 	const auto current_db_res = con.Query("SELECT current_database()");
 	if (current_db_res->HasError()) {
 		return TestResult(false, "Failed to retrieve current database name: " + current_db_res->GetError());
@@ -69,6 +73,11 @@ TestResult run_database_type_test(duckdb::Connection& con) {
 		                             "\" is a read-only MotherDuck share. Please use a "
 		                             "writable database for Fivetran ingestion jobs.");
 	}
+	if (db_type == "motherduck ducklake" &&
+	    config::find_bool_property(configuration, config::PROP_STRICT_PRIMARY_KEYS, true) == true) {
+		return TestResult(false, "Strict primary keys cannot be enabled when using a Ducklake database. Please turn "
+		                         "off the \"Strict Primary Keys\" option.");
+	}
 	if (db_type.find("motherduck") == std::string::npos) {
 		// We expect to run against type "motherduck" or "motherduck <something>"
 		// where "<something>" can e.g. be "ducklake"
@@ -104,23 +113,80 @@ TestResult run_write_permissions_test(duckdb::Connection& con) {
 
 	return TestResult(true);
 }
+
+/// Checks that max_record_size can be converted into an integer
+TestResult run_max_record_size_valid_test(const google::protobuf::Map<std::string, std::string>& configuration) {
+	const auto optional_val = config::find_optional_property(configuration, config::PROP_MAX_RECORD_SIZE);
+
+	if (!optional_val.has_value()) {
+		return TestResult(true);
+	}
+
+	const std::string& val = optional_val.value();
+
+	if (val.empty()) { // Defaults to MAX_RECORD_SIZE_DEFAULT
+		return TestResult(true);
+	}
+
+	for (const char c : val) {
+		if (!std::isdigit(static_cast<unsigned char>(c))) {
+			return TestResult(false,
+			                  "Value \"" + val +
+			                      "\" could not be converted into an "
+			                      "integer for \"Max Record Size\" because it contains non-numeric characters ('" +
+			                      c +
+			                      "'). Make sure to set the"
+			                      " \"Max Record Size\" to a valid positive integer.");
+		}
+	}
+
+	try {
+		auto parsed = std::stoul(val);
+
+		if (parsed < MAX_RECORD_SIZE_DEFAULT) {
+			return TestResult(false, "Value \"" + val +
+			                             "\" for \"Max Record Size\" is lower than the default of 24 MiB. "
+			                             "It should be between 24 and 1024");
+		}
+
+		if (parsed > MAX_RECORD_SIZE_MAX) {
+			return TestResult(false,
+			                  "Value \"" + val +
+			                      "\" for \"Max Record Size\" is higher than the maximum allowed value of 1024 MiB. "
+			                      "It should be between 24 and 1024");
+		}
+
+		return TestResult(true);
+	} catch (const std::exception&) {
+		return TestResult(false, "Value \"" + val +
+		                             "\" could not be converted into an "
+		                             "integer for \"Max Record Size\". Make sure to set the"
+		                             " \"Max Record Size\" to a valid positive integer.");
+	}
+}
 } // namespace
 
-std::array<TestCase, 3> get_test_cases() {
+std::array<TestCase, 4> get_test_cases() {
 	return {TestCase {TEST_AUTHENTICATE, "Test that user is authenticated"},
 	        TestCase {TEST_DATABASE_TYPE, "Test that database is not read-only"},
-	        TestCase {TEST_WRITE_PERMISSIONS, "Test that auth token has write permissions"}};
+	        TestCase {TEST_WRITE_PERMISSIONS, "Test that auth token has write permissions"},
+	        TestCase {TEST_MAX_RECORD_SIZE_VALID, "Test that the \"Max Record Size\" is a valid "
+	                                              "integer"}};
 }
 
-TestResult run_test(const std::string& test_name, duckdb::Connection& con) {
+TestResult run_test(const std::string& test_name, duckdb::Connection& con,
+                    const google::protobuf::Map<std::string, std::string>& configuration) {
 	if (test_name == TEST_AUTHENTICATE) {
 		return run_authentication_test(con);
 	}
 	if (test_name == TEST_DATABASE_TYPE) {
-		return run_database_type_test(con);
+		return run_database_type_test(con, configuration);
 	}
 	if (test_name == TEST_WRITE_PERMISSIONS) {
 		return run_write_permissions_test(con);
+	}
+	if (test_name == TEST_MAX_RECORD_SIZE_VALID) {
+		return run_max_record_size_valid_test(configuration);
 	}
 	throw std::runtime_error("Unknown test name: " + test_name);
 }

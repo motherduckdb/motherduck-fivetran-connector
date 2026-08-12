@@ -3,6 +3,7 @@
 #include "decryption.hpp"
 #include "duckdb.hpp"
 #include "ingest_properties.hpp"
+#include "md_error.hpp"
 #include "md_logging.hpp"
 #include "memory_backed_file.hpp"
 #include "schema_types.hpp"
@@ -117,16 +118,18 @@ CompressionType determine_compression_type(const std::string& file_path) {
 }
 
 /// Adds a SELECT clause with the specified columns to the query
-void add_projections(std::ostringstream& query, const std::vector<column_def>& columns) {
+void add_projections(std::ostringstream& query, const std::vector<column_def>& columns,
+                     const bool allow_unmodified_string) {
 	query << " SELECT";
 
 	if (columns.empty()) {
 		query << " *";
 	} else {
 		for (const auto& column : columns) {
-			if (column.type == duckdb::LogicalTypeId::BLOB) {
-				// The CSV reader reads BLOBs as VARCHARs. We have to convert them with
-				// from_base64.
+			if (!allow_unmodified_string && column.type == duckdb::LogicalTypeId::BLOB) {
+				// The CSV reader reads BLOBs as VARCHARs. We have to convert them with from_base64.
+				// However, when there could be unmodified_strings, we should not convert the strings back to their
+				// original types yet.
 				query << " from_base64(" << duckdb::KeywordHelper::WriteQuoted(column.name, '"') << ") AS "
 				      << duckdb::KeywordHelper::WriteQuoted(column.name, '"');
 			} else {
@@ -186,8 +189,10 @@ void add_type_options(std::ostringstream& query, const std::vector<column_def>& 
 		duckdb::LogicalType pushdown_type;
 		if (column.type == duckdb::LogicalTypeId::BLOB) {
 			pushdown_type = duckdb::LogicalType::VARCHAR;
-		} else if (column.type == duckdb::LogicalTypeId::DECIMAL && column.width > 0) {
-			pushdown_type = duckdb::LogicalType::DECIMAL(column.width, column.scale);
+		} else if (column.type == duckdb::LogicalTypeId::DECIMAL && column.width.has_value()) {
+			assert(column.width.value() >= DECIMAL_MIN_WIDTH && column.width.value() <= DECIMAL_MAX_WIDTH);
+			assert(column.scale.has_value()); // scale should always be set for DECIMAL types
+			pushdown_type = duckdb::LogicalType::DECIMAL(column.width.value(), column.scale.value_or(0));
 		} else {
 			pushdown_type = duckdb::LogicalType(column.type);
 		}
@@ -224,18 +229,11 @@ std::string generate_read_csv_query(const std::string& filepath, const IngestPro
 		query << ", allow_quoted_nulls=true";
 	}
 
-	// We have to at some point handle up to eight parallel WriteBatch requests
-	// that all allocate a buffer of buffer_size. The container memory limit is 1
-	// (or 2?) GiB. Assuming the worst case that all eight requests arrive at the
-	// same time, we need to limit the buffer size accordingly. We don't want to
-	// come too close to the limit, so we pick 768 MiB here. Originally, this was
-	// set to 512 MiB, but one user actually had a line size of over 20 MiB.
-	constexpr std::uint32_t max_parallel_requests = 8;
-	constexpr std::uint32_t buffer_size = 768 * 1024 * 1024 / max_parallel_requests; // 96 MiB
-	// We want at least four lines to always fit into the buffer (see
-	// duckdb::CSVBuffer::MIN_ROWS_PER_BUFFER).
-	constexpr std::uint32_t max_line_size = buffer_size / 4; // 24 MiB
-	query << ", max_line_size=" << std::to_string(max_line_size);
+	const std::uint32_t max_record_size_bytes = props.max_record_size * 1024 * 1024;
+	// We want at least four records to always fit into the buffer (see duckdb::CSVBuffer::MIN_ROWS_PER_BUFFER)
+	const std::uint32_t buffer_size = max_record_size_bytes * 4;
+
+	query << ", max_line_size=" << std::to_string(max_record_size_bytes);
 	query << ", buffer_size=" << std::to_string(buffer_size);
 	query << ", compression=" << (compression == CompressionType::ZSTD ? "'zstd'" : "'none'");
 
@@ -253,7 +251,7 @@ std::string generate_read_csv_query(const std::string& filepath, const IngestPro
 	query << ")";
 
 	// Select columns explicitly to enforce order
-	add_projections(query, props.columns);
+	add_projections(query, props.columns, props.allow_unmodified_string);
 
 	return query.str();
 }
@@ -301,6 +299,13 @@ void ProcessFile(duckdb::Connection& con, const IngestProperties& props, mdlog::
 	logger.info("    creating staging table: " + final_query);
 	const auto create_staging_table_res = con.Query(final_query);
 	if (create_staging_table_res->HasError()) {
+		const auto& error_msg = create_staging_table_res->GetError();
+		if (error_msg.find("Change the maximum length size, e.g., max_line_size=") != std::string::npos) {
+			throw md_error::RecoverableError("A data record was too large to be processed. To fix this, increase the "
+			                                 "\"Max Record Size (MiB)\" in the "
+			                                 "connector configuration. Original error:" +
+			                                 error_msg);
+		}
 		create_staging_table_res->ThrowError("Failed to create staging table for CSV file <" + props.filename + ">: ");
 	}
 	logger.info("    staging table created for file " + props.filename);

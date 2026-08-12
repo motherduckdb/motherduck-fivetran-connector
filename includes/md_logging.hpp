@@ -2,14 +2,17 @@
 
 #include "duckdb.hpp"
 
+#include <cstdint>
 #include <mutex>
 #include <string>
 
 namespace mdlog {
 
+enum class LogLevel : std::uint8_t { DEBUG, INFO, WARNING, SEVERE };
+
 class Logger {
 public:
-	enum class SinkType { NONE = 0, STDOUT = 1 << 0, DUCKDB = 1 << 1 };
+	enum class SinkType : std::uint8_t { NONE = 0, STDOUT = 1 << 0, DUCKDB = 1 << 1 };
 
 	/// Creates a logger that does nothing on `log` calls
 	static Logger CreateNopLogger() {
@@ -26,7 +29,8 @@ public:
 		return Logger(connection);
 	}
 
-	void log(const std::string& level, const std::string& message) const;
+	void log(LogLevel level, const std::string& message) const;
+	void debug(const std::string& message) const;
 	void info(const std::string& message) const;
 	void warning(const std::string& message) const;
 	void severe(const std::string& message) const;
@@ -47,7 +51,7 @@ private:
 	std::string connection_id = "none";
 	mutable std::once_flag initialize_duckdb_logging_flag;
 
-	void log_to_stdout(const std::string& level, const std::string& message) const;
-	void log_to_duckdb(const std::string& level, const std::string& message) const;
+	void log_to_stdout(LogLevel level, const std::string& message) const;
+	void log_to_duckdb(LogLevel level, const std::string& message) const;
 };
 } // namespace mdlog

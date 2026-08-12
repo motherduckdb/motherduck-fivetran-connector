@@ -4,6 +4,7 @@
 #include "md_logging.hpp"
 #include "schema_types.hpp"
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <set>
@@ -14,6 +15,65 @@ void find_primary_keys(const std::vector<column_def>& cols, std::vector<const co
                        std::vector<const column_def*>* columns_regular = nullptr,
                        const std::string& ignored_primary_key = "");
 
+/// join() makes it easy to reduce a generic vector to a string with a specified pattern:
+///
+///  std::vector<std::string> words = {"hello", "world", "foo"};
+///  std::string s = join(words);                    // "hello, world, foo"
+///
+///  std::vector<int> nums = {1, 2, 3};
+///  std::string s = join(nums, " + ");              // "1 + 2 + 3"
+///
+///  std::vector<Person> people = {{"Alice", 30}, {"Bob", 25}};
+///  std::string s = join(people, ", ", [](std::ostream& out, const Person& p) {
+///      out << p.name << "(" << std::to_string(p.age) << ")";
+///  });                                             // "Alice(30), Bob(25)"
+///
+///  std::ostringstream oss;
+///  oss << "SELECT ";
+///  join(oss, words, ", ", [](std::ostream& out, const column_def* c) { return c->name; });
+///  oss << " FROM my_table;";						// "SELECT hello, world, foo FROM my_table;"
+///
+
+template <typename F, typename T>
+concept mapper = std::is_invocable_v<F, std::ostream&, const T&> || std::is_invocable_v<F, const T&>;
+
+template <typename T, mapper<T> F = std::identity>
+void join(std::ostream& os, const std::vector<T>& vec, const std::string& sep = ", ", const F& map = {}) {
+	if (vec.empty())
+		return;
+
+	auto write = [&](const T& elem) {
+		if constexpr (std::is_invocable_v<F, std::ostream&, const T&>) {
+			map(os, elem);
+		} else {
+			os << elem;
+		}
+	};
+
+	write(vec[0]);
+	for (auto it = std::next(vec.begin()); it != vec.end(); ++it) {
+		os << sep;
+		write(*it);
+	}
+}
+
+template <typename T, mapper<T> F = std::identity>
+void join(std::ostream& os, const std::vector<T>& vec, const F& map = {}) {
+	join(os, vec, ", ", map);
+}
+
+template <typename T, mapper<T> F = std::identity>
+std::string join(const std::vector<T>& vec, const std::string& sep, const F& map = {}) {
+	std::ostringstream out;
+	join(out, vec, sep, map);
+
+	return out.str();
+}
+
+template <typename T, mapper<T> F = std::identity>
+std::string join(const std::vector<T>& vec, const F& map = {}) {
+	return join(vec, ", ", map);
+}
 struct TransactionContext {
 	explicit TransactionContext(duckdb::Connection& con_) : con(con_) {
 		auto should_begin = !con.HasActiveTransaction();
@@ -53,11 +113,10 @@ public:
 	/// Generates a randomized table name which is not used yet in the database
 	std::string generate_temp_table_name(duckdb::Connection& con, const std::string& prefix) const;
 
-	bool schema_exists(duckdb::Connection& con, const std::string& db_name, const std::string& schema_name);
+	void create_schema_if_not_exists_with_retries(duckdb::Connection& con, const std::string& db_name,
+	                                              const std::string& schema_name) const;
 
-	void create_schema(duckdb::Connection& con, const std::string& db_name, const std::string& schema_name);
-
-	bool table_exists(duckdb::Connection& con, const table_def& table);
+	bool table_exists(duckdb::Connection& con, const table_def& table) const;
 
 	void create_table(duckdb::Connection& con, const table_def& table, const std::vector<column_def>& all_columns,
 	                  const std::set<std::string>& columns_with_default_value);
@@ -131,8 +190,8 @@ public:
 	                const std::string& log_prefix, const std::vector<const column_def*>& additional_pks = {});
 
 	// Copy a column in the destination.
-	void copy_column(duckdb::Connection& con, const table_def& table, const std::string& from_column,
-	                 const std::string& to_column);
+	void copy_column(duckdb::Connection& con, const table_def& table, const std::string& from_column_name,
+	                 const std::string& to_column_name);
 
 	// For a table that is in either in live- or soft-delete-mode, copy it into a
 	// new table in history mode. For soft-delete-mode, in which case
@@ -146,11 +205,11 @@ public:
 	                  const std::string& log_prefix);
 
 	// Rename a destination column
-	void rename_column(duckdb::Connection& con, const table_def& table, const std::string& from_column,
-	                   const std::string& to_column);
+	void rename_column(duckdb::Connection& con, const table_def& table, const std::string& from_column_name,
+	                   const std::string& to_column_name);
 
 	// Verify the state of the history table before performing schema migrations
-	static bool history_table_is_valid(duckdb::Connection& con, const std::string& absolute_table_name,
+	static bool history_table_is_valid(duckdb::Connection& con, const table_def& table,
 	                                   const std::string& quoted_timestamp);
 
 	// Add a column in history mode, which means we copy all active tables over to
@@ -181,10 +240,10 @@ public:
 	// sync as the initial insert into the historic table.
 	void migrate_soft_delete_to_history(duckdb::Connection& con, const table_def& original_table,
 	                                    const std::string& soft_deleted_column);
-	void add_defaults(duckdb::Connection& con, const std::vector<column_def>& columns, const std::string& table_name,
+	void add_defaults(duckdb::Connection& con, const std::vector<column_def>& columns, const table_def& table,
 	                  const std::string& log_prefix);
-	void add_pks(duckdb::Connection& con, const std::vector<const column_def*>& columns_pk,
-	             const std::string& table_name, const std::string& log_prefix) const;
+	void add_pks(duckdb::Connection& con, const std::vector<const column_def*>& columns_pk, const table_def& table,
+	             const std::string& log_prefix) const;
 
 	// Switch between sync modes: history to soft-delete. This means keeping only
 	// the last entries based on per MAX("_fivetran_start") per primary key,
@@ -220,7 +279,11 @@ private:
 	void run_query(duckdb::Connection& con, const std::string& log_prefix, const std::string& query,
 	               const std::string& error_message) const;
 	void alter_table_recreate(duckdb::Connection& con, const table_def& table,
-	                          const std::vector<column_def>& all_columns, const std::set<std::string>& common_columns);
+	                          const std::vector<column_def>& all_columns_in_new_table,
+	                          const std::set<std::string>& existing_columns_in_new_table);
+	void check_no_duplicate_primary_keys(duckdb::Connection& con, const table_def& table,
+	                                     const std::vector<column_def>& all_columns_in_new_table,
+	                                     const std::set<std::string>& existing_columns_in_new_table) const;
 	void alter_table_in_place(duckdb::Connection& con, const table_def& table,
 	                          const std::vector<column_def>& added_columns,
 	                          const std::set<std::string>& deleted_columns, const std::set<std::string>& alter_types,

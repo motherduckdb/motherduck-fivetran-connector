@@ -12,3 +12,7 @@ std::string table_def::to_escaped_string() const {
 	    << duckdb::KeywordHelper::WriteQuoted(table_name, '"');
 	return out.str();
 }
+
+std::string column_def::quoted() const {
+	return duckdb::KeywordHelper::WriteQuoted(name, '"');
+}

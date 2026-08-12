@@ -30,5 +30,6 @@ std::string get_motherduck_auth_token() {
 } // namespace
 
 const std::string TEST_DATABASE_NAME = get_randomized_test_database_name();
+const std::string TEST_SCHEMA_NAME = "test_schema";
 const std::string MD_TOKEN = get_motherduck_auth_token();
 } // namespace test::constants

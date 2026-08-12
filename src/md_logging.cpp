@@ -9,6 +9,19 @@
 namespace mdlog {
 
 namespace {
+constexpr const char* level_to_string(const LogLevel level) {
+	switch (level) {
+	case LogLevel::DEBUG:
+		return "DEBUG";
+	case LogLevel::INFO:
+		return "INFO";
+	case LogLevel::WARNING:
+		return "WARNING";
+	case LogLevel::SEVERE:
+		return "SEVERE";
+	}
+	return "UNKNOWN";
+}
 
 Logger::SinkType operator|(Logger::SinkType lhs, Logger::SinkType rhs) {
 	return static_cast<Logger::SinkType>(static_cast<int>(lhs) | static_cast<int>(rhs));
@@ -17,16 +30,9 @@ Logger::SinkType operator|(Logger::SinkType lhs, Logger::SinkType rhs) {
 bool HasFlag(const Logger::SinkType value, const Logger::SinkType flag) {
 	return static_cast<Logger::SinkType>(static_cast<int>(value) & static_cast<int>(flag)) != Logger::SinkType::NONE;
 }
-
-void initialize_duckdb_logging(duckdb::Connection& con) {
-	con.Query("CALL enable_logging()");
-	con.Query("SET logging_storage='motherduck_log_storage'");
-	con.Query("SET logging_level='INFO'");
-}
-
 } // namespace
 
-Logger::Logger(const SinkType sinks) : enabled_sinks(sinks) {
+Logger::Logger(const SinkType sinks) : enabled_sinks(sinks), con(nullptr) {
 	// The other constructor should be used for DuckDB logging
 	assert(!HasFlag(enabled_sinks, SinkType::DUCKDB));
 }
@@ -36,7 +42,7 @@ Logger::Logger(duckdb::Connection* con_) : enabled_sinks(SinkType::STDOUT | Sink
 	const auto client_ids_res = con->Query("SELECT md_current_client_duckdb_id(), "
 	                                       "md_current_client_connection_id()");
 	if (client_ids_res->HasError()) {
-		log_to_stdout("WARNING",
+		log_to_stdout(LogLevel::WARNING,
 		              "Could not retrieve the current DuckDB and connection ID: " + client_ids_res->GetError());
 	} else {
 		duckdb_id = client_ids_res->GetValue(0, 0).ToString();
@@ -44,19 +50,23 @@ Logger::Logger(duckdb::Connection* con_) : enabled_sinks(SinkType::STDOUT | Sink
 	}
 }
 
-void Logger::log_to_stdout(const std::string& level, const std::string& message) const {
-	std::cout << "{\"level\":\"" << duckdb::KeywordHelper::EscapeQuotes(level, '"') << "\",\"message\":\""
+void Logger::log_to_stdout(const LogLevel level, const std::string& message) const {
+	// Fivetran does not support DEBUG level on stdout, emit as INFO instead.
+	const LogLevel stdout_level = level == LogLevel::DEBUG ? LogLevel::INFO : level;
+	std::cout << "{\"level\":\"" << level_to_string(stdout_level) << "\",\"message\":\""
 	          << duckdb::KeywordHelper::EscapeQuotes(message, '"') << ", duckdb_id=<" << duckdb_id
 	          << ">, connection_id=<" << connection_id << ">\",\"message-origin\":\"sdk_destination\"}" << std::endl;
 }
 
-void Logger::log_to_duckdb(const std::string& level, const std::string& message) const {
+void Logger::log_to_duckdb(const LogLevel level, const std::string& message) const {
 	std::string ddb_log_level;
-	if (level == "INFO") {
+	if (level == LogLevel::DEBUG) {
+		ddb_log_level = "DEBUG";
+	} else if (level == LogLevel::INFO) {
 		ddb_log_level = "INFO";
-	} else if (level == "WARNING") {
+	} else if (level == LogLevel::WARNING) {
 		ddb_log_level = "WARN";
-	} else if (level == "SEVERE") {
+	} else if (level == LogLevel::SEVERE) {
 		ddb_log_level = "ERROR";
 	} else {
 		ddb_log_level = "INFO";
@@ -64,7 +74,6 @@ void Logger::log_to_duckdb(const std::string& level, const std::string& message)
 
 	std::string full_message = message;
 	duckdb::StringUtil::Trim(full_message);
-	full_message += ". Source: Fivetran";
 
 	const std::string query =
 	    "SELECT write_log(" + duckdb::KeywordHelper::WriteQuoted(full_message, '\'') +
@@ -74,11 +83,11 @@ void Logger::log_to_duckdb(const std::string& level, const std::string& message)
 
 	// Only log errors from the query, but continue execution
 	if (log_res->HasError()) {
-		log_to_stdout("WARNING", "Failed to write log to DuckDB: " + log_res->GetError());
+		log_to_stdout(LogLevel::WARNING, "Failed to write log to DuckDB: " + log_res->GetError());
 	}
 }
 
-void Logger::log(const std::string& level, const std::string& message) const {
+void Logger::log(const LogLevel level, const std::string& message) const {
 	if (HasFlag(enabled_sinks, SinkType::STDOUT)) {
 		log_to_stdout(level, message);
 	}
@@ -87,21 +96,29 @@ void Logger::log(const std::string& level, const std::string& message) const {
 		// enable_logging is a global setting, so it only needs to be called once
 		// per DuckDB instance. And the DuckDB instance is a singleton.
 		std::call_once(
-		    initialize_duckdb_logging_flag, [](duckdb::Connection& con) { initialize_duckdb_logging(con); }, *con);
+		    initialize_duckdb_logging_flag,
+		    [](duckdb::Connection& con) {
+			    con.Query("CALL enable_logging('Fivetran', storage='motherduck_log_storage', level='INFO')");
+		    },
+		    *con);
 		log_to_duckdb(level, message);
 	}
 }
 
+void Logger::debug(const std::string& message) const {
+	log(LogLevel::DEBUG, message);
+}
+
 void Logger::info(const std::string& message) const {
-	log("INFO", message);
+	log(LogLevel::INFO, message);
 }
 
 void Logger::warning(const std::string& message) const {
-	log("WARNING", message);
+	log(LogLevel::WARNING, message);
 }
 
 void Logger::severe(const std::string& message) const {
-	log("SEVERE", message);
+	log(LogLevel::SEVERE, message);
 }
 
 } // namespace mdlog
