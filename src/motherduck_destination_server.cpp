@@ -913,6 +913,14 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 		}
 
 		response->set_success(true);
+	} catch (const md_error::RecoverableError& mde) {
+		const std::string schema = request->details().schema();
+		const std::string table = request->details().table();
+		const std::string msg =
+		    "Migrate endpoint failed for schema <" + schema + ">, table <" + table + ">: " + std::string(mde.what());
+		logger.warning(msg);
+		response->mutable_task()->set_message(msg);
+		return ::grpc::Status::OK;
 	} catch (const std::exception& e) {
 		const std::string schema = request->details().schema();
 		const std::string table = request->details().table();

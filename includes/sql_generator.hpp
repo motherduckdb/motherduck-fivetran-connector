@@ -15,6 +15,11 @@ void find_primary_keys(const std::vector<column_def>& cols, std::vector<const co
                        std::vector<const column_def*>* columns_regular = nullptr,
                        const std::string& ignored_primary_key = "");
 
+/// Out-of-memory failures are user-actionable (upgrade to a larger MotherDuck instance size, or reduce the
+/// size of the batch being written), so they should be turned into a md_error::RecoverableError, which
+/// surfaces to Fivetran as a task rather than a hard sync failure. This is a no-op for any other error type.
+void throw_if_recoverable_oom_error(const duckdb::ErrorData& error_data);
+
 /// join() makes it easy to reduce a generic vector to a string with a specified pattern:
 ///
 ///  std::vector<std::string> words = {"hello", "world", "foo"};
