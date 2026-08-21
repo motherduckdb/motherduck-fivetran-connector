@@ -310,7 +310,7 @@ void ProcessFile(duckdb::Connection& con, const IngestProperties& props, mdlog::
 			                                 "connector configuration. Original error:" +
 			                                 error_msg);
 		}
-		throw_if_recoverable_oom_error(create_staging_table_res->GetErrorObject());
+		throw_recoverable_error_if_oom(create_staging_table_res->GetErrorObject());
 		create_staging_table_res->ThrowError("Failed to create staging table for CSV file <" + props.filename + ">: ");
 	}
 	logger.info("    staging table created for file " + props.filename);

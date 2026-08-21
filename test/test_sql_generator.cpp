@@ -7,7 +7,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <string>
 
-TEST_CASE("throw_if_recoverable_oom_error converts DuckDB out-of-memory errors into a RecoverableError",
+TEST_CASE("throw_recoverable_error_if_oom converts DuckDB out-of-memory errors into a RecoverableError",
           "[sql_generator]") {
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
@@ -17,12 +17,12 @@ TEST_CASE("throw_if_recoverable_oom_error converts DuckDB out-of-memory errors i
 	REQUIRE(result->HasError());
 	REQUIRE(result->GetErrorObject().Type() == duckdb::ExceptionType::OUT_OF_MEMORY);
 
-	REQUIRE_THROWS_AS(throw_if_recoverable_oom_error(result->GetErrorObject()), md_error::RecoverableError);
-	REQUIRE_THROWS_WITH(throw_if_recoverable_oom_error(result->GetErrorObject()),
+	REQUIRE_THROWS_AS(throw_recoverable_error_if_oom(result->GetErrorObject()), md_error::RecoverableError);
+	REQUIRE_THROWS_WITH(throw_recoverable_error_if_oom(result->GetErrorObject()),
 	                    Catch::Matchers::ContainsSubstring("upgrade to a larger instance size"));
 }
 
-TEST_CASE("throw_if_recoverable_oom_error is a no-op for non-OOM errors", "[sql_generator]") {
+TEST_CASE("throw_recoverable_error_if_oom is a no-op for non-OOM errors", "[sql_generator]") {
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
 
@@ -30,5 +30,5 @@ TEST_CASE("throw_if_recoverable_oom_error is a no-op for non-OOM errors", "[sql_
 	REQUIRE(result->HasError());
 	REQUIRE(result->GetErrorObject().Type() != duckdb::ExceptionType::OUT_OF_MEMORY);
 
-	REQUIRE_NOTHROW(throw_if_recoverable_oom_error(result->GetErrorObject()));
+	REQUIRE_NOTHROW(throw_recoverable_error_if_oom(result->GetErrorObject()));
 }

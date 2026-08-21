@@ -25,7 +25,7 @@
 
 using duckdb::KeywordHelper;
 
-void throw_if_recoverable_oom_error(const duckdb::ErrorData& error_data) {
+void throw_recoverable_error_if_oom(const duckdb::ErrorData& error_data) {
 	if (error_data.Type() == duckdb::ExceptionType::OUT_OF_MEMORY) {
 		throw md_error::RecoverableError(
 		    "Your MotherDuck database ran out of memory. Please upgrade to a larger instance size, or reduce "
@@ -151,7 +151,7 @@ void MdSqlGenerator::run_query(duckdb::Connection& con, const std::string& log_p
 	logger.info(log_prefix + ": " + query);
 	const auto result = con.Query(query);
 	if (result->HasError()) {
-		throw_if_recoverable_oom_error(result->GetErrorObject());
+		throw_recoverable_error_if_oom(result->GetErrorObject());
 		throw std::runtime_error(error_message + ": " + result->GetError());
 	}
 }
@@ -418,7 +418,7 @@ void MdSqlGenerator::check_no_duplicate_primary_keys(duckdb::Connection& con, co
 		logger.info("check_no_duplicate_primary_keys: " + query);
 		const auto result = con.Query(query);
 		if (result->HasError()) {
-			throw_if_recoverable_oom_error(result->GetErrorObject());
+			throw_recoverable_error_if_oom(result->GetErrorObject());
 			throw std::runtime_error("Could not check for duplicate primary keys in table <" + absolute_table_name +
 			                         ">: " + result->GetError());
 		}
@@ -430,7 +430,7 @@ void MdSqlGenerator::check_no_duplicate_primary_keys(duckdb::Connection& con, co
 		logger.info("check_no_duplicate_primary_keys: " + query);
 		const auto result = con.Query(query);
 		if (result->HasError()) {
-			throw_if_recoverable_oom_error(result->GetErrorObject());
+			throw_recoverable_error_if_oom(result->GetErrorObject());
 			throw std::runtime_error("Could not check for duplicate primary keys in table <" + absolute_table_name +
 			                         ">: " + result->GetError());
 		}
@@ -668,7 +668,7 @@ void MdSqlGenerator::upsert(duckdb::Connection& con, const table_def& table, con
 	logger.info("upsert: " + query);
 	auto result = con.Query(query);
 	if (result->HasError()) {
-		throw_if_recoverable_oom_error(result->GetErrorObject());
+		throw_recoverable_error_if_oom(result->GetErrorObject());
 		throw std::runtime_error("Could not upsert table <" + absolute_table_name + ">" + result->GetError());
 	}
 }
@@ -687,7 +687,7 @@ void MdSqlGenerator::insert(duckdb::Connection& con, const table_def& table, con
 	logger.info("insert: " + query);
 	auto result = con.Query(query);
 	if (result->HasError()) {
-		throw_if_recoverable_oom_error(result->GetErrorObject());
+		throw_recoverable_error_if_oom(result->GetErrorObject());
 		throw std::runtime_error("Could not insert into table <" + absolute_table_name + ">" + result->GetError());
 	}
 }
@@ -729,7 +729,7 @@ void MdSqlGenerator::update_values(duckdb::Connection& con, const table_def& tab
 	logger.info("update: " + query);
 	auto result = con.Query(query);
 	if (result->HasError()) {
-		throw_if_recoverable_oom_error(result->GetErrorObject());
+		throw_recoverable_error_if_oom(result->GetErrorObject());
 		throw std::runtime_error("Could not update table <" + absolute_table_name + ">: " + result->GetError());
 	}
 }
@@ -797,7 +797,7 @@ void MdSqlGenerator::add_partial_historical_values(duckdb::Connection& con, cons
 	logger.info("update (add partial historical values): " + query);
 	auto result = con.Query(query);
 	if (result->HasError()) {
-		throw_if_recoverable_oom_error(result->GetErrorObject());
+		throw_recoverable_error_if_oom(result->GetErrorObject());
 		throw std::runtime_error("Could not update (add partial historical values) table <" + absolute_table_name +
 		                         ">: " + result->GetError());
 	}
@@ -820,7 +820,7 @@ void MdSqlGenerator::delete_rows(duckdb::Connection& con, const table_def& table
 	logger.info("delete_rows: " + query);
 	auto result = con.Query(query);
 	if (result->HasError()) {
-		throw_if_recoverable_oom_error(result->GetErrorObject());
+		throw_recoverable_error_if_oom(result->GetErrorObject());
 		throw std::runtime_error("Error deleting rows from table <" + absolute_table_name + ">: " + result->GetError());
 	}
 }
@@ -847,7 +847,7 @@ void MdSqlGenerator::deactivate_historical_records(duckdb::Connection& con, cons
 		logger.info("delete_overlapping_records: " + query);
 		auto result = con.Query(query);
 		if (result->HasError()) {
-			throw_if_recoverable_oom_error(result->GetErrorObject());
+			throw_recoverable_error_if_oom(result->GetErrorObject());
 			throw std::runtime_error("Error deleting overlapping records from table <" + absolute_table_name +
 			                         ">: " + result->GetError());
 		}
@@ -876,7 +876,7 @@ void MdSqlGenerator::deactivate_historical_records(duckdb::Connection& con, cons
 		logger.info("stash latest records: " + query);
 		auto result = con.Query(query);
 		if (result->HasError()) {
-			throw_if_recoverable_oom_error(result->GetErrorObject());
+			throw_recoverable_error_if_oom(result->GetErrorObject());
 			throw std::runtime_error("Error stashing latest records from table <" + absolute_table_name +
 			                         ">: " + result->GetError());
 		}
@@ -897,7 +897,7 @@ void MdSqlGenerator::deactivate_historical_records(duckdb::Connection& con, cons
 		logger.info("deactivate records: " + query);
 		auto result = con.Query(query);
 		if (result->HasError()) {
-			throw_if_recoverable_oom_error(result->GetErrorObject());
+			throw_recoverable_error_if_oom(result->GetErrorObject());
 			throw std::runtime_error("Error deactivating records <" + absolute_table_name + ">: " + result->GetError());
 		}
 	}
@@ -923,7 +923,7 @@ void MdSqlGenerator::delete_historical_rows(duckdb::Connection& con, const table
 	logger.info("delete historical records: " + query);
 	auto result = con.Query(query);
 	if (result->HasError()) {
-		throw_if_recoverable_oom_error(result->GetErrorObject());
+		throw_recoverable_error_if_oom(result->GetErrorObject());
 		throw std::runtime_error("Error deleting historical records <" + absolute_table_name +
 		                         ">: " + result->GetError());
 	}
@@ -961,7 +961,7 @@ void MdSqlGenerator::truncate_table(duckdb::Connection& con, const table_def& ta
 	logger.info("truncate_table: cutoff_microseconds = <" + std::to_string(cutoff_microseconds) + ">");
 	auto result = statement->Execute(params, false);
 	if (result->HasError()) {
-		throw_if_recoverable_oom_error(result->GetErrorObject());
+		throw_recoverable_error_if_oom(result->GetErrorObject());
 		throw std::runtime_error(err + ": " + result->GetError());
 	}
 }
