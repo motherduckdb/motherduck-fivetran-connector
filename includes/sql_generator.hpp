@@ -8,6 +8,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -19,6 +20,22 @@ void find_primary_keys(const std::vector<column_def>& cols, std::vector<const co
 /// size of the batch being written), so they should be turned into a md_error::RecoverableError, which
 /// surfaces to Fivetran as a task rather than a hard sync failure. This is a no-op for any other error type.
 void throw_recoverable_error_if_oom(const duckdb::ErrorData& error_data);
+
+/// If `result` has an error, throws it: out-of-memory errors become a md_error::RecoverableError (see
+/// throw_recoverable_error_if_oom), anything else becomes a std::runtime_error prefixed with `error_message`.
+/// This is the single place call sites should route through instead of hand-rolling their own
+/// HasError()/GetError() check, so new queries get OOM handling for free. Templated so it accepts both
+/// duckdb::BaseQueryResult (from Connection::Query) and duckdb::PreparedStatement (from Connection::Prepare),
+/// which share the same HasError()/GetError()/GetErrorObject() shape but do not share a base class. Takes
+/// `result` by non-const reference because PreparedStatement's GetError()/GetErrorObject() are not const.
+template <typename T>
+void throw_if_query_error(T& result, const std::string& error_message) {
+	if (!result.HasError()) {
+		return;
+	}
+	throw_recoverable_error_if_oom(result.GetErrorObject());
+	throw std::runtime_error(error_message + ": " + result.GetError());
+}
 
 /// join() makes it easy to reduce a generic vector to a string with a specified pattern:
 ///
