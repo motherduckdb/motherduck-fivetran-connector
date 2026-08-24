@@ -11,6 +11,15 @@
 #include <string>
 #include <vector>
 
+/// Selects the key columns of a table into `columns_pk` (and, if provided, the
+/// remaining columns into `columns_regular`).
+///
+/// Invariant: a "key column" is exactly a column whose `column_def.primary_key`
+/// is set. On the wire this comes from Fivetran; on readback `describe_table()`
+/// reconstructs it from `NOT is_nullable`, because the connector marks its key
+/// columns (and only those) NOT NULL. `ignored_primary_key` lets callers exclude
+/// a column that is a key in the destination but should not be treated as one
+/// here (used for `_fivetran_start` in history mode).
 void find_primary_keys(const std::vector<column_def>& cols, std::vector<const column_def*>& columns_pk,
                        std::vector<const column_def*>* columns_regular = nullptr,
                        const std::string& ignored_primary_key = "");
@@ -88,18 +97,21 @@ public:
 
 	bool table_exists(duckdb::Connection& con, const table_def& table) const;
 
+	bool table_has_unique_primary_key(duckdb::Connection& con, const table_def& table) const;
+
 	void create_table(duckdb::Connection& con, const table_def& table, const std::vector<column_def>& all_columns,
-	                  const std::set<std::string>& columns_with_default_value);
+	                  const std::set<std::string>& columns_with_default_value, PrimaryKeyMode pk_mode);
 
 	std::vector<column_def> describe_table(duckdb::Connection& con, const table_def& table);
 	void add_column(duckdb::Connection& con, const table_def& table, const column_def& column,
-	                const std::string& log_prefix, bool ignore_if_exists = false) const;
+	                const std::string& log_prefix, bool ignore_if_exists = false,
+	                bool default_is_sql_literal = false) const;
 
 	void drop_column(duckdb::Connection& con, const table_def& table, const std::string& column_name,
 	                 const std::string& log_prefix, bool not_exists_ok = false) const;
 
 	void alter_table(duckdb::Connection& con, const table_def& table, const std::vector<column_def>& requested_columns,
-	                 bool drop_columns);
+	                 bool drop_columns, PrimaryKeyMode pk_mode);
 
 	void upsert(duckdb::Connection& con, const table_def& table, const std::string& staging_table_name,
 	            const std::vector<const column_def*>& columns_pk,
@@ -157,7 +169,8 @@ public:
 
 	// Copy a table in the destination.
 	void copy_table(duckdb::Connection& con, const table_def& from_table, const table_def& to_table,
-	                const std::string& log_prefix, const std::vector<const column_def*>& additional_pks = {});
+	                const std::string& log_prefix, PrimaryKeyMode pk_mode,
+	                const std::vector<const column_def*>& additional_pks = {});
 
 	// Copy a column in the destination.
 	void copy_column(duckdb::Connection& con, const table_def& table, const std::string& from_column_name,
@@ -168,7 +181,7 @@ public:
 	// soft_deleted_column is not empty, we try to retain historic info as much as
 	// we can.
 	void copy_table_to_history_mode(duckdb::Connection& con, const table_def& from_table, const table_def& to_table,
-	                                const std::string& soft_deleted_column);
+	                                const std::string& soft_deleted_column, PrimaryKeyMode pk_mode);
 
 	// Rename a destination table
 	void rename_table(duckdb::Connection& con, const table_def& from_table, const std::string& to_table_name,
@@ -209,23 +222,27 @@ public:
 	// timestamp respectively for active rows, because we interpret the latest
 	// sync as the initial insert into the historic table.
 	void migrate_soft_delete_to_history(duckdb::Connection& con, const table_def& original_table,
-	                                    const std::string& soft_deleted_column);
+	                                    const std::string& soft_deleted_column, PrimaryKeyMode pk_mode);
 	void add_defaults(duckdb::Connection& con, const std::vector<column_def>& columns, const table_def& table,
 	                  const std::string& log_prefix);
-	void add_pks(duckdb::Connection& con, const std::vector<const column_def*>& columns_pk, const table_def& table,
-	             const std::string& log_prefix) const;
+
+	// Adds PRIMARY KEY (strict mode) or NOT NULL (NotNull mode) constraint to primary key columns.
+	void apply_primary_key_constraint(duckdb::Connection& con, const std::vector<const column_def*>& columns_pk,
+	                                  const table_def& table, const std::string& log_prefix,
+	                                  PrimaryKeyMode pk_mode) const;
 
 	// Switch between sync modes: history to soft-delete. This means keeping only
 	// the last entries based on per MAX("_fivetran_start") per primary key,
 	// setting the soft_deleted_column values to "NOT _fivetran_active" and
 	// dropping the unused history mode columns.
 	void migrate_history_to_soft_delete(duckdb::Connection& con, const table_def& table,
-	                                    const std::string& soft_deleted_column);
+	                                    const std::string& soft_deleted_column, PrimaryKeyMode pk_mode);
 
 	// Switch between sync modes: history to live. This means only keeping the
 	// rows that are active as indicated by
 	// "_fivetran_active".
-	void migrate_history_to_live(duckdb::Connection& con, const table_def& table, bool keep_deleted_rows);
+	void migrate_history_to_live(duckdb::Connection& con, const table_def& table, bool keep_deleted_rows,
+	                             PrimaryKeyMode pk_mode);
 
 	// Switch between sync modes: live to soft-delete. In general live-mode does
 	// not keep track of deletions, in which case just adds we want to set the
@@ -241,21 +258,28 @@ public:
 	// this just adds the needed history-mode columns and sets sane defaults: all
 	// rows are active, _fivetran_start = NOW() and _fivetran_end is the maximum
 	// timestamp possible.
-	void migrate_live_to_history(duckdb::Connection& con, const table_def& table);
+	void migrate_live_to_history(duckdb::Connection& con, const table_def& table, PrimaryKeyMode pk_mode);
 
 private:
 	mdlog::Logger& logger;
 
 	void run_query(duckdb::Connection& con, const std::string& log_prefix, const std::string& query,
 	               const std::string& error_message) const;
+
+	void set_not_null(duckdb::Connection& con, const table_def& table, const std::string& column_name, bool not_null,
+	                  const std::string& log_prefix) const;
 	void alter_table_recreate(duckdb::Connection& con, const table_def& table,
 	                          const std::vector<column_def>& all_columns_in_new_table,
-	                          const std::set<std::string>& existing_columns_in_new_table);
+	                          const std::set<std::string>& existing_columns_in_new_table, PrimaryKeyMode pk_mode);
 	void check_no_duplicate_primary_keys(duckdb::Connection& con, const table_def& table,
 	                                     const std::vector<column_def>& all_columns_in_new_table,
 	                                     const std::set<std::string>& existing_columns_in_new_table) const;
+	// `key_added`/`key_removed` name existing columns whose key membership changed
+	// (used only in NotNull mode to toggle NOT NULL in place).
 	void alter_table_in_place(duckdb::Connection& con, const table_def& table,
 	                          const std::vector<column_def>& added_columns,
 	                          const std::set<std::string>& deleted_columns, const std::set<std::string>& alter_types,
-	                          const std::map<std::string, column_def>& new_column_map);
+	                          const std::map<std::string, column_def>& new_column_map,
+	                          const std::set<std::string>& key_added, const std::set<std::string>& key_removed,
+	                          PrimaryKeyMode pk_mode);
 };

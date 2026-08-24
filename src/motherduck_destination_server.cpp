@@ -291,7 +291,7 @@ grpc::Status DestinationSdkImpl::CreateTable(::grpc::ServerContext*,
 
 		const table_def table {ctx->GetDBName(), schema_name, request->table().name()};
 		const auto cols = get_duckdb_columns(request->table().columns());
-		sql_generator->create_table(con, table, cols, {});
+		sql_generator->create_table(con, table, cols, {}, ctx->GetPrimaryKeyMode());
 		response->set_success(true);
 	} catch (const md_error::RecoverableError& mde) {
 		logger.warning("CreateTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
@@ -325,7 +325,7 @@ grpc::Status DestinationSdkImpl::AlterTable(::grpc::ServerContext*,
 
 		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 		sql_generator->alter_table(con, table_name, get_duckdb_columns(request->table().columns()),
-		                           request->drop_columns());
+		                           request->drop_columns(), ctx->GetPrimaryKeyMode());
 		response->set_success(true);
 	} catch (const md_error::RecoverableError& mde) {
 		logger.severe("AlterTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
@@ -587,6 +587,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 			                        .max_record_size = max_record_size};
 
 			csv_processor::ProcessFile(con, props, logger, [&](const std::string& staging_table_name) {
+				// In history mode, we always append a new row, so it is genuinely insert, not upsert.
 				sql_generator->insert(con, table_name, staging_table_name, columns_pk, columns_regular);
 			});
 		}
@@ -744,7 +745,7 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 				const auto& copy_table = copy.copy_table();
 				table_def from_table {db_name, schema_name, copy_table.from_table()};
 				table_def to_table {db_name, schema_name, copy_table.to_table()};
-				sql_generator->copy_table(con, from_table, to_table, "copy_table");
+				sql_generator->copy_table(con, from_table, to_table, "copy_table", ctx->GetPrimaryKeyMode());
 				break;
 			}
 			case fivetran_sdk::v2::CopyOperation::EntityCase::kCopyColumn: {
@@ -763,7 +764,8 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 				const auto& copy_hist = copy.copy_table_to_history_mode();
 				table_def from_table {db_name, schema_name, copy_hist.from_table()};
 				table_def to_table {db_name, schema_name, copy_hist.to_table()};
-				sql_generator->copy_table_to_history_mode(con, from_table, to_table, copy_hist.soft_deleted_column());
+				sql_generator->copy_table_to_history_mode(con, from_table, to_table, copy_hist.soft_deleted_column(),
+				                                          ctx->GetPrimaryKeyMode());
 				break;
 			}
 			default: {
@@ -881,15 +883,17 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 				break;
 			case fivetran_sdk::v2::SOFT_DELETE_TO_HISTORY:
 				logger.info("Endpoint <Migrate>: SOFT_DELETE_TO_HISTORY");
-				sql_generator->migrate_soft_delete_to_history(con, table, soft_deleted_column);
+				sql_generator->migrate_soft_delete_to_history(con, table, soft_deleted_column,
+				                                              ctx->GetPrimaryKeyMode());
 				break;
 			case fivetran_sdk::v2::HISTORY_TO_SOFT_DELETE:
 				logger.info("Endpoint <Migrate>: HISTORY_TO_SOFT_DELETE");
-				sql_generator->migrate_history_to_soft_delete(con, table, soft_deleted_column);
+				sql_generator->migrate_history_to_soft_delete(con, table, soft_deleted_column,
+				                                              ctx->GetPrimaryKeyMode());
 				break;
 			case fivetran_sdk::v2::HISTORY_TO_LIVE:
 				logger.info("Endpoint <Migrate>: HISTORY_TO_LIVE");
-				sql_generator->migrate_history_to_live(con, table, keep_deleted_rows);
+				sql_generator->migrate_history_to_live(con, table, keep_deleted_rows, ctx->GetPrimaryKeyMode());
 				break;
 			case fivetran_sdk::v2::LIVE_TO_SOFT_DELETE:
 				logger.info("Endpoint <Migrate>: LIVE_TO_SOFT_DELETE");
@@ -897,7 +901,7 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 				break;
 			case fivetran_sdk::v2::LIVE_TO_HISTORY:
 				logger.info("Endpoint <Migrate>: LIVE_TO_HISTORY");
-				sql_generator->migrate_live_to_history(con, table);
+				sql_generator->migrate_live_to_history(con, table, ctx->GetPrimaryKeyMode());
 				break;
 			default:
 				response->set_unsupported(true);

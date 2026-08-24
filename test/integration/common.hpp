@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../constants.hpp"
+#include "config.hpp"
 #include "duckdb.hpp"
 #include "extension_helper.hpp"
 #include "fivetran_duckdb_interop.hpp"
@@ -203,10 +204,20 @@ void define_history_test_table_reordered(T& request, const std::string& table_na
 	add_col(request, "blob", ::fivetran_sdk::v2::DataType::BINARY, false);
 }
 
+// Sets the "Strict Primary Keys" toggle on any request that carries a
+// configuration map. Passing false is equivalent to leaving it unset (the
+// default), but is explicit in tests.
+template <typename T>
+void set_strict_primary_keys(T& request, bool strict) {
+	(*request.mutable_configuration())[config::PROP_STRICT_PRIMARY_KEYS] = strict ? "true" : "false";
+}
+
 template <std::size_t N>
-void create_table(DestinationSdkImpl& service, const std::string& table_name, const std::array<column_def, N> columns) {
+void create_table(DestinationSdkImpl& service, const std::string& table_name, const std::array<column_def, N> columns,
+                  bool strict_primary_keys = false) {
 	::fivetran_sdk::v2::CreateTableRequest request;
 	add_config(request, test::constants::MD_TOKEN, test::constants::TEST_DATABASE_NAME, table_name);
+	set_strict_primary_keys(request, strict_primary_keys);
 	define_table(request, table_name, columns);
 
 	::fivetran_sdk::v2::CreateTableResponse response;

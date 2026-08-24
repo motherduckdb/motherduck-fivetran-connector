@@ -12,6 +12,11 @@ constexpr std::uint8_t DECIMAL_DEFAULT_SCALE = 3;
 constexpr std::uint8_t DECIMAL_MIN_WIDTH = 1;
 constexpr std::uint8_t DECIMAL_MAX_WIDTH = 38;
 
+/// Two types of constraints for primary key columns:
+/// - NotNull: primary key columns are declared NOT NULL only (no uniqueness).
+/// - Strict: primary key columns are declared PRIMARY KEY (NOT NULL + UNIQUE)
+enum class PrimaryKeyMode { NotNull, Strict };
+
 struct column_def {
 	std::string name;
 	duckdb::LogicalTypeId type = duckdb::LogicalTypeId::INVALID;
