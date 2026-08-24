@@ -41,19 +41,32 @@ TEST_CASE("throw_if_query_error is a no-op for a successful result", "[sql_gener
 	REQUIRE_NOTHROW(throw_if_query_error(*result, "should not be thrown"));
 }
 
-TEST_CASE("throw_if_query_error wraps a regular error in a prefixed std::runtime_error", "[sql_generator]") {
+// NOTE: unlike the sibling branch, throw_if_query_error here does NOT decide whether an error is recoverable.
+// It always re-throws via duckdb::ErrorData::Throw(), which JSON-encodes the original ExceptionType into the
+// resulting exception's what(). The actual out-of-memory-to-task decision is made far away, in
+// motherduck_destination_server.cpp's recoverable_oom_message(), by reconstructing a duckdb::ErrorData from
+// what() and checking its Type(). These tests verify that round trip survives.
+
+TEST_CASE("throw_if_query_error preserves the exception type through what() for a regular error", "[sql_generator]") {
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
 
 	const auto result = con.Query("SELECT * FROM nonexistent_table");
 	REQUIRE(result->HasError());
 
-	REQUIRE_THROWS_AS(throw_if_query_error(*result, "Could not query table"), std::runtime_error);
-	REQUIRE_THROWS_WITH(throw_if_query_error(*result, "Could not query table"),
-	                    Catch::Matchers::ContainsSubstring("Could not query table"));
+	bool threw = false;
+	try {
+		throw_if_query_error(*result, "Could not query table");
+	} catch (const std::exception& ex) {
+		threw = true;
+		const duckdb::ErrorData reconstructed(ex.what());
+		REQUIRE(reconstructed.Type() != duckdb::ExceptionType::OUT_OF_MEMORY);
+		REQUIRE_THAT(reconstructed.RawMessage(), Catch::Matchers::ContainsSubstring("Could not query table"));
+	}
+	REQUIRE(threw);
 }
 
-TEST_CASE("throw_if_query_error converts an out-of-memory error into a RecoverableError", "[sql_generator]") {
+TEST_CASE("throw_if_query_error preserves the out-of-memory exception type through what()", "[sql_generator]") {
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
 	REQUIRE_NO_FAIL(con.Query("SET memory_limit='1MB'"));
@@ -62,5 +75,13 @@ TEST_CASE("throw_if_query_error converts an out-of-memory error into a Recoverab
 	REQUIRE(result->HasError());
 	REQUIRE(result->GetErrorObject().Type() == duckdb::ExceptionType::OUT_OF_MEMORY);
 
-	REQUIRE_THROWS_AS(throw_if_query_error(*result, "Could not create table"), md_error::RecoverableError);
+	bool threw = false;
+	try {
+		throw_if_query_error(*result, "Could not create table");
+	} catch (const std::exception& ex) {
+		threw = true;
+		const duckdb::ErrorData reconstructed(ex.what());
+		REQUIRE(reconstructed.Type() == duckdb::ExceptionType::OUT_OF_MEMORY);
+	}
+	REQUIRE(threw);
 }

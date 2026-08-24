@@ -8,7 +8,6 @@
 #include <map>
 #include <memory>
 #include <set>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -21,20 +20,20 @@ void find_primary_keys(const std::vector<column_def>& cols, std::vector<const co
 /// surfaces to Fivetran as a task rather than a hard sync failure. This is a no-op for any other error type.
 void throw_recoverable_error_if_oom(const duckdb::ErrorData& error_data);
 
-/// If `result` has an error, throws it: out-of-memory errors become a md_error::RecoverableError (see
-/// throw_recoverable_error_if_oom), anything else becomes a std::runtime_error prefixed with `error_message`.
-/// This is the single place call sites should route through instead of hand-rolling their own
-/// HasError()/GetError() check, so new queries get OOM handling for free. Templated so it accepts both
-/// duckdb::BaseQueryResult (from Connection::Query) and duckdb::PreparedStatement (from Connection::Prepare),
-/// which share the same HasError()/GetError()/GetErrorObject() shape but do not share a base class. Takes
-/// `result` by non-const reference because PreparedStatement's GetError()/GetErrorObject() are not const.
+/// If `result` has an error, throws it via ErrorData::Throw(), which preserves the original
+/// duckdb::ExceptionType by JSON-encoding it into the resulting exception's what(). This is deliberate: it
+/// lets a single catch block far away (in motherduck_destination_server.cpp) reconstruct the ExceptionType
+/// later and decide whether the error is recoverable (e.g. out-of-memory), without every query call site
+/// needing to know or check that itself. Callers that want a plain, readable exception message should use
+/// extract_readable_error() on the caught exception rather than its what() directly.
+/// Templated so it accepts both duckdb::BaseQueryResult (from Connection::Query) and duckdb::PreparedStatement
+/// (from Connection::Prepare), which share the same HasError()/GetErrorObject() shape but do not share a base
+/// class. Takes `result` by non-const reference because PreparedStatement's GetErrorObject() is not const.
 template <typename T>
 void throw_if_query_error(T& result, const std::string& error_message) {
-	if (!result.HasError()) {
-		return;
+	if (result.HasError()) {
+		result.GetErrorObject().Throw(error_message + ": ");
 	}
-	throw_recoverable_error_if_oom(result.GetErrorObject());
-	throw std::runtime_error(error_message + ": " + result.GetError());
 }
 
 /// join() makes it easy to reduce a generic vector to a string with a specified pattern:

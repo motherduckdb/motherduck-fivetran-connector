@@ -21,8 +21,56 @@
 #include <string>
 
 namespace {
+std::string extract_readable_error(const std::exception& ex) {
+	// DuckDB errors are JSON strings. Converting it to ErrorData to extract the
+	// message.
+	duckdb::ErrorData error(ex.what());
+	std::string error_message = error.RawMessage();
+
+	// Errors thrown in the initialization function are very verbose. Example:
+	// Invalid Input Error: Initialization function "motherduck_duckdb_cpp_init"
+	// from file "motherduck.duckdb_extension" threw an exception: "Failed to
+	// attach 'my_db': no database/share named 'my_db' found". We are only
+	// interested in the last part.
+	const std::string boilerplate = "Initialization function \"motherduck_";
+	if (error_message.find(boilerplate) != std::string::npos) {
+		const std::string search_string = "threw an exception: ";
+		const auto pos = error_message.find(search_string);
+		if (pos != std::string::npos) {
+			error_message = "Connection to MotherDuck failed: " + error_message.substr(pos + search_string.length());
+		}
+	}
+
+	const std::string not_found_error_substr = "no database/share named";
+	if (error_message.find(not_found_error_substr) != std::string::npos) {
+		// Remove the quotation mark at the end
+		error_message = error_message.substr(0, error_message.length() - 1);
+		// Full error: "no database/share named 'my_db' found. Create it first in
+		// your MotherDuck account."
+		error_message += ". Create it first in your MotherDuck account.\"";
+	}
+
+	return error_message;
+}
+
+// If `ex` carries a DuckDB out-of-memory ExceptionType (JSON-encoded into what() by
+// duckdb::ErrorData::Throw(), see throw_if_query_error), returns a friendly, actionable message for it.
+// Returns std::nullopt for any other exception, including non-DuckDB ones, so the caller can fall through to
+// its normal hard-failure handling. This is the single place that decides whether an error anywhere in
+// sql_generator.cpp/csv_processor.cpp should become a Fivetran task instead of a hard sync failure -- new
+// queries do not need to opt into this, they get it automatically as long as they throw through
+// throw_if_query_error (or otherwise preserve the DuckDB exception type through to here).
+std::optional<std::string> recoverable_oom_message(const std::exception& ex) {
+	try {
+		throw_recoverable_error_if_oom(duckdb::ErrorData(ex.what()));
+	} catch (const md_error::RecoverableError& mde) {
+		return std::string(mde.what());
+	}
+	return std::nullopt;
+}
+
 ::grpc::Status create_grpc_status_from_exception(const std::exception& ex, const std::string& prefix = "") {
-	const std::string error_message = md_error::truncate_for_grpc_header(ex.what());
+	const std::string error_message = md_error::truncate_for_grpc_header(extract_readable_error(ex));
 	// The assumption here is that the prefix is short enough that its length can
 	// be disregarded
 	return ::grpc::Status(::grpc::StatusCode::INTERNAL, prefix + error_message);
@@ -262,9 +310,16 @@ grpc::Status DestinationSdkImpl::DescribeTable(::grpc::ServerContext*,
 		response->mutable_task()->set_message(mde.what());
 		return ::grpc::Status::OK;
 	} catch (const std::exception& ex) {
+		if (const auto oom_message = recoverable_oom_message(ex)) {
+			logger.warning("DescribeTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
+			               request->table_name() + ">: " + *oom_message);
+			response->mutable_task()->set_message(*oom_message);
+			return ::grpc::Status::OK;
+		}
+		const std::string readable_message = extract_readable_error(ex);
 		logger.severe("DescribeTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		              request->table_name() + ">: " + std::string(ex.what()));
-		response->mutable_task()->set_message(ex.what());
+		              request->table_name() + ">: " + readable_message);
+		response->mutable_task()->set_message(readable_message);
 		return create_grpc_status_from_exception(ex);
 	}
 
@@ -299,9 +354,16 @@ grpc::Status DestinationSdkImpl::CreateTable(::grpc::ServerContext*,
 		response->mutable_task()->set_message(mde.what());
 		return ::grpc::Status::OK;
 	} catch (const std::exception& ex) {
+		if (const auto oom_message = recoverable_oom_message(ex)) {
+			logger.warning("CreateTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
+			               request->table().name() + ">: " + *oom_message);
+			response->mutable_task()->set_message(*oom_message);
+			return ::grpc::Status::OK;
+		}
+		const std::string readable_message = extract_readable_error(ex);
 		logger.severe("CreateTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		              request->table().name() + ">: " + std::string(ex.what()));
-		response->mutable_task()->set_message(ex.what());
+		              request->table().name() + ">: " + readable_message);
+		response->mutable_task()->set_message(readable_message);
 		return create_grpc_status_from_exception(ex);
 	}
 
@@ -333,9 +395,16 @@ grpc::Status DestinationSdkImpl::AlterTable(::grpc::ServerContext*,
 		response->mutable_task()->set_message(mde.what());
 		return ::grpc::Status::OK;
 	} catch (const std::exception& ex) {
+		if (const auto oom_message = recoverable_oom_message(ex)) {
+			logger.warning("AlterTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
+			               request->table().name() + ">: " + *oom_message);
+			response->mutable_task()->set_message(*oom_message);
+			return ::grpc::Status::OK;
+		}
+		const std::string readable_message = extract_readable_error(ex);
 		logger.severe("AlterTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		              request->table().name() + ">: " + std::string(ex.what()));
-		response->mutable_task()->set_message(ex.what());
+		              request->table().name() + ">: " + readable_message);
+		response->mutable_task()->set_message(readable_message);
 		return create_grpc_status_from_exception(ex);
 	}
 
@@ -377,9 +446,16 @@ grpc::Status DestinationSdkImpl::Truncate(::grpc::ServerContext*, const ::fivetr
 		response->mutable_task()->set_message(mde.what());
 		return ::grpc::Status::OK;
 	} catch (const std::exception& ex) {
+		if (const auto oom_message = recoverable_oom_message(ex)) {
+			logger.warning("Truncate endpoint failed for schema <" + request->schema_name() + ">, table <" +
+			               request->table_name() + ">: " + *oom_message);
+			response->mutable_task()->set_message(*oom_message);
+			return ::grpc::Status::OK;
+		}
+		const std::string readable_message = extract_readable_error(ex);
 		logger.severe("Truncate endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		              request->table_name() + ">: " + std::string(ex.what()));
-		response->mutable_task()->set_message(ex.what());
+		              request->table_name() + ">: " + readable_message);
+		response->mutable_task()->set_message(readable_message);
 		return create_grpc_status_from_exception(ex);
 	}
 
@@ -475,7 +551,13 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 	} catch (const std::exception& ex) {
 		const std::string error_prefix = "WriteBatch endpoint failed for schema <" + request->schema_name() +
 		                                 ">, table <" + request->table().name() + ">: ";
-		const auto error_msg = error_prefix + ex.what();
+		if (const auto oom_message = recoverable_oom_message(ex)) {
+			const auto msg = error_prefix + *oom_message;
+			logger.warning(msg);
+			response->mutable_task()->set_message(msg);
+			return ::grpc::Status::OK;
+		}
+		const auto error_msg = error_prefix + extract_readable_error(ex);
 		logger.severe(error_msg);
 		response->mutable_task()->set_message(error_msg);
 		return create_grpc_status_from_exception(ex, error_prefix);
@@ -631,7 +713,19 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 	} catch (const std::exception& ex) {
 		const std::string error_prefix = "WriteHistoryBatch endpoint failed for schema <" + request->schema_name() +
 		                                 ">, table <" + request->table().name() + ">: ";
-		const auto msg = error_prefix + ex.what();
+		if (const auto oom_message = recoverable_oom_message(ex)) {
+			const auto msg = error_prefix + *oom_message;
+			logger.warning(msg);
+
+			// Clean up bookkeeping table. The function uses IF EXISTS. Ignore any
+			// errors here.
+			sql_generator->drop_latest_active_records_table(con, lar_table_name);
+
+			response->mutable_task()->set_message(msg);
+			return ::grpc::Status::OK;
+		}
+
+		const auto msg = error_prefix + extract_readable_error(ex);
 		logger.severe(msg);
 
 		// Clean up bookkeeping table. The function uses IF EXISTS. Ignore any
@@ -643,38 +737,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 	}
 
 	return ::grpc::Status::OK;
-}
-
-std::string extract_readable_error(const std::exception& ex) {
-	// DuckDB errors are JSON strings. Converting it to ErrorData to extract the
-	// message.
-	duckdb::ErrorData error(ex.what());
-	std::string error_message = error.RawMessage();
-
-	// Errors thrown in the initialization function are very verbose. Example:
-	// Invalid Input Error: Initialization function "motherduck_duckdb_cpp_init"
-	// from file "motherduck.duckdb_extension" threw an exception: "Failed to
-	// attach 'my_db': no database/share named 'my_db' found". We are only
-	// interested in the last part.
-	const std::string boilerplate = "Initialization function \"motherduck_";
-	if (error_message.find(boilerplate) != std::string::npos) {
-		const std::string search_string = "threw an exception: ";
-		const auto pos = error_message.find(search_string);
-		if (pos != std::string::npos) {
-			error_message = "Connection to MotherDuck failed: " + error_message.substr(pos + search_string.length());
-		}
-	}
-
-	const std::string not_found_error_substr = "no database/share named";
-	if (error_message.find(not_found_error_substr) != std::string::npos) {
-		// Remove the quotation mark at the end
-		error_message = error_message.substr(0, error_message.length() - 1);
-		// Full error: "no database/share named 'my_db' found. Create it first in
-		// your MotherDuck account."
-		error_message += ". Create it first in your MotherDuck account.\"";
-	}
-
-	return error_message;
 }
 
 std::string get_migration_schema_name(const fivetran_sdk::v2::MigrationDetails& details) {
@@ -924,10 +986,18 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 	} catch (const std::exception& e) {
 		const std::string schema = request->details().schema();
 		const std::string table = request->details().table();
+		if (const auto oom_message = recoverable_oom_message(e)) {
+			const std::string msg =
+			    "Migrate endpoint failed for schema <" + schema + ">, table <" + table + ">: " + *oom_message;
+			logger.warning(msg);
+			response->mutable_task()->set_message(msg);
+			return ::grpc::Status::OK;
+		}
+		const std::string readable_message = extract_readable_error(e);
 		logger.severe("Migrate endpoint failed for schema <" + schema + ">, table <" + table +
-		              ">: " + std::string(e.what()));
-		response->mutable_task()->set_message(e.what());
-		return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
+		              ">: " + readable_message);
+		response->mutable_task()->set_message(readable_message);
+		return ::grpc::Status(::grpc::StatusCode::INTERNAL, readable_message);
 	}
 
 	return ::grpc::Status(::grpc::StatusCode::OK, "");
