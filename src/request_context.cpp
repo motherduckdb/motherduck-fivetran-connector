@@ -16,6 +16,11 @@ mdlog::Logger get_logger_for_env(duckdb::Connection& con) {
 	}
 	return mdlog::Logger::CreateMultiSinkLogger(&con);
 }
+
+PrimaryKeyMode get_pk_mode(const google::protobuf::Map<std::string, std::string>& request_config) {
+	const bool strict = config::find_bool_property(request_config, config::PROP_STRICT_PRIMARY_KEYS, false);
+	return strict ? PrimaryKeyMode::Strict : PrimaryKeyMode::NotNull;
+}
 } // namespace
 
 RequestContext::RequestContext(const std::string& endpoint_name_, ConnectionFactory& connection_factory,
@@ -23,6 +28,7 @@ RequestContext::RequestContext(const std::string& endpoint_name_, ConnectionFact
     : endpoint_name(endpoint_name_),
       db_name(config::find_property(request_config, config::PROP_DATABASE)),
       md_token(config::find_property(request_config, config::PROP_TOKEN)),
+      pk_mode(get_pk_mode(request_config)),
       con(connection_factory.CreateConnection(md_token, db_name)),
       logger(get_logger_for_env(con)) {
 	logger.debug("Endpoint <" + endpoint_name + "> started");
