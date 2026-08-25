@@ -7,6 +7,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -16,9 +17,17 @@ void find_primary_keys(const std::vector<column_def>& cols, std::vector<const co
                        std::vector<const column_def*>* columns_regular = nullptr,
                        const std::string& ignored_primary_key = "");
 
-/// Out-of-memory failures are user-actionable (upgrade to a larger MotherDuck instance size, or reduce the
-/// size of the batch being written), so they should be turned into a md_error::RecoverableError, which
-/// surfaces to Fivetran as a task rather than a hard sync failure. This is a no-op for any other error type.
+/// If `error_data` is a DuckDB out-of-memory error, returns the actionable message to surface to the user;
+/// std::nullopt for any other error type. Out-of-memory failures are user-actionable (upgrade to a larger
+/// MotherDuck instance size, or reduce the size of the batch being written), so they should reach the user as
+/// a Fivetran task rather than a hard sync failure. This is the single source of that decision and of its
+/// wording; both throw_if_query_error() (the primary path) and the safety net in each endpoint's generic
+/// catch arm in motherduck_destination_server.cpp route through it.
+std::optional<std::string> recoverable_oom_message(const duckdb::ErrorData& error_data);
+
+/// Throws a md_error::RecoverableError -- which the gRPC layer turns into a Fivetran task rather than a hard
+/// sync failure -- if `error_data` is an out-of-memory error (see recoverable_oom_message). This is a no-op
+/// for any other error type.
 void throw_recoverable_error_if_oom(const duckdb::ErrorData& error_data);
 
 /// If `result` has an error, throws it: out-of-memory errors become a md_error::RecoverableError (see

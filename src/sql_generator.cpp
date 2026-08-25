@@ -13,6 +13,7 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <optional>
 #include <random>
 #include <ranges>
 #include <set>
@@ -25,12 +26,18 @@
 
 using duckdb::KeywordHelper;
 
+std::optional<std::string> recoverable_oom_message(const duckdb::ErrorData& error_data) {
+	if (error_data.Type() != duckdb::ExceptionType::OUT_OF_MEMORY) {
+		return std::nullopt;
+	}
+	return "Your MotherDuck database ran out of memory. Please upgrade to a larger instance size, or reduce "
+	       "the size of the batch being written.\nOriginal error: " +
+	       error_data.RawMessage();
+}
+
 void throw_recoverable_error_if_oom(const duckdb::ErrorData& error_data) {
-	if (error_data.Type() == duckdb::ExceptionType::OUT_OF_MEMORY) {
-		throw md_error::RecoverableError(
-		    "Your MotherDuck database ran out of memory. Please upgrade to a larger instance size, or reduce "
-		    "the size of the batch being written.\nOriginal error: " +
-		    error_data.RawMessage());
+	if (const auto message = recoverable_oom_message(error_data)) {
+		throw md_error::RecoverableError(*message);
 	}
 }
 
