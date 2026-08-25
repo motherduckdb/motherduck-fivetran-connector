@@ -7,6 +7,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <exception>
 #include <new>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -21,7 +22,7 @@ TEST_CASE("recoverable_oom_message returns an actionable message for DuckDB out-
 
 	const auto message = recoverable_oom_message(result->GetErrorObject());
 	REQUIRE(message.has_value());
-	REQUIRE_THAT(*message, Catch::Matchers::ContainsSubstring("upgrade to a larger instance size"));
+	REQUIRE_THAT(*message, Catch::Matchers::ContainsSubstring("Reducing the batch size"));
 	// The original DuckDB message is kept for diagnostics.
 	REQUIRE_THAT(*message, Catch::Matchers::ContainsSubstring(result->GetErrorObject().RawMessage()));
 }
@@ -48,7 +49,7 @@ TEST_CASE("throw_recoverable_error_if_oom converts DuckDB out-of-memory errors i
 
 	REQUIRE_THROWS_AS(throw_recoverable_error_if_oom(result->GetErrorObject()), md_error::RecoverableError);
 	REQUIRE_THROWS_WITH(throw_recoverable_error_if_oom(result->GetErrorObject()),
-	                    Catch::Matchers::ContainsSubstring("upgrade to a larger instance size"));
+	                    Catch::Matchers::ContainsSubstring("Reducing the batch size"));
 }
 
 TEST_CASE("throw_recoverable_error_if_oom is a no-op for non-OOM errors", "[sql_generator]") {
@@ -117,7 +118,7 @@ TEST_CASE("an out-of-memory error thrown by DuckDB is still recognized after bei
 		threw = true;
 		const auto message = recoverable_oom_message(duckdb::ErrorData(ex));
 		REQUIRE(message.has_value());
-		REQUIRE_THAT(*message, Catch::Matchers::ContainsSubstring("upgrade to a larger instance size"));
+		REQUIRE_THAT(*message, Catch::Matchers::ContainsSubstring("Reducing the batch size"));
 	}
 	REQUIRE(threw);
 }
@@ -136,8 +137,8 @@ TEST_CASE("the safety net leaves the exceptions thrown by throw_if_query_error u
 		threw = true;
 		// Not an OOM, so the net declines it and the endpoint falls through to its hard-failure path...
 		REQUIRE_FALSE(recoverable_oom_message(duckdb::ErrorData(ex)).has_value());
-		// ...with the readable message intact. duckdb::ErrorData's string constructor keeps non-JSON input
-		// verbatim, which is what makes the net safe to apply to every exception an endpoint can see.
+		// ...with the readable message intact. duckdb::ErrorData's string constructor keeps a message that
+		// does not start with '{' verbatim, which covers everything throw_if_query_error produces.
 		REQUIRE(duckdb::ErrorData(ex).RawMessage() == std::string(ex.what()));
 		REQUIRE_THAT(std::string(ex.what()), Catch::Matchers::ContainsSubstring("Could not query table: "));
 		REQUIRE_THAT(std::string(ex.what()), Catch::Matchers::ContainsSubstring("Catalog Error:"));
@@ -152,7 +153,31 @@ TEST_CASE("the safety net also turns a std::bad_alloc into a recoverable out-of-
 	} catch (const std::exception& ex) {
 		threw = true;
 		// duckdb::ErrorData maps std::bad_alloc's what() to ExceptionType::OUT_OF_MEMORY.
-		REQUIRE(recoverable_oom_message(duckdb::ErrorData(ex)).has_value());
+		const auto message = recoverable_oom_message(duckdb::ErrorData(ex));
+		REQUIRE(message.has_value());
+		// This one is the connector process running out of memory, not the destination, so the message must
+		// not send the user off to resize a MotherDuck instance that is not the problem.
+		REQUIRE_THAT(*message, !Catch::Matchers::ContainsSubstring("instance size"));
+		REQUIRE_THAT(*message, Catch::Matchers::ContainsSubstring("Reducing the batch size"));
 	}
 	REQUIRE(threw);
+}
+
+TEST_CASE("the safety net declines a malformed JSON message instead of throwing", "[sql_generator]") {
+	// duckdb::ErrorData's string constructor treats any message starting with '{' as DuckDB error JSON and
+	// throws duckdb::SerializationException when it does not parse. bypassed_oom_message() runs inside an
+	// endpoint's catch handler, where letting that escape would replace the real error with a parse failure,
+	// so it catches and declines. This pins the underlying behaviour that makes the guard necessary.
+	REQUIRE_THROWS(duckdb::ErrorData(std::string("{not valid json")));
+
+	// And the shape bypassed_oom_message() relies on: catching it yields no out-of-memory verdict.
+	std::optional<std::string> verdict;
+	REQUIRE_NOTHROW([&] {
+		try {
+			verdict = recoverable_oom_message(duckdb::ErrorData(std::string("{not valid json")));
+		} catch (const std::exception&) {
+			verdict = std::nullopt;
+		}
+	}());
+	REQUIRE_FALSE(verdict.has_value());
 }

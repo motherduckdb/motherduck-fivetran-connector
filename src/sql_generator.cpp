@@ -30,8 +30,15 @@ std::optional<std::string> recoverable_oom_message(const duckdb::ErrorData& erro
 	if (error_data.Type() != duckdb::ExceptionType::OUT_OF_MEMORY) {
 		return std::nullopt;
 	}
-	return "Your MotherDuck database ran out of memory. Please upgrade to a larger instance size, or reduce "
-	       "the size of the batch being written.\nOriginal error: " +
+	// Deliberately does not claim *where* the memory ran out. One ExceptionType covers both a
+	// destination-side OOM and one in the connector's own process -- the local read_csv bind, or a
+	// std::bad_alloc, which duckdb::ErrorData also maps to OUT_OF_MEMORY -- and the type alone cannot tell
+	// them apart. Sending a user to upgrade their instance for a container-side OOM would point them at
+	// something that is not the problem. Reducing the batch size helps either way, and when the destination
+	// really is what ran out, MotherDuck's own message carries the instance-size advice, which reaches the
+	// user through `Original error` below.
+	return "The sync ran out of memory. Reducing the batch size in the connector configuration may resolve "
+	       "this.\nOriginal error: " +
 	       error_data.RawMessage();
 }
 

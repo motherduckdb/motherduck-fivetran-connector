@@ -18,11 +18,17 @@ void find_primary_keys(const std::vector<column_def>& cols, std::vector<const co
                        const std::string& ignored_primary_key = "");
 
 /// If `error_data` is a DuckDB out-of-memory error, returns the actionable message to surface to the user;
-/// std::nullopt for any other error type. Out-of-memory failures are user-actionable (upgrade to a larger
-/// MotherDuck instance size, or reduce the size of the batch being written), so they should reach the user as
-/// a Fivetran task rather than a hard sync failure. This is the single source of that decision and of its
-/// wording; both throw_if_query_error() (the primary path) and the safety net in each endpoint's generic
-/// catch arm in motherduck_destination_server.cpp route through it.
+/// std::nullopt for any other error type. Out-of-memory failures are user-actionable (reduce the batch size,
+/// or -- when the destination is what ran out -- move to a larger MotherDuck instance size), so they should
+/// reach the user as a Fivetran task rather than a hard sync failure. This is the single source of that
+/// decision and of its wording; both throw_if_query_error() (the primary path) and the safety net in each
+/// endpoint's generic catch arm in motherduck_destination_server.cpp route through it.
+///
+/// This keys off duckdb::ExceptionType rather than matching on message text, which relies on the type
+/// surviving the trip back from MotherDuck. It does: MotherDuck preserves the original ExceptionType when it
+/// rewrites a server-side out-of-memory message into its user-facing form, and the client extension's
+/// exception serialization round-trips every ExceptionType, out-of-memory included. Both are covered by tests
+/// on the MotherDuck side rather than here, since reproducing a destination-side OOM needs a live instance.
 std::optional<std::string> recoverable_oom_message(const duckdb::ErrorData& error_data);
 
 /// Throws a md_error::RecoverableError -- which the gRPC layer turns into a Fivetran task rather than a hard

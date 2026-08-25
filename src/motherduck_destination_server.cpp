@@ -46,15 +46,22 @@ template <typename ResponseT>
 /// recoverable_oom_message can still recognize it here. A std::bad_alloc is recognized too, since
 /// duckdb::ErrorData maps it to ExceptionType::OUT_OF_MEMORY.
 ///
-/// Returns std::nullopt for anything else, including non-DuckDB exceptions: duckdb::ErrorData's string
-/// constructor keeps non-JSON input verbatim and leaves the type INVALID, so the plain std::runtime_errors
-/// that throw_if_query_error produces fall straight through to the normal hard-failure path with their
-/// message intact.
+/// Returns std::nullopt for anything else, so the caller falls through to its normal hard-failure path with
+/// the exception's message intact. For a message that does not start with '{' -- which covers every
+/// std::runtime_error that throw_if_query_error produces -- duckdb::ErrorData keeps it verbatim and leaves
+/// the type INVALID. A message that *does* start with '{' but is not valid DuckDB error JSON makes
+/// ErrorData's string constructor throw duckdb::SerializationException; since we are already inside a catch
+/// handler, letting that escape would replace the real error with a parse failure, so it is caught here and
+/// declined instead.
 ///
 /// This is only a net. throw_if_query_error remains the primary path, and is what every query in
 /// sql_generator.cpp and csv_processor.cpp routes through.
 std::optional<std::string> bypassed_oom_message(const std::exception& ex) {
-	return recoverable_oom_message(duckdb::ErrorData(ex));
+	try {
+		return recoverable_oom_message(duckdb::ErrorData(ex));
+	} catch (const std::exception&) {
+		return std::nullopt;
+	}
 }
 
 template <typename T>
