@@ -153,6 +153,7 @@ link_dependencies(fivetran_sdk)
 add_library(motherduck_destination_sources STATIC
         src/config_tester.cpp
         src/connection_factory.cpp
+        src/crash_handler.cpp
         src/csv_processor.cpp
         src/decryption.cpp
         src/extension_helper.cpp
