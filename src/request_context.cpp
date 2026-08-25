@@ -21,11 +21,9 @@ mdlog::Logger get_logger_for_env(duckdb::Connection& con) {
 
 RequestContext::RequestContext(const std::string& endpoint_name_, ConnectionFactory& connection_factory,
                                const google::protobuf::Map<std::string, std::string>& request_config)
-    : endpoint_name(endpoint_name_),
-      db_name(config::find_property(request_config, config::PROP_DATABASE)),
+    : endpoint_name(endpoint_name_), db_name(config::find_property(request_config, config::PROP_DATABASE)),
       md_token(config::find_property(request_config, config::PROP_TOKEN)),
-      con(connection_factory.CreateConnection(md_token, db_name)),
-      logger(get_logger_for_env(con)),
+      con(connection_factory.CreateConnection(md_token, db_name)), logger(get_logger_for_env(con)),
       started_at(std::chrono::steady_clock::now()) {
 	logger.debug("Endpoint <" + endpoint_name + "> started");
 }

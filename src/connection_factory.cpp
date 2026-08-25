@@ -51,15 +51,14 @@ void enable_verbose_logging_for_user(duckdb::Connection& con, const mdlog::Logge
 		return;
 	}
 
-	const auto set_res =
-	    con.Query("SET motherduck_log_level='" + std::string(VERBOSE_LOG_LEVEL) + "'");
+	const auto set_res = con.Query("SET motherduck_log_level='" + std::string(VERBOSE_LOG_LEVEL) + "'");
 	if (set_res->HasError()) {
 		logger.warning("get_duckdb: could not raise the MotherDuck log level for user <" + user_id +
 		               ">: " + set_res->GetError());
 		return;
 	}
-	logger.info("get_duckdb: raised MotherDuck client logging to '" + std::string(VERBOSE_LOG_LEVEL) +
-	            "' for user <" + user_id + ">");
+	logger.info("get_duckdb: raised MotherDuck client logging to '" + std::string(VERBOSE_LOG_LEVEL) + "' for user <" +
+	            user_id + ">");
 }
 } // namespace
 
