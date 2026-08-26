@@ -28,10 +28,8 @@ namespace {
 	return ::grpc::Status(::grpc::StatusCode::INTERNAL, prefix + error_message);
 }
 
-/// Surfaces a user-actionable failure to Fivetran as a task instead of a hard sync failure: logs it as a
-/// warning and returns OK with `task_message` set on the response's task. Shared by every endpoint's
-/// md_error::RecoverableError arm and by the out-of-memory safety net in its generic catch arm, so that the
-/// two cannot drift apart.
+/// Surfaces a user-actionable failure as a Fivetran task instead of a hard sync failure. Shared by every
+/// endpoint's md_error::RecoverableError arm and out-of-memory net, so the two cannot drift.
 template <typename ResponseT>
 ::grpc::Status respond_with_task(mdlog::Logger& logger, ResponseT* response, const std::string& log_message,
                                  const std::string& task_message) {
@@ -40,22 +38,13 @@ template <typename ResponseT>
 	return ::grpc::Status::OK;
 }
 
-/// Safety net for an out-of-memory error that reaches an endpoint's generic catch arm without having gone
-/// through throw_if_query_error -- for instance one thrown from inside DuckDB itself rather than surfaced on
-/// a query result we inspect. DuckDB serializes the ExceptionType into what() as JSON, so
-/// recoverable_oom_message can still recognize it here. A std::bad_alloc is recognized too, since
-/// duckdb::ErrorData maps it to ExceptionType::OUT_OF_MEMORY.
+/// Safety net for an out-of-memory error that skipped throw_if_query_error: one thrown from inside DuckDB
+/// (which JSON-encodes the ExceptionType into what()), or a std::bad_alloc. throw_if_query_error stays the
+/// primary path -- this only catches what it never saw.
 ///
-/// Returns std::nullopt for anything else, so the caller falls through to its normal hard-failure path with
-/// the exception's message intact. For a message that does not start with '{' -- which covers every
-/// std::runtime_error that throw_if_query_error produces -- duckdb::ErrorData keeps it verbatim and leaves
-/// the type INVALID. A message that *does* start with '{' but is not valid DuckDB error JSON makes
-/// ErrorData's string constructor throw duckdb::SerializationException; since we are already inside a catch
-/// handler, letting that escape would replace the real error with a parse failure, so it is caught here and
-/// declined instead.
-///
-/// This is only a net. throw_if_query_error remains the primary path, and is what every query in
-/// sql_generator.cpp and csv_processor.cpp routes through.
+/// Returns std::nullopt for anything else, leaving the caller's hard-failure path and message intact. The
+/// try/catch is load-bearing: ErrorData's string constructor throws SerializationException on a message that
+/// starts with '{' but is not valid error JSON, and we are already inside a catch handler.
 std::optional<std::string> bypassed_oom_message(const std::exception& ex) {
 	try {
 		return recoverable_oom_message(duckdb::ErrorData(ex));

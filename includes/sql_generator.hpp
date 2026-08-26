@@ -17,18 +17,14 @@ void find_primary_keys(const std::vector<column_def>& cols, std::vector<const co
                        std::vector<const column_def*>* columns_regular = nullptr,
                        const std::string& ignored_primary_key = "");
 
-/// If `error_data` is a DuckDB out-of-memory error, returns the actionable message to surface to the user;
-/// std::nullopt for any other error type. Out-of-memory failures are user-actionable (reduce the batch size,
-/// or -- when the destination is what ran out -- move to a larger MotherDuck instance size), so they should
-/// reach the user as a Fivetran task rather than a hard sync failure. This is the single source of that
-/// decision and of its wording; both throw_if_query_error() (the primary path) and the safety net in each
-/// endpoint's generic catch arm in motherduck_destination_server.cpp route through it.
+/// If `error_data` is an out-of-memory error, returns the message to surface to the user; std::nullopt
+/// otherwise. OOM is user-actionable, so it should reach Fivetran as a task rather than a hard sync failure.
+/// Single source of that decision and its wording, for both throw_if_query_error() and the safety net in
+/// motherduck_destination_server.cpp's catch arms.
 ///
-/// This keys off duckdb::ExceptionType rather than matching on message text, which relies on the type
-/// surviving the trip back from MotherDuck. It does: MotherDuck preserves the original ExceptionType when it
-/// rewrites a server-side out-of-memory message into its user-facing form, and the client extension's
-/// exception serialization round-trips every ExceptionType, out-of-memory included. Both are covered by tests
-/// on the MotherDuck side rather than here, since reproducing a destination-side OOM needs a live instance.
+/// Keys off ExceptionType rather than message text, which holds because MotherDuck preserves the type when it
+/// rewrites a server-side OOM message, and the client extension round-trips every type. Both are covered by
+/// tests there rather than here, since a destination-side OOM needs a live instance to reproduce.
 std::optional<std::string> recoverable_oom_message(const duckdb::ErrorData& error_data);
 
 /// Throws a md_error::RecoverableError -- which the gRPC layer turns into a Fivetran task rather than a hard

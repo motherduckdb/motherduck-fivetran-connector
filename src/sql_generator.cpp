@@ -30,18 +30,10 @@ std::optional<std::string> recoverable_oom_message(const duckdb::ErrorData& erro
 	if (error_data.Type() != duckdb::ExceptionType::OUT_OF_MEMORY) {
 		return std::nullopt;
 	}
-	// Deliberately says nothing about *where* the memory ran out, and in particular does not name a
-	// remedy that only applies to the destination. One ExceptionType covers both:
-	//
-	//   - the destination running out, and
-	//   - the connector's own process running out -- decrypting a batch allocates roughly twice the file
-	//     size in memory (see decrypt_file/decrypt_file_into_memory), and the local read_csv bind also runs
-	//     here. A std::bad_alloc from either arrives as OUT_OF_MEMORY, since duckdb::ErrorData maps it.
-	//
-	// The type alone cannot tell those apart, so this message only recommends what helps in both cases:
-	// batch size bounds the decryption allocation directly, and bounds what the destination is asked to
-	// absorb. Anything specific to the destination is left to MotherDuck's own message, which reaches the
-	// user through `Original error` below and is attributed by the party that actually knows.
+	// Names no location: one ExceptionType covers both a destination-side OOM and an in-process one
+	// (decrypting a batch allocates ~2x the file size, and ErrorData maps std::bad_alloc here too), and the
+	// type cannot tell them apart. Batch size is the lever that helps either way; destination-specific
+	// advice arrives via `Original error`.
 	return "The sync ran out of memory. Reducing the batch size in the connector configuration may resolve "
 	       "this.\nOriginal error: " +
 	       error_data.RawMessage();

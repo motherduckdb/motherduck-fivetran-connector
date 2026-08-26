@@ -95,10 +95,8 @@ TEST_CASE("throw_if_query_error converts an out-of-memory error into a Recoverab
 	REQUIRE_THROWS_AS(throw_if_query_error(*result, "Could not create table"), md_error::RecoverableError);
 }
 
-// The tests below cover the safety net in motherduck_destination_server.cpp, which handles an out-of-memory
-// error that reaches an endpoint's generic catch arm without having gone through throw_if_query_error --
-// for instance one thrown from inside DuckDB itself. The net's whole body is
-// `recoverable_oom_message(duckdb::ErrorData(ex))`, which is what these exercise.
+// The tests below cover the safety net in motherduck_destination_server.cpp, whose whole body is
+// `recoverable_oom_message(duckdb::ErrorData(ex))`.
 
 TEST_CASE("an out-of-memory error thrown by DuckDB is still recognized after being caught as a std::exception",
           "[sql_generator]") {
@@ -137,8 +135,7 @@ TEST_CASE("the safety net leaves the exceptions thrown by throw_if_query_error u
 		threw = true;
 		// Not an OOM, so the net declines it and the endpoint falls through to its hard-failure path...
 		REQUIRE_FALSE(recoverable_oom_message(duckdb::ErrorData(ex)).has_value());
-		// ...with the readable message intact. duckdb::ErrorData's string constructor keeps a message that
-		// does not start with '{' verbatim, which covers everything throw_if_query_error produces.
+		// ...with the readable message intact: ErrorData keeps a message not starting with '{' verbatim.
 		REQUIRE(duckdb::ErrorData(ex).RawMessage() == std::string(ex.what()));
 		REQUIRE_THAT(std::string(ex.what()), Catch::Matchers::ContainsSubstring("Could not query table: "));
 		REQUIRE_THAT(std::string(ex.what()), Catch::Matchers::ContainsSubstring("Catalog Error:"));
@@ -155,8 +152,7 @@ TEST_CASE("the safety net also turns a std::bad_alloc into a recoverable out-of-
 		// duckdb::ErrorData maps std::bad_alloc's what() to ExceptionType::OUT_OF_MEMORY.
 		const auto message = recoverable_oom_message(duckdb::ErrorData(ex));
 		REQUIRE(message.has_value());
-		// This one is the connector process running out of memory, not the destination, so the message must
-		// not send the user off to resize a MotherDuck instance that is not the problem.
+		// In-process OOM, not the destination -- must not send the user off to resize an instance.
 		REQUIRE_THAT(*message, !Catch::Matchers::ContainsSubstring("instance size"));
 		REQUIRE_THAT(*message, Catch::Matchers::ContainsSubstring("Reducing the batch size"));
 	}
@@ -164,13 +160,11 @@ TEST_CASE("the safety net also turns a std::bad_alloc into a recoverable out-of-
 }
 
 TEST_CASE("the safety net declines a malformed JSON message instead of throwing", "[sql_generator]") {
-	// duckdb::ErrorData's string constructor treats any message starting with '{' as DuckDB error JSON and
-	// throws duckdb::SerializationException when it does not parse. bypassed_oom_message() runs inside an
-	// endpoint's catch handler, where letting that escape would replace the real error with a parse failure,
-	// so it catches and declines. This pins the underlying behaviour that makes the guard necessary.
+	// Pins the hazard the net's try/catch exists for: ErrorData treats a message starting with '{' as error
+	// JSON and throws when it does not parse, which would escape from inside a catch handler.
 	REQUIRE_THROWS(duckdb::ErrorData(std::string("{not valid json")));
 
-	// And the shape bypassed_oom_message() relies on: catching it yields no out-of-memory verdict.
+	// And the net's shape: catching it yields no out-of-memory verdict.
 	std::optional<std::string> verdict;
 	REQUIRE_NOTHROW([&] {
 		try {
