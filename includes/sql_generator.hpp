@@ -22,8 +22,8 @@ void find_primary_keys(const std::vector<column_def>& cols, std::vector<const co
 /// Single source of that decision and its wording, for both throw_if_query_error() and the safety net in
 /// motherduck_destination_server.cpp's catch arms.
 ///
-/// Keys off ExceptionType rather than message text, which holds because MotherDuck preserves the type when it
-/// rewrites a server-side OOM message, and the client extension round-trips every type. Both are covered by
+/// Keys off ExceptionType rather than message text. That is safe because MotherDuck preserves the type when
+/// it rewrites a server-side OOM message, and the client extension round-trips every type -- both covered by
 /// tests there rather than here, since a destination-side OOM needs a live instance to reproduce.
 std::optional<std::string> recoverable_oom_message(const duckdb::ErrorData& error_data);
 

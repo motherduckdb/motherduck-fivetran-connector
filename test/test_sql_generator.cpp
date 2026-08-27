@@ -95,8 +95,8 @@ TEST_CASE("throw_if_query_error converts an out-of-memory error into a Recoverab
 	REQUIRE_THROWS_AS(throw_if_query_error(*result, "Could not create table"), md_error::RecoverableError);
 }
 
-// The tests below cover the safety net in motherduck_destination_server.cpp, whose whole body is
-// `recoverable_oom_message(duckdb::ErrorData(ex))`.
+// The tests below cover what the safety net in motherduck_destination_server.cpp is built from:
+// recoverable_oom_message() over a duckdb::ErrorData reconstructed from a caught exception's what().
 
 TEST_CASE("an out-of-memory error thrown by DuckDB is still recognized after being caught as a std::exception",
           "[sql_generator]") {
@@ -159,12 +159,13 @@ TEST_CASE("the safety net also turns a std::bad_alloc into a recoverable out-of-
 	REQUIRE(threw);
 }
 
-TEST_CASE("the safety net declines a malformed JSON message instead of throwing", "[sql_generator]") {
-	// Pins the hazard the net's try/catch exists for: ErrorData treats a message starting with '{' as error
-	// JSON and throws when it does not parse, which would escape from inside a catch handler.
+TEST_CASE("reconstructing an ErrorData from a malformed JSON message throws", "[sql_generator]") {
+	// Pins the hazard the net's try/catch exists for. NOTE: this does not exercise that try/catch, which
+	// lives in an anonymous namespace in motherduck_destination_server.cpp and is not reachable from here --
+	// delete it and this test still passes.
 	REQUIRE_THROWS(duckdb::ErrorData(std::string("{not valid json")));
 
-	// And the net's shape: catching it yields no out-of-memory verdict.
+	// The shape the net relies on, reproduced here rather than called: catching yields no verdict.
 	std::optional<std::string> verdict;
 	REQUIRE_NOTHROW([&] {
 		try {
