@@ -13,7 +13,6 @@
 #include <iostream>
 #include <map>
 #include <memory>
-#include <optional>
 #include <random>
 #include <ranges>
 #include <set>
@@ -26,25 +25,15 @@
 
 using duckdb::KeywordHelper;
 
-std::optional<std::string> recoverable_oom_message(const duckdb::ErrorData& error_data) {
-	if (error_data.Type() != duckdb::ExceptionType::OUT_OF_MEMORY) {
-		return std::nullopt;
-	}
-	// A larger instance is the actionable fix, and the destination running out is by far the common case, so
-	// say so. Hedged with "usually" rather than asserting a location: this ExceptionType also covers the
-	// connector's own process running out (its DuckDB defaults to 80% of the container's cgroup limit, so a
-	// local read_csv scan raises a real OutOfMemoryException rather than being killed), and the type cannot
-	// tell the two apart. For a destination OOM, MotherDuck's own message names the current instance type;
-	// it arrives via `Original error`.
-	return "Ran out of memory. Switching to a larger MotherDuck instance size is usually the quickest "
-	       "fix.\nOriginal error: " +
-	       error_data.RawMessage();
-}
-
 void throw_recoverable_error_if_oom(const duckdb::ErrorData& error_data) {
-	if (const auto message = recoverable_oom_message(error_data)) {
-		throw md_error::RecoverableError(*message);
+	if (error_data.Type() != duckdb::ExceptionType::OUT_OF_MEMORY) {
+		return;
 	}
+	// Hedged with "usually" because the connector's own DuckDB can raise this too: it defaults to 80% of the
+	// container's cgroup limit, so a local read_csv scan can run out before the destination does.
+	throw md_error::RecoverableError("Ran out of memory. Switching to a larger MotherDuck instance size is "
+	                                 "usually the quickest fix.\nOriginal error: " +
+	                                 error_data.RawMessage());
 }
 
 namespace {

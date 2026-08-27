@@ -38,21 +38,6 @@ template <typename ResponseT>
 	return ::grpc::Status::OK;
 }
 
-/// Safety net for an out-of-memory error that skipped throw_if_query_error: one thrown from inside DuckDB
-/// (which JSON-encodes the ExceptionType into what()), or a std::bad_alloc. throw_if_query_error stays the
-/// primary path -- this only catches what it never saw.
-///
-/// Returns std::nullopt for anything else, leaving the caller's hard-failure path and message intact. The
-/// try/catch is load-bearing: ErrorData's string constructor throws SerializationException on a message that
-/// starts with '{' but is not valid error JSON, and we are already inside a catch handler.
-std::optional<std::string> bypassed_oom_message(const std::exception& ex) {
-	try {
-		return recoverable_oom_message(duckdb::ErrorData(ex));
-	} catch (const std::exception&) {
-		return std::nullopt;
-	}
-}
-
 template <typename T>
 std::string get_schema_name(const T* request) {
 	std::string schema_name = request->schema_name();
@@ -288,9 +273,6 @@ grpc::Status DestinationSdkImpl::DescribeTable(::grpc::ServerContext*,
 	} catch (const std::exception& ex) {
 		const std::string log_prefix = "DescribeTable endpoint failed for schema <" + request->schema_name() +
 		                               ">, table <" + request->table_name() + ">: ";
-		if (const auto oom_message = bypassed_oom_message(ex)) {
-			return respond_with_task(logger, response, log_prefix + *oom_message, *oom_message);
-		}
 		logger.severe(log_prefix + ex.what());
 		response->mutable_task()->set_message(ex.what());
 		return create_grpc_status_from_exception(ex);
@@ -328,9 +310,6 @@ grpc::Status DestinationSdkImpl::CreateTable(::grpc::ServerContext*,
 	} catch (const std::exception& ex) {
 		const std::string log_prefix = "CreateTable endpoint failed for schema <" + request->schema_name() +
 		                               ">, table <" + request->table().name() + ">: ";
-		if (const auto oom_message = bypassed_oom_message(ex)) {
-			return respond_with_task(logger, response, log_prefix + *oom_message, *oom_message);
-		}
 		logger.severe(log_prefix + ex.what());
 		response->mutable_task()->set_message(ex.what());
 		return create_grpc_status_from_exception(ex);
@@ -365,9 +344,6 @@ grpc::Status DestinationSdkImpl::AlterTable(::grpc::ServerContext*,
 	} catch (const std::exception& ex) {
 		const std::string log_prefix = "AlterTable endpoint failed for schema <" + request->schema_name() +
 		                               ">, table <" + request->table().name() + ">: ";
-		if (const auto oom_message = bypassed_oom_message(ex)) {
-			return respond_with_task(logger, response, log_prefix + *oom_message, *oom_message);
-		}
 		logger.severe(log_prefix + ex.what());
 		response->mutable_task()->set_message(ex.what());
 		return create_grpc_status_from_exception(ex);
@@ -412,9 +388,6 @@ grpc::Status DestinationSdkImpl::Truncate(::grpc::ServerContext*, const ::fivetr
 	} catch (const std::exception& ex) {
 		const std::string log_prefix = "Truncate endpoint failed for schema <" + request->schema_name() + ">, table <" +
 		                               request->table_name() + ">: ";
-		if (const auto oom_message = bypassed_oom_message(ex)) {
-			return respond_with_task(logger, response, log_prefix + *oom_message, *oom_message);
-		}
 		logger.severe(log_prefix + ex.what());
 		response->mutable_task()->set_message(ex.what());
 		return create_grpc_status_from_exception(ex);
@@ -510,10 +483,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 	} catch (const std::exception& ex) {
 		const std::string error_prefix = "WriteBatch endpoint failed for schema <" + request->schema_name() +
 		                                 ">, table <" + request->table().name() + ">: ";
-		if (const auto oom_message = bypassed_oom_message(ex)) {
-			const auto msg = error_prefix + *oom_message;
-			return respond_with_task(logger, response, msg, msg);
-		}
 		const auto error_msg = error_prefix + ex.what();
 		logger.severe(error_msg);
 		response->mutable_task()->set_message(error_msg);
@@ -616,7 +585,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 		}
 
 		// The following functions do not need the LAR table
-		sql_generator->drop_latest_active_records_table(con, lar_table_name);
+		drop_lar_table();
 
 		// upsert files
 		for (auto& filename : request->replace_files()) {
@@ -672,13 +641,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 	} catch (const std::exception& ex) {
 		const std::string error_prefix = "WriteHistoryBatch endpoint failed for schema <" + request->schema_name() +
 		                                 ">, table <" + request->table().name() + ">: ";
-		if (const auto oom_message = bypassed_oom_message(ex)) {
-			drop_lar_table();
-
-			const auto msg = error_prefix + *oom_message;
-			return respond_with_task(logger, response, msg, msg);
-		}
-
 		const auto msg = error_prefix + ex.what();
 		logger.severe(msg);
 
@@ -969,10 +931,6 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 		const std::string schema = request->details().schema();
 		const std::string table = request->details().table();
 		const std::string error_prefix = "Migrate endpoint failed for schema <" + schema + ">, table <" + table + ">: ";
-		if (const auto oom_message = bypassed_oom_message(e)) {
-			const std::string msg = error_prefix + *oom_message;
-			return respond_with_task(logger, response, msg, msg);
-		}
 		logger.severe(error_prefix + e.what());
 		response->mutable_task()->set_message(e.what());
 		return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
