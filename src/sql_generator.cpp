@@ -45,6 +45,28 @@ void throw_recoverable_error_if_oom(const duckdb::ErrorData& error_data) {
 	}
 }
 
+namespace {
+// Shared by the two throw_if_query_error overloads. Still a template, but a private one: it is instantiated
+// only for the two types below, so the definition stays out of the header. GetError() asserts HasError(), so
+// it must not be touched before the early return.
+template <typename T>
+void throw_if_error(T& result, const std::string& error_message) {
+	if (!result.HasError()) {
+		return;
+	}
+	throw_recoverable_error_if_oom(result.GetErrorObject());
+	throw std::runtime_error(error_message + ": " + result.GetError());
+}
+} // namespace
+
+void throw_if_query_error(duckdb::BaseQueryResult& result, const std::string& error_message) {
+	throw_if_error(result, error_message);
+}
+
+void throw_if_query_error(duckdb::PreparedStatement& statement, const std::string& error_message) {
+	throw_if_error(statement, error_message);
+}
+
 void find_primary_keys(const std::vector<column_def>& cols, std::vector<const column_def*>& columns_pk,
                        std::vector<const column_def*>* columns_regular, const std::string& ignored_primary_key) {
 	for (auto& col : cols) {
