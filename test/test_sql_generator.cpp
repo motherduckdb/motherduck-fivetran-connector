@@ -22,7 +22,7 @@ TEST_CASE("recoverable_oom_message returns an actionable message for DuckDB out-
 
 	const auto message = recoverable_oom_message(result->GetErrorObject());
 	REQUIRE(message.has_value());
-	REQUIRE_THAT(*message, Catch::Matchers::ContainsSubstring("Reducing the batch size"));
+	REQUIRE_THAT(*message, Catch::Matchers::ContainsSubstring("larger MotherDuck instance size"));
 	// The original DuckDB message is kept for diagnostics.
 	REQUIRE_THAT(*message, Catch::Matchers::ContainsSubstring(result->GetErrorObject().RawMessage()));
 }
@@ -49,7 +49,7 @@ TEST_CASE("throw_recoverable_error_if_oom converts DuckDB out-of-memory errors i
 
 	REQUIRE_THROWS_AS(throw_recoverable_error_if_oom(result->GetErrorObject()), md_error::RecoverableError);
 	REQUIRE_THROWS_WITH(throw_recoverable_error_if_oom(result->GetErrorObject()),
-	                    Catch::Matchers::ContainsSubstring("Reducing the batch size"));
+	                    Catch::Matchers::ContainsSubstring("larger MotherDuck instance size"));
 }
 
 TEST_CASE("throw_recoverable_error_if_oom is a no-op for non-OOM errors", "[sql_generator]") {
@@ -116,7 +116,7 @@ TEST_CASE("an out-of-memory error thrown by DuckDB is still recognized after bei
 		threw = true;
 		const auto message = recoverable_oom_message(duckdb::ErrorData(ex));
 		REQUIRE(message.has_value());
-		REQUIRE_THAT(*message, Catch::Matchers::ContainsSubstring("Reducing the batch size"));
+		REQUIRE_THAT(*message, Catch::Matchers::ContainsSubstring("larger MotherDuck instance size"));
 	}
 	REQUIRE(threw);
 }
@@ -152,9 +152,10 @@ TEST_CASE("the safety net also turns a std::bad_alloc into a recoverable out-of-
 		// duckdb::ErrorData maps std::bad_alloc's what() to ExceptionType::OUT_OF_MEMORY.
 		const auto message = recoverable_oom_message(duckdb::ErrorData(ex));
 		REQUIRE(message.has_value());
-		// In-process OOM, not the destination -- must not send the user off to resize an instance.
-		REQUIRE_THAT(*message, !Catch::Matchers::ContainsSubstring("instance size"));
-		REQUIRE_THAT(*message, Catch::Matchers::ContainsSubstring("Reducing the batch size"));
+		// A bad_alloc is the connector process running out, not the destination, so the instance-size
+		// advice does not fit this case. Accepted deliberately: the destination is the common case, the
+		// wording is hedged, and the embedded original error carries no duckling suffix when it was local.
+		REQUIRE_THAT(*message, Catch::Matchers::ContainsSubstring("larger MotherDuck instance size"));
 	}
 	REQUIRE(threw);
 }
