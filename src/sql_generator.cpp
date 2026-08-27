@@ -30,10 +30,11 @@ std::optional<std::string> recoverable_oom_message(const duckdb::ErrorData& erro
 	if (error_data.Type() != duckdb::ExceptionType::OUT_OF_MEMORY) {
 		return std::nullopt;
 	}
-	// Names no location: one ExceptionType covers both a destination-side OOM and an in-process one
-	// (decrypting a batch allocates ~2x the file size, and ErrorData maps std::bad_alloc here too), and the
-	// type cannot tell them apart. Batch size is the lever that helps either way; destination-specific
-	// advice arrives via `Original error`.
+	// Names no location: this one ExceptionType covers a destination-side OOM and a client-side one alike.
+	// The connector sets no memory_limit, so its own DuckDB defaults to 80% of the container's cgroup limit
+	// and raises a real OutOfMemoryException from the local read_csv scan rather than being killed. The type
+	// cannot tell the two apart, so recommend only what helps either way; destination-specific advice
+	// arrives via `Original error`.
 	return "The sync ran out of memory. Reducing the batch size in the connector configuration may resolve "
 	       "this.\nOriginal error: " +
 	       error_data.RawMessage();
