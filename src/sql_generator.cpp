@@ -31,16 +31,13 @@ void throw_recoverable_error_if_oom(const duckdb::ErrorData& error_data) {
 	if (error_data.Type() != duckdb::ExceptionType::OUT_OF_MEMORY) {
 		return;
 	}
-	// Hedged with "usually" because the connector's own DuckDB can raise this too: it defaults to 80% of the
-	// container's cgroup limit, so a local read_csv scan can run out before the destination does.
+
 	throw md_error::RecoverableError("Ran out of memory. Switching to a larger MotherDuck instance size is "
 	                                 "usually the quickest fix.\nOriginal error: " +
 	                                 error_data.RawMessage());
 }
 
-// Shared by the two throw_if_query_error overloads. Still a template, but a private one: it is instantiated
-// only for the two types below, so the definition stays out of the header. GetError() asserts HasError(), so
-// it must not be touched before the early return.
+// GetError() asserts HasError(), so it must not be touched before the early return.
 template <typename T>
 void throw_if_error(T& result, const std::string& error_message) {
 	if (!result.HasError()) {

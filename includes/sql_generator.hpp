@@ -15,13 +15,7 @@ void find_primary_keys(const std::vector<column_def>& cols, std::vector<const co
                        std::vector<const column_def*>* columns_regular = nullptr,
                        const std::string& ignored_primary_key = "");
 
-/// If the argument has an error, throws it: out-of-memory errors become a md_error::RecoverableError, which
-/// the gRPC layer turns into a Fivetran task rather than a hard sync failure; anything else becomes a
-/// std::runtime_error prefixed with `error_message`. Route
-/// query error checks through here rather than hand-rolling HasError()/GetError(), so new queries get
-/// out-of-memory handling for free. Two overloads because Connection::Query and Connection::Prepare return
-/// types with the same error API but no common base; both take a non-const reference because
-/// GetError()/GetErrorObject() are not const on PreparedStatement.
+// Standard handler for query error checks, should be used when handling query errors rather than hand-rolling 
 void throw_if_query_error(duckdb::BaseQueryResult& result, const std::string& error_message);
 void throw_if_query_error(duckdb::PreparedStatement& statement, const std::string& error_message);
 
