@@ -25,6 +25,8 @@
 
 using duckdb::KeywordHelper;
 
+namespace {
+// Out-of-memory is user-actionable, so it reaches Fivetran as a task rather than a hard sync failure.
 void throw_recoverable_error_if_oom(const duckdb::ErrorData& error_data) {
 	if (error_data.Type() != duckdb::ExceptionType::OUT_OF_MEMORY) {
 		return;
@@ -36,7 +38,6 @@ void throw_recoverable_error_if_oom(const duckdb::ErrorData& error_data) {
 	                                 error_data.RawMessage());
 }
 
-namespace {
 // Shared by the two throw_if_query_error overloads. Still a template, but a private one: it is instantiated
 // only for the two types below, so the definition stays out of the header. GetError() asserts HasError(), so
 // it must not be touched before the early return.

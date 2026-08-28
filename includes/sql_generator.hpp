@@ -15,12 +15,9 @@ void find_primary_keys(const std::vector<column_def>& cols, std::vector<const co
                        std::vector<const column_def*>* columns_regular = nullptr,
                        const std::string& ignored_primary_key = "");
 
-/// Throws a md_error::RecoverableError -- which the gRPC layer turns into a Fivetran task rather than a hard
-/// sync failure -- if `error_data` is an out-of-memory error. This is a no-op for any other error type.
-void throw_recoverable_error_if_oom(const duckdb::ErrorData& error_data);
-
-/// If the argument has an error, throws it: out-of-memory errors become a md_error::RecoverableError (see
-/// throw_recoverable_error_if_oom), anything else a std::runtime_error prefixed with `error_message`. Route
+/// If the argument has an error, throws it: out-of-memory errors become a md_error::RecoverableError, which
+/// the gRPC layer turns into a Fivetran task rather than a hard sync failure; anything else becomes a
+/// std::runtime_error prefixed with `error_message`. Route
 /// query error checks through here rather than hand-rolling HasError()/GetError(), so new queries get
 /// out-of-memory handling for free. Two overloads because Connection::Query and Connection::Prepare return
 /// types with the same error API but no common base; both take a non-const reference because
