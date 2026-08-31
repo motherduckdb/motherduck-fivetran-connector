@@ -14,7 +14,7 @@ add_executable(integration_tests
         test_md_error.cpp
         test_process_file.cpp
         test_alter_table.cpp
-        test_sql_generator.cpp
+        test_throw_if_query_error.cpp
         test_helpers.cpp
         integration/common.cpp
         integration/test_config_tester.cpp

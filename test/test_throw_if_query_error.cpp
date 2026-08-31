@@ -48,7 +48,7 @@ TEST_CASE("throw_if_query_error turns an out-of-memory error into a RecoverableE
 
 	REQUIRE_THROWS_AS(throw_if_query_error(*result, "Could not create table"), md_error::RecoverableError);
 	REQUIRE_THROWS_WITH(throw_if_query_error(*result, "Could not create table"),
-	                    Catch::Matchers::ContainsSubstring("larger MotherDuck instance size"));
+	                    Catch::Matchers::ContainsSubstring("larger Duckling instance size"));
 }
 
 TEST_CASE("throw_if_query_error handles a prepared statement", "[sql_generator]") {

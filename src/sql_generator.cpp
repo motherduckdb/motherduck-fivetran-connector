@@ -26,24 +26,19 @@
 using duckdb::KeywordHelper;
 
 namespace {
-// Out-of-memory is user-actionable, so it reaches Fivetran as a task rather than a hard sync failure.
-void throw_recoverable_error_if_oom(const duckdb::ErrorData& error_data) {
-	if (error_data.Type() != duckdb::ExceptionType::OUT_OF_MEMORY) {
-		return;
-	}
-
-	throw md_error::RecoverableError("Ran out of memory. Switching to a larger MotherDuck instance size is "
-	                                 "usually the quickest fix.\nOriginal error: " +
-	                                 error_data.RawMessage());
-}
-
 // GetError() asserts HasError(), so it must not be touched before the early return.
 template <typename T>
 void throw_if_error(T& result, const std::string& error_message) {
 	if (!result.HasError()) {
 		return;
 	}
-	throw_recoverable_error_if_oom(result.GetErrorObject());
+	// Out-of-memory is user-actionable, so it reaches Fivetran as a task rather than a hard sync failure.
+	if (result.GetErrorObject().Type() == duckdb::ExceptionType::OUT_OF_MEMORY) {
+		throw md_error::RecoverableError("The Duckling ran out of memory while ingesting data from the Fivetran "
+		                                 "sync. Switching to a larger Duckling instance size typically resolves "
+		                                 "this problem.\nOriginal error: " +
+		                                 result.GetErrorObject().RawMessage());
+	}
 	throw std::runtime_error(error_message + ": " + result.GetError());
 }
 } // namespace

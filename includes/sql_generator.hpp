@@ -15,7 +15,8 @@ void find_primary_keys(const std::vector<column_def>& cols, std::vector<const co
                        std::vector<const column_def*>* columns_regular = nullptr,
                        const std::string& ignored_primary_key = "");
 
-// Standard handler for query error checks, should be used when handling query errors rather than hand-rolling 
+// Standard handler for query error checks, should be used when handling query errors rather than
+// hand-rolling HasError()/GetError().
 void throw_if_query_error(duckdb::BaseQueryResult& result, const std::string& error_message);
 void throw_if_query_error(duckdb::PreparedStatement& statement, const std::string& error_message);
 
