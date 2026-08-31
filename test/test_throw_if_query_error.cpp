@@ -5,7 +5,6 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
-#include <stdexcept>
 #include <string>
 
 namespace {
@@ -34,8 +33,8 @@ TEST_CASE("throw_if_query_error wraps a regular error in a prefixed std::runtime
 	const auto result = con.Query("SELECT * FROM nonexistent_table");
 	REQUIRE(result->HasError());
 
-	REQUIRE_THROWS_AS(throw_if_query_error(*result, "Could not query table"), std::runtime_error);
-	// The prefix and DuckDB's own error type are both kept, which integration tests assert on.
+	// The prefix and DuckDB's own error type are both kept, which integration tests assert on. Matching the
+	// prefix also rules out the out-of-memory path, which discards it.
 	REQUIRE_THROWS_WITH(throw_if_query_error(*result, "Could not query table"),
 	                    Catch::Matchers::ContainsSubstring("Could not query table: ") &&
 	                        Catch::Matchers::ContainsSubstring("Catalog Error:"));
@@ -57,5 +56,6 @@ TEST_CASE("throw_if_query_error handles a prepared statement", "[sql_generator]"
 
 	const auto statement = con.Prepare("SELECT nonexistent_column");
 	REQUIRE(statement->HasError());
-	REQUIRE_THROWS_AS(throw_if_query_error(*statement, "at bind step"), std::runtime_error);
+	REQUIRE_THROWS_WITH(throw_if_query_error(*statement, "at bind step"),
+	                    Catch::Matchers::ContainsSubstring("at bind step: "));
 }
