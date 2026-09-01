@@ -29,37 +29,6 @@ void maybe_rewrite_error(const std::exception& ex, const std::string& db_name) {
 		                                 msg);
 	}
 }
-
-// Temporary, targeted diagnostics: raise MotherDuck client logging for a single
-// user while their connector crashes are under investigation. Remove once those are understood.
-constexpr const char* VERBOSE_LOGGING_USER_ID = "b8e29aae-1ee8-4e24-bb77-a61e15155589";
-constexpr const char* VERBOSE_LOG_LEVEL = "debug";
-
-void enable_verbose_logging_for_user(duckdb::Connection& con, const mdlog::Logger& logger) {
-	const auto user_res = con.Query("SELECT user_id FROM md_user_info()");
-	if (user_res->HasError()) {
-		logger.warning("get_duckdb: could not read the user id, leaving the log level unchanged: " +
-		               user_res->GetError());
-		return;
-	}
-	if (user_res->RowCount() == 0) {
-		return;
-	}
-
-	const auto user_id = user_res->GetValue(0, 0).ToString();
-	if (user_id != VERBOSE_LOGGING_USER_ID) {
-		return;
-	}
-
-	const auto set_res = con.Query("SET motherduck_log_level='" + std::string(VERBOSE_LOG_LEVEL) + "'");
-	if (set_res->HasError()) {
-		logger.warning("get_duckdb: could not raise the MotherDuck log level for user <" + user_id +
-		               ">: " + set_res->GetError());
-		return;
-	}
-	logger.info("get_duckdb: raised MotherDuck client logging to '" + std::string(VERBOSE_LOG_LEVEL) + "' for user <" +
-	            user_id + ">");
-}
 } // namespace
 
 duckdb::DuckDB& ConnectionFactory::get_duckdb(const std::string& md_auth_token, const std::string& db_name) {
