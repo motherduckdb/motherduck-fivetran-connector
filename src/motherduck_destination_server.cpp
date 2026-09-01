@@ -28,6 +28,16 @@ namespace {
 	return ::grpc::Status(::grpc::StatusCode::INTERNAL, prefix + error_message);
 }
 
+/// Surfaces a user-actionable failure as a Fivetran task instead of a hard sync failure. Shared by every
+/// endpoint's md_error::RecoverableError arm and out-of-memory net, so the two cannot drift.
+template <typename ResponseT>
+::grpc::Status respond_with_task(mdlog::Logger& logger, ResponseT* response, const std::string& log_message,
+                                 const std::string& task_message) {
+	logger.warning(log_message);
+	response->mutable_task()->set_message(task_message);
+	return ::grpc::Status::OK;
+}
+
 template <typename T>
 std::string get_schema_name(const T* request) {
 	std::string schema_name = request->schema_name();
@@ -257,13 +267,13 @@ grpc::Status DestinationSdkImpl::DescribeTable(::grpc::ServerContext*,
 		}
 
 	} catch (const md_error::RecoverableError& mde) {
-		logger.warning("DescribeTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		               request->table_name() + ">: " + std::string(mde.what()));
-		response->mutable_task()->set_message(mde.what());
-		return ::grpc::Status::OK;
+		const std::string log_prefix = "DescribeTable endpoint failed for schema <" + request->schema_name() +
+		                               ">, table <" + request->table_name() + ">: ";
+		return respond_with_task(logger, response, log_prefix + mde.what(), mde.what());
 	} catch (const std::exception& ex) {
-		logger.severe("DescribeTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		              request->table_name() + ">: " + std::string(ex.what()));
+		const std::string log_prefix = "DescribeTable endpoint failed for schema <" + request->schema_name() +
+		                               ">, table <" + request->table_name() + ">: ";
+		logger.severe(log_prefix + ex.what());
 		response->mutable_task()->set_message(ex.what());
 		return create_grpc_status_from_exception(ex);
 	}
@@ -294,13 +304,13 @@ grpc::Status DestinationSdkImpl::CreateTable(::grpc::ServerContext*,
 		sql_generator->create_table(con, table, cols, {});
 		response->set_success(true);
 	} catch (const md_error::RecoverableError& mde) {
-		logger.warning("CreateTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		               request->table().name() + ">: " + std::string(mde.what()));
-		response->mutable_task()->set_message(mde.what());
-		return ::grpc::Status::OK;
+		const std::string log_prefix = "CreateTable endpoint failed for schema <" + request->schema_name() +
+		                               ">, table <" + request->table().name() + ">: ";
+		return respond_with_task(logger, response, log_prefix + mde.what(), mde.what());
 	} catch (const std::exception& ex) {
-		logger.severe("CreateTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		              request->table().name() + ">: " + std::string(ex.what()));
+		const std::string log_prefix = "CreateTable endpoint failed for schema <" + request->schema_name() +
+		                               ">, table <" + request->table().name() + ">: ";
+		logger.severe(log_prefix + ex.what());
 		response->mutable_task()->set_message(ex.what());
 		return create_grpc_status_from_exception(ex);
 	}
@@ -328,13 +338,13 @@ grpc::Status DestinationSdkImpl::AlterTable(::grpc::ServerContext*,
 		                           request->drop_columns());
 		response->set_success(true);
 	} catch (const md_error::RecoverableError& mde) {
-		logger.severe("AlterTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		              request->table().name() + ">: " + std::string(mde.what()));
-		response->mutable_task()->set_message(mde.what());
-		return ::grpc::Status::OK;
+		const std::string log_prefix = "AlterTable endpoint failed for schema <" + request->schema_name() +
+		                               ">, table <" + request->table().name() + ">: ";
+		return respond_with_task(logger, response, log_prefix + mde.what(), mde.what());
 	} catch (const std::exception& ex) {
-		logger.severe("AlterTable endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		              request->table().name() + ">: " + std::string(ex.what()));
+		const std::string log_prefix = "AlterTable endpoint failed for schema <" + request->schema_name() +
+		                               ">, table <" + request->table().name() + ">: ";
+		logger.severe(log_prefix + ex.what());
 		response->mutable_task()->set_message(ex.what());
 		return create_grpc_status_from_exception(ex);
 	}
@@ -372,13 +382,13 @@ grpc::Status DestinationSdkImpl::Truncate(::grpc::ServerContext*, const ::fivetr
 		}
 
 	} catch (const md_error::RecoverableError& mde) {
-		logger.warning("Truncate endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		               request->table_name() + ">: " + std::string(mde.what()));
-		response->mutable_task()->set_message(mde.what());
-		return ::grpc::Status::OK;
+		const std::string log_prefix = "Truncate endpoint failed for schema <" + request->schema_name() + ">, table <" +
+		                               request->table_name() + ">: ";
+		return respond_with_task(logger, response, log_prefix + mde.what(), mde.what());
 	} catch (const std::exception& ex) {
-		logger.severe("Truncate endpoint failed for schema <" + request->schema_name() + ">, table <" +
-		              request->table_name() + ">: " + std::string(ex.what()));
+		const std::string log_prefix = "Truncate endpoint failed for schema <" + request->schema_name() + ">, table <" +
+		                               request->table_name() + ">: ";
+		logger.severe(log_prefix + ex.what());
 		response->mutable_task()->set_message(ex.what());
 		return create_grpc_status_from_exception(ex);
 	}
@@ -467,11 +477,9 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 		}
 
 	} catch (const md_error::RecoverableError& mde) {
-		auto const msg = "WriteBatch endpoint failed for schema <" + request->schema_name() + ">, table <" +
+		const auto msg = "WriteBatch endpoint failed for schema <" + request->schema_name() + ">, table <" +
 		                 request->table().name() + ">: " + std::string(mde.what());
-		logger.warning(msg);
-		response->mutable_task()->set_message(msg);
-		return ::grpc::Status::OK;
+		return respond_with_task(logger, response, msg, msg);
 	} catch (const std::exception& ex) {
 		const std::string error_prefix = "WriteBatch endpoint failed for schema <" + request->schema_name() +
 		                                 ">, table <" + request->table().name() + ">: ";
@@ -499,6 +507,11 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 	// We keep the table name in the outer scope to be able to drop the LAR table
 	// in the catch block
 	std::string lar_table_name;
+	// Clean up bookkeeping table. The function uses IF EXISTS. Ignore any errors here. Defined outside the try
+	// so that every failure path below can reuse it.
+	const auto drop_lar_table = [&] {
+		sql_generator->drop_latest_active_records_table(con, lar_table_name);
+	};
 
 	try {
 		auto schema_name = get_schema_name(request);
@@ -572,7 +585,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 		}
 
 		// The following functions do not need the LAR table
-		sql_generator->drop_latest_active_records_table(con, lar_table_name);
+		drop_lar_table();
 
 		// upsert files
 		for (auto& filename : request->replace_files()) {
@@ -620,23 +633,18 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 		}
 
 	} catch (const md_error::RecoverableError& mde) {
-		// Clean up bookkeeping table. The function uses IF EXISTS. Ignore any
-		// errors here.
-		sql_generator->drop_latest_active_records_table(con, lar_table_name);
+		drop_lar_table();
 
-		auto const msg = "WriteHistoryBatch endpoint failed for schema <" + request->schema_name() + ">, table <" +
+		const auto msg = "WriteHistoryBatch endpoint failed for schema <" + request->schema_name() + ">, table <" +
 		                 request->table().name() + ">: " + std::string(mde.what());
-		response->mutable_task()->set_message(mde.what());
-		return ::grpc::Status::OK;
+		return respond_with_task(logger, response, msg, msg);
 	} catch (const std::exception& ex) {
 		const std::string error_prefix = "WriteHistoryBatch endpoint failed for schema <" + request->schema_name() +
 		                                 ">, table <" + request->table().name() + ">: ";
 		const auto msg = error_prefix + ex.what();
 		logger.severe(msg);
 
-		// Clean up bookkeeping table. The function uses IF EXISTS. Ignore any
-		// errors here.
-		sql_generator->drop_latest_active_records_table(con, lar_table_name);
+		drop_lar_table();
 
 		response->mutable_task()->set_message(msg);
 		return create_grpc_status_from_exception(ex, error_prefix);
@@ -913,11 +921,17 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 		}
 
 		response->set_success(true);
+	} catch (const md_error::RecoverableError& mde) {
+		const std::string schema = request->details().schema();
+		const std::string table = request->details().table();
+		const std::string msg =
+		    "Migrate endpoint failed for schema <" + schema + ">, table <" + table + ">: " + std::string(mde.what());
+		return respond_with_task(logger, response, msg, msg);
 	} catch (const std::exception& e) {
 		const std::string schema = request->details().schema();
 		const std::string table = request->details().table();
-		logger.severe("Migrate endpoint failed for schema <" + schema + ">, table <" + table +
-		              ">: " + std::string(e.what()));
+		const std::string error_prefix = "Migrate endpoint failed for schema <" + schema + ">, table <" + table + ">: ";
+		logger.severe(error_prefix + e.what());
 		response->mutable_task()->set_message(e.what());
 		return ::grpc::Status(::grpc::StatusCode::INTERNAL, e.what());
 	}
