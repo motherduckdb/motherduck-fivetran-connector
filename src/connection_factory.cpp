@@ -64,8 +64,6 @@ duckdb::DuckDB& ConnectionFactory::get_duckdb(const std::string& md_auth_token, 
 			stdout_logger.severe("get_duckdb: Could not SET default_collation: " + set_collation_res->GetError());
 		}
 
-		enable_verbose_logging_for_user(con, stdout_logger);
-
 		initial_md_token = md_auth_token;
 		initial_db_name = db_name;
 	};
