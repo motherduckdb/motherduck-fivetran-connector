@@ -49,7 +49,6 @@ constexpr int MAX_DEPTH = 120;
 void* crash_callstack[MAX_DEPTH];
 
 void log_crash(const int sig) {
-	// Keep this banner byte-for-byte stable: existing log searches match on it.
 	write_literal("\n=== SIGSEGV or SIGABRT ===\n");
 	write_literal("signal=");
 	write_unsigned(static_cast<unsigned long>(sig));
