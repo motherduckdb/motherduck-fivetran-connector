@@ -67,8 +67,6 @@ void check_backtrace(const std::string& output, const int signal) {
 	CHECK(printed_lines == reported_frames);
 }
 
-// Throwing directly inside the destructor would be a compile error (-Wexceptions), so it goes through a helper.
-// Mirrors RequestContext: destructors are implicitly noexcept, so the exception ends in std::terminate.
 [[noreturn]] void throw_boom() {
 	throw std::runtime_error("boom");
 }
