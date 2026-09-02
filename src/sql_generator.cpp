@@ -169,20 +169,15 @@ void MdSqlGenerator::run_query(duckdb::Connection& con, const std::string& log_p
 }
 
 bool MdSqlGenerator::table_exists(duckdb::Connection& con, const table_def& table) const {
-	const std::string query = "SELECT table_name FROM duckdb_tables() WHERE "
-	                          "database_name=? AND schema_name=? AND table_name=?";
+	const std::string query = "SELECT table_name FROM duckdb_tables() WHERE database_name=" +
+	                          KeywordHelper::WriteQuoted(table.db_name, '\'') +
+	                          " AND schema_name=" + KeywordHelper::WriteQuoted(table.schema_name, '\'') +
+	                          " AND table_name=" + KeywordHelper::WriteQuoted(table.table_name, '\'');
 	const std::string err_prefix = "Could not find whether table <" + table.to_escaped_string() + "> exists";
-	logger.debug("table_exists: " + std::string(query) + ", database_name=" + table.db_name +
-	             ", schema_name=" + table.schema_name + ", table_name=" + table.table_name);
-	const auto statement = con.Prepare(query);
-	throw_if_query_error(*statement, err_prefix + " (at bind step)");
-	duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name), duckdb::Value(table.schema_name),
-	                                        duckdb::Value(table.table_name)};
-	auto result = statement->Execute(params, false);
+	logger.debug("table_exists: " + query);
+	const auto result = con.Query(query);
 	throw_if_query_error(*result, err_prefix);
-	const auto materialized_result =
-	    duckdb::unique_ptr_cast<duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
-	return materialized_result->RowCount() > 0;
+	return result->RowCount() > 0;
 }
 
 namespace {
@@ -301,31 +296,25 @@ std::vector<column_def> MdSqlGenerator::describe_table(duckdb::Connection& con, 
 	// TBD is_identity is never set, used is_nullable=no temporarily but really
 	// should use duckdb_constraints table.
 
-	std::vector<column_def> columns;
-
-	auto query = "SELECT "
-	             "column_name, "
-	             "data_type_id, "
-	             "column_default, "
-	             "NOT is_nullable, "
-	             "numeric_precision, "
-	             "numeric_scale "
-	             "FROM duckdb_columns() "
-	             "WHERE database_name=? "
-	             "AND schema_name=? "
-	             "AND table_name=?";
+	const std::string query = "SELECT "
+	                          "column_name, "
+	                          "data_type_id, "
+	                          "column_default, "
+	                          "NOT is_nullable, "
+	                          "numeric_precision, "
+	                          "numeric_scale "
+	                          "FROM duckdb_columns() "
+	                          "WHERE database_name=" +
+	                          KeywordHelper::WriteQuoted(table.db_name, '\'') +
+	                          " AND schema_name=" + KeywordHelper::WriteQuoted(table.schema_name, '\'') +
+	                          " AND table_name=" + KeywordHelper::WriteQuoted(table.table_name, '\'');
 	const std::string err = "Could not describe table <" + table.to_escaped_string() + ">";
-	logger.info("describe_table: " + std::string(query));
-	auto statement = con.Prepare(query);
-	throw_if_query_error(*statement, err + " (at bind step)");
-	duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name), duckdb::Value(table.schema_name),
-	                                        duckdb::Value(table.table_name)};
-	auto result = statement->Execute(params, false);
+	logger.info("describe_table: " + query);
+	const auto result = con.Query(query);
 	throw_if_query_error(*result, err);
 
-	auto& materialized_result = result->Cast<duckdb::MaterializedQueryResult>();
-
-	for (const auto& row : materialized_result.Collection().GetRows()) {
+	std::vector<column_def> columns;
+	for (const auto& row : result->Collection().GetRows()) {
 		duckdb::LogicalTypeId column_type = static_cast<duckdb::LogicalTypeId>(row.GetValue(1).GetValue<int8_t>());
 		column_def col {
 		    row.GetValue(0).GetValue<duckdb::string>(), column_type, row.GetValue(2).GetValue<duckdb::string>(),
