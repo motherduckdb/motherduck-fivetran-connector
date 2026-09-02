@@ -232,9 +232,14 @@ grpc::Status DestinationSdkImpl::DescribeTable(::grpc::ServerContext*,
 		return create_grpc_status_from_exception(ex);
 	}
 	auto& con = ctx->GetConnection();
+
 	auto& logger = ctx->GetLogger();
 
 	try {
+		// We should define the transaction context here, so we will ROLLBACK when it goes out of scope when an
+		// exception is raised.
+		TransactionContext transaction_context(con);
+
 		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 		table_def table_name {ctx->GetDBName(), get_schema_name(request), get_table_name(request)};
 		logger.info("Endpoint <DescribeTable>: schema name <" + table_name.schema_name + ">");
@@ -265,7 +270,7 @@ grpc::Status DestinationSdkImpl::DescribeTable(::grpc::ServerContext*,
 				ft_col->mutable_params()->mutable_decimal()->set_scale(col.scale.value_or(DECIMAL_DEFAULT_SCALE));
 			}
 		}
-
+		transaction_context.Commit();
 	} catch (const md_error::RecoverableError& mde) {
 		const std::string log_prefix = "DescribeTable endpoint failed for schema <" + request->schema_name() +
 		                               ">, table <" + request->table_name() + ">: ";
@@ -294,6 +299,8 @@ grpc::Status DestinationSdkImpl::CreateTable(::grpc::ServerContext*,
 	auto& logger = ctx->GetLogger();
 
 	try {
+		TransactionContext transaction_context(con);
+
 		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 
 		auto schema_name = get_schema_name(request);
@@ -303,6 +310,8 @@ grpc::Status DestinationSdkImpl::CreateTable(::grpc::ServerContext*,
 		const auto cols = get_duckdb_columns(request->table().columns());
 		sql_generator->create_table(con, table, cols, {});
 		response->set_success(true);
+
+		transaction_context.Commit();
 	} catch (const md_error::RecoverableError& mde) {
 		const std::string log_prefix = "CreateTable endpoint failed for schema <" + request->schema_name() +
 		                               ">, table <" + request->table().name() + ">: ";
@@ -331,12 +340,14 @@ grpc::Status DestinationSdkImpl::AlterTable(::grpc::ServerContext*,
 	auto& logger = ctx->GetLogger();
 
 	try {
+		TransactionContext transaction_context(con);
 		table_def table_name {ctx->GetDBName(), get_schema_name(request), request->table().name()};
 
 		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
 		sql_generator->alter_table(con, table_name, get_duckdb_columns(request->table().columns()),
 		                           request->drop_columns());
 		response->set_success(true);
+		transaction_context.Commit();
 	} catch (const md_error::RecoverableError& mde) {
 		const std::string log_prefix = "AlterTable endpoint failed for schema <" + request->schema_name() +
 		                               ">, table <" + request->table().name() + ">: ";
@@ -364,6 +375,7 @@ grpc::Status DestinationSdkImpl::Truncate(::grpc::ServerContext*, const ::fivetr
 	auto& logger = ctx->GetLogger();
 
 	try {
+		TransactionContext transaction_context(con);
 		table_def table_name {ctx->GetDBName(), get_schema_name(request), get_table_name(request)};
 		if (request->synced_column().empty()) {
 			throw std::invalid_argument("Synced column is required");
@@ -381,6 +393,7 @@ grpc::Status DestinationSdkImpl::Truncate(::grpc::ServerContext*, const ::fivetr
 			               ">; not truncated");
 		}
 
+		transaction_context.Commit();
 	} catch (const md_error::RecoverableError& mde) {
 		const std::string log_prefix = "Truncate endpoint failed for schema <" + request->schema_name() + ">, table <" +
 		                               request->table_name() + ">: ";
@@ -409,6 +422,9 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 	auto& logger = ctx->GetLogger();
 
 	try {
+		// In light of https://github.com/motherduckdb/motherduck-fivetran-connector/pull/129/changes, we should not
+		// create a TransactionContext here. The ProcessFile method creates one before the first query, so we still
+		// avoid having hanging transactions that should be rolled back when we reach e.g. the logger.
 		auto schema_name = get_schema_name(request);
 
 		const auto max_record_size = get_max_record_size(request->configuration(), logger);
@@ -475,7 +491,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 				sql_generator->delete_rows(con, table_name, staging_table_name, columns_pk);
 			});
 		}
-
 	} catch (const md_error::RecoverableError& mde) {
 		const auto msg = "WriteBatch endpoint failed for schema <" + request->schema_name() + ">, table <" +
 		                 request->table().name() + ">: " + std::string(mde.what());
@@ -514,6 +529,9 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 	};
 
 	try {
+		// In light of https://github.com/motherduckdb/motherduck-fivetran-connector/pull/129/changes, we should not
+		// create a TransactionContext here. The ProcessFile method creates one before the first query, so we still
+		// avoid having hanging transactions that should be rolled back when we reach e.g. the logger.
 		auto schema_name = get_schema_name(request);
 
 		const auto max_record_size = get_max_record_size(request->configuration(), logger);
@@ -705,6 +723,8 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 	auto& logger = ctx->GetLogger();
 
 	try {
+		// The SQL generator needs to manage transactions, so we don't create a transaction context here, also see
+		// duckdb issue #20570.
 		const auto& details = request->details();
 		const std::string schema_name = get_migration_schema_name(details);
 		const std::string& table_name = details.table();
@@ -919,7 +939,6 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 			response->set_unsupported(true);
 			return ::grpc::Status::OK;
 		}
-
 		response->set_success(true);
 	} catch (const md_error::RecoverableError& mde) {
 		const std::string schema = request->details().schema();
