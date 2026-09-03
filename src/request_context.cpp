@@ -5,6 +5,7 @@
 #include "google/protobuf/map.h"
 
 #include <cstdlib>
+#include <mutex>
 #include <string>
 #include <string_view>
 
@@ -17,6 +18,23 @@ mdlog::Logger get_logger_for_env(duckdb::Connection& con) {
 	return mdlog::Logger::CreateMultiSinkLogger(&con);
 }
 
+std::string read_env(const char* name) {
+	const char* value = std::getenv(name);
+	if (value == nullptr || *value == '\0') {
+		return "unknown";
+	}
+	return value;
+}
+
+// FIVETRAN_ACCOUNT_NAME and FIVETRAN_GROUP_NAME are set by Fivetran
+void log_fivetran_user_info_once(const mdlog::Logger& logger, const std::string& db_name) {
+	static std::once_flag user_info_logged;
+	std::call_once(user_info_logged, [&logger, &db_name]() {
+		logger.debug("Fivetran session started. fivetran_account=<" + read_env("FIVETRAN_ACCOUNT_NAME") +
+		             ">, fivetran_group=<" + read_env("FIVETRAN_GROUP_NAME") + ">, database=<" + db_name + ">");
+	});
+}
+
 } // namespace
 
 RequestContext::RequestContext(const std::string& endpoint_name_, ConnectionFactory& connection_factory,
@@ -25,6 +43,7 @@ RequestContext::RequestContext(const std::string& endpoint_name_, ConnectionFact
       md_token(config::find_property(request_config, config::PROP_TOKEN)),
       con(connection_factory.CreateConnection(md_token, db_name)), logger(get_logger_for_env(con)),
       started_at(std::chrono::steady_clock::now()) {
+	log_fivetran_user_info_once(logger, db_name);
 	logger.debug("Endpoint <" + endpoint_name + "> started");
 }
 
