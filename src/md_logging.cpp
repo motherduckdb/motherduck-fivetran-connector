@@ -98,7 +98,7 @@ void Logger::log(const LogLevel level, const std::string& message) const {
 		std::call_once(
 		    initialize_duckdb_logging_flag,
 		    [](duckdb::Connection& con) {
-			    con.Query("CALL enable_logging('Fivetran', storage='motherduck_log_storage', level='INFO')");
+			    con.Query("CALL enable_logging('Fivetran', storage='motherduck_log_storage', level='DEBUG')");
 		    },
 		    *con);
 		log_to_duckdb(level, message);
