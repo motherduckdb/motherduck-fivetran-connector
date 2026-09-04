@@ -2,6 +2,7 @@
 #include "extension_helper.hpp"
 #include "motherduck_destination_server.hpp"
 
+#include <cstdlib>
 #include <grpcpp/grpcpp.h>
 #include <string>
 
@@ -22,6 +23,13 @@ void RunServer(const std::string& port) {
 }
 
 int main(const int argc, char** argv) {
+	// Pin the MotherDuck extension to the build carrying the catalog-snapshot trim-race
+	// fix. Must be set before preload_extensions() loads the wrapper, which reads this
+	// env var to resolve which extension version to download. Set in-process because the
+	// connector runs in Fivetran's harness, not our image, so a Dockerfile ENV would not
+	// reach it.
+	setenv("motherduck_ext_version", "v1-5-5-2026-09-flo-catalog-snapshot-trim-ra-05b44b64c3", 1);
+
 	crash_handler::Install();
 
 	std::string port = "50052";
