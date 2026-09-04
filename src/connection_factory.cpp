@@ -29,6 +29,18 @@ void maybe_rewrite_error(const std::exception& ex, const std::string& db_name) {
 		                                 msg);
 	}
 }
+
+// Temporary, targeted diagnostics: raise MotherDuck client logging while their connector crashes are under
+// investigation. Remove once those are understood.
+constexpr const char* VERBOSE_LOG_LEVEL = "debug";
+void enable_verbose_logging(duckdb::Connection& con, const mdlog::Logger& logger) {
+	const auto set_res = con.Query("SET motherduck_log_level='" + std::string(VERBOSE_LOG_LEVEL) + "'");
+	if (set_res->HasError()) {
+		logger.warning("get_duckdb: could not raise the MotherDuck log level: " + set_res->GetError());
+		return;
+	}
+	logger.info("get_duckdb: raised MotherDuck client logging to " + std::string(VERBOSE_LOG_LEVEL));
+}
 } // namespace
 
 duckdb::DuckDB& ConnectionFactory::get_duckdb(const std::string& md_auth_token, const std::string& db_name) {
@@ -63,6 +75,8 @@ duckdb::DuckDB& ConnectionFactory::get_duckdb(const std::string& md_auth_token, 
 		if (set_collation_res->HasError()) {
 			stdout_logger.severe("get_duckdb: Could not SET default_collation: " + set_collation_res->GetError());
 		}
+
+		enable_verbose_logging(con, stdout_logger);
 
 		initial_md_token = md_auth_token;
 		initial_db_name = db_name;
