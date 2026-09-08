@@ -65,7 +65,7 @@ FetchContent_MakeAvailable(fmt)
 FetchContent_Declare(
     duckdb
     GIT_REPOSITORY https://github.com/duckdb/duckdb.git
-    GIT_TAG 08e34c447bae34eaee3723cac61f2878b6bdf787 # v1.5.4
+    GIT_TAG d8cdaa33fda8df955cc76ef58a280f68f4cd43fa # v1.5.5
     GIT_SHALLOW TRUE
     SYSTEM
 )
@@ -153,6 +153,7 @@ link_dependencies(fivetran_sdk)
 add_library(motherduck_destination_sources STATIC
         src/config_tester.cpp
         src/connection_factory.cpp
+        src/crash_handler.cpp
         src/csv_processor.cpp
         src/decryption.cpp
         src/extension_helper.cpp
