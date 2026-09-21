@@ -63,8 +63,8 @@ build_grpc:
 	# We need at least zlib 1.3.1 for the build to work on newer Macs (same issue as https://github.com/bulletphysics/bullet3/issues/4607)
 	# Undo the following once grpc has been bumped to a version that has zlib 1.3.1 or newer
 	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/grpc/third_party/zlib && \
-	  git fetch --unshallow origin && \
-	  git checkout f1f503da85d52e56aae11557b4d79a42bcaa2b86
+	  git fetch --depth=1 origin f1f503da85d52e56aae11557b4d79a42bcaa2b86 && \
+	  git checkout --detach f1f503da85d52e56aae11557b4d79a42bcaa2b86
 	# abseil is broken too (see https://github.com/abseil/abseil-cpp/issues/1241), patch until bumped to fix
 	cd ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/grpc/third_party/abseil-cpp && \
 	  git apply ${ROOT_DIR}/dependencies-patches/abseil.patch
