@@ -54,6 +54,8 @@ RequestContext::~RequestContext() {
 	// A destructor is implicitly noexcept, so anything thrown here terminates the
 	// process and is reported as a crash. Rollback goes through Query("ROLLBACK")
 	// and throws when the connection is no longer usable, which is a situation we need to handle.
+	// At this point, this is defensive programming since in theory the transaction contexts manage rollbacks in case of
+	// an exception.
 	try {
 		if (con.HasActiveTransaction() && !con.IsAutoCommit()) {
 			con.Rollback();
