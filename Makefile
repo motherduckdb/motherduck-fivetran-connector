@@ -74,7 +74,7 @@ build_grpc:
 	  -DgRPC_INSTALL=ON \
 	  -DgRPC_SSL_PROVIDER=package \
 	  -G "Unix Makefiles" \
-	  -DCMAKE_CXX_STANDARD=14 \
+	  -DCMAKE_CXX_STANDARD=20 \
 	  -DCMAKE_INSTALL_PREFIX=${MD_FIVETRAN_DEPENDENCIES_DIR}/grpc \
 	  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	  -DCMAKE_CXX_FLAGS="-Wno-missing-template-arg-list-after-template-kw"
@@ -111,7 +111,7 @@ build_test_dependencies:
 	git clone --branch ${CATCH2_VERSION} --depth 1 https://github.com/catchorg/Catch2.git ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/catch2
 	cmake -S ${MD_FIVETRAN_DEPENDENCIES_SOURCE_DIR}/catch2 -B ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/catch2 \
 	  -G "Unix Makefiles" \
-	  -DCMAKE_CXX_STANDARD=14 \
+	  -DCMAKE_CXX_STANDARD=20 \
 	  -DCMAKE_INSTALL_PREFIX=${MD_FIVETRAN_DEPENDENCIES_DIR}/catch2 \
 	  -DBUILD_TESTING=OFF
 	cd ${MD_FIVETRAN_DEPENDENCIES_BUILD_DIR}/catch2 && make -j${CORES}
