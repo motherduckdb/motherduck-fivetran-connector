@@ -2,9 +2,11 @@
 
 #include "duckdb.hpp"
 
+#include <cstdlib>
 #include <iostream>
-#include <mutex>
+#include <optional>
 #include <string>
+#include <string_view>
 
 namespace mdlog {
 
@@ -31,6 +33,19 @@ bool HasFlag(const Logger::SinkType value, const Logger::SinkType flag) {
 	return static_cast<Logger::SinkType>(static_cast<int>(value) & static_cast<int>(flag)) != Logger::SinkType::NONE;
 }
 } // namespace
+
+bool duckdb_logging_enabled() {
+	const char* env_var = std::getenv("MD_DISABLE_DUCKDB_LOGGING");
+	return env_var == nullptr || std::string_view(env_var) == "0";
+}
+
+std::optional<std::string> initialize_duckdb_logging(duckdb::Connection& con) {
+	const auto res = con.Query("CALL enable_logging('Fivetran', storage='motherduck_log_storage', level='DEBUG')");
+	if (res->HasError()) {
+		return res->GetError();
+	}
+	return std::nullopt;
+}
 
 Logger::Logger(const SinkType sinks) : enabled_sinks(sinks), con(nullptr) {
 	// The other constructor should be used for DuckDB logging
@@ -93,14 +108,6 @@ void Logger::log(const LogLevel level, const std::string& message) const {
 	}
 
 	if (HasFlag(enabled_sinks, SinkType::DUCKDB)) {
-		// enable_logging is a global setting, so it only needs to be called once
-		// per DuckDB instance. And the DuckDB instance is a singleton.
-		std::call_once(
-		    initialize_duckdb_logging_flag,
-		    [](duckdb::Connection& con) {
-			    con.Query("CALL enable_logging('Fivetran', storage='motherduck_log_storage', level='DEBUG')");
-		    },
-		    *con);
 		log_to_duckdb(level, message);
 	}
 }
