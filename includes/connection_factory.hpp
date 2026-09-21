@@ -9,8 +9,9 @@
 /// Used to create a new DuckDB connection to the specified MotherDuck database.
 /// In practice, only one db_name is always passed for the entire lifetime of
 /// the process. If no duckdb::DuckDB has been instantiated yet, it will create
-/// one on the first call to GetConnection. One ConnectionFactory is used per
-/// gRPC request.
+/// one on the first call to CreateConnection. DestinationSdkImpl owns a single
+/// ConnectionFactory that is shared by all gRPC requests, so there is one
+/// duckdb::DuckDB instance per process.
 class ConnectionFactory {
 public:
 	explicit ConnectionFactory() : stdout_logger(mdlog::Logger::CreateStdoutLogger()) {

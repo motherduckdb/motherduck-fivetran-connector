@@ -6,6 +6,7 @@
 
 #include <exception>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -48,6 +49,18 @@ duckdb::DuckDB& ConnectionFactory::get_duckdb(const std::string& md_auth_token, 
 		}
 
 		duckdb::Connection con(db);
+
+		// enable_logging configures the instance-wide LogManager, so it runs once
+		// with the rest of the instance setup and before any Logger can write.
+		if (mdlog::duckdb_logging_enabled()) {
+			const auto opt_logging_error = mdlog::initialize_duckdb_logging(con)
+			if (opt_logging_error.has_value()) {
+				stdout_logger.severe("get_duckdb: Could not enable DuckDB logging: " + *opt_logging_error);
+			} else {
+				stdout_logger.info("get_duckdb: enabled DuckDB logging");
+			}
+		}
+
 		// Trigger welcome pack fetch, but do not raise errors
 		const auto welcome_pack_res = con.Query("FROM md_welcome_messages()");
 		if (welcome_pack_res->HasError()) {

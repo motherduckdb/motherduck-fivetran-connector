@@ -7,15 +7,13 @@
 #include <cstdlib>
 #include <mutex>
 #include <string>
-#include <string_view>
 
 namespace {
 mdlog::Logger get_logger_for_env(duckdb::Connection& con) {
-	const char* env_var = std::getenv("MD_DISABLE_DUCKDB_LOGGING");
-	if (env_var && std::string_view(env_var) != "0") {
-		return mdlog::Logger::CreateStdoutLogger();
+	if (mdlog::duckdb_logging_enabled()) {
+		return mdlog::Logger::CreateMultiSinkLogger(&con);
 	}
-	return mdlog::Logger::CreateMultiSinkLogger(&con);
+	return mdlog::Logger::CreateStdoutLogger();
 }
 
 std::string read_env(const char* name) {
