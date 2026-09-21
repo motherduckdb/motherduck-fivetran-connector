@@ -114,3 +114,34 @@ TEST_CASE("AlterTable removes the constraints of columns the request omits if dr
 	// ... but it no longer rejects NULL.
 	REQUIRE_NO_FAIL(con.Query("INSERT INTO t (id, v) VALUES (3, 'c')"));
 }
+
+TEST_CASE("AlterTable recreate defaults new key columns of non-numeric types", "[alter]") {
+	// A newly added key column cannot be NULL, so the recreated table gives it a default. That default has to be
+	// castable to the column type; BLOB and TIME reject the numeric fallback.
+	duckdb::DuckDB db(nullptr);
+	duckdb::Connection con(db);
+	auto logger = mdlog::Logger::CreateNopLogger();
+	MdSqlGenerator generator(logger);
+
+	const table_def table {"memory", "main", "t"};
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1, 'a')"));
+
+	// A BINARY (BLOB) hash key and a NAIVE_TIME key column join the primary key.
+	const std::vector<column_def> requested = {
+	    column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
+	    column_def {.name = "v", .type = duckdb::LogicalTypeId::VARCHAR},
+	    column_def {.name = "hash_key", .type = duckdb::LogicalTypeId::BLOB, .primary_key = true},
+	    column_def {.name = "time_key", .type = duckdb::LogicalTypeId::TIME, .primary_key = true}};
+	generator.alter_table(con, table, requested, /*drop_columns=*/false);
+
+	REQUIRE(primary_key_names(generator.describe_table(con, table)) ==
+	        std::vector<std::string> {"id", "hash_key", "time_key"});
+
+	// The existing row is carried over and the new key columns hold their defaults.
+	auto res = con.Query("SELECT id, v, hash_key, time_key FROM t");
+	REQUIRE_NO_FAIL(res);
+	REQUIRE(res->RowCount() == 1);
+	check_row(res, 0,
+	          {duckdb::Value::INTEGER(1), "a", duckdb::Value::BLOB(""), duckdb::Value::TIME(duckdb::dtime_t {0})});
+}

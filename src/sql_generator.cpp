@@ -239,16 +239,32 @@ void MdSqlGenerator::create_schema_if_not_exists_with_retries(duckdb::Connection
 	throw_if_query_error(*create_result, "Could not create schema <" + schema_name + "> in database <" + db_name + ">");
 }
 
+// Placeholder default for a key column that is added to an existing table: its rows need a non-NULL value.
 std::string get_default_value(duckdb::LogicalTypeId type) {
 	switch (type) {
 	case duckdb::LogicalTypeId::VARCHAR:
 		return "''";
+	case duckdb::LogicalTypeId::BLOB:
+		return "CAST('' AS BLOB)";
 	case duckdb::LogicalTypeId::DATE:
 	case duckdb::LogicalTypeId::TIMESTAMP:
 	case duckdb::LogicalTypeId::TIMESTAMP_TZ:
 		return "'epoch'";
-	default:
+	case duckdb::LogicalTypeId::TIME:
+		return "'00:00:00'";
+	case duckdb::LogicalTypeId::BOOLEAN:
+	case duckdb::LogicalTypeId::SMALLINT:
+	case duckdb::LogicalTypeId::INTEGER:
+	case duckdb::LogicalTypeId::BIGINT:
+	case duckdb::LogicalTypeId::DECIMAL:
+	case duckdb::LogicalTypeId::FLOAT:
+	case duckdb::LogicalTypeId::DOUBLE:
 		return "0";
+	default:
+		// Every type get_duckdb_type() can produce is listed above, anything else is a gap in this switch and would
+		// otherwise surface as an opaque cast error from DuckDB.
+		throw std::invalid_argument("No default value defined for column type <" + duckdb::LogicalTypeIdToString(type) +
+		                            ">");
 	}
 }
 
