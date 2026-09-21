@@ -16,6 +16,7 @@ add_executable(integration_tests
         test_alter_table.cpp
         test_crash_handler.cpp
         test_throw_if_query_error.cpp
+        test_scoped_transaction.cpp
         test_helpers.cpp
         integration/common.cpp
         integration/test_config_tester.cpp

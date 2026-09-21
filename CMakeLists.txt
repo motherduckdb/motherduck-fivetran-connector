@@ -166,6 +166,7 @@ add_library(motherduck_destination_sources STATIC
         src/request_context.cpp
         src/schema_types.cpp
         src/sql_generator.cpp
+        src/scoped_transaction.cpp
 )
 
 target_include_directories(motherduck_destination_sources PUBLIC

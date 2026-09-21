@@ -7,6 +7,7 @@
 #include "md_logging.hpp"
 #include "memory_backed_file.hpp"
 #include "schema_types.hpp"
+#include "scoped_transaction.hpp"
 #include "sql_generator.hpp"
 
 #include <fstream>
@@ -287,7 +288,9 @@ void ProcessFile(duckdb::Connection& con, const IngestProperties& props, mdlog::
 		reset_file_cursor(temp_file.value().fd);
 	}
 
-	TransactionContext transaction_context(con);
+	// Every failure below throws, so the scope rolls the transaction back. Without it the failed
+	// transaction would stay open on the connection until the request ends.
+	ScopedTransaction transaction(con);
 
 	MdSqlGenerator sql_generator(logger);
 	const std::string staging_table_name = sql_generator.generate_temp_table_name(con, "__fivetran_ingest_staging");
@@ -325,6 +328,7 @@ void ProcessFile(duckdb::Connection& con, const IngestProperties& props, mdlog::
 		              props.filename + ">: " + drop_staging_table_res->GetError());
 	}
 
-	transaction_context.Commit();
+	// This throws any errors during commit
+	transaction.Commit();
 }
 } // namespace csv_processor
