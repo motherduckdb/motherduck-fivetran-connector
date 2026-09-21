@@ -114,3 +114,42 @@ TEST_CASE("AlterTable removes the constraints of columns the request omits if dr
 	// ... but it no longer rejects NULL.
 	REQUIRE_NO_FAIL(con.Query("INSERT INTO t (id, v) VALUES (3, 'c')"));
 }
+
+TEST_CASE("AlterTable recreate defaults a new key column of every Fivetran type", "[alter]") {
+	// Adding a key column to a populated table needs a default the column type accepts. Check that there is a usable
+	// default for each column type.
+	const auto* fivetran_types = fivetran_sdk::v2::DataType_descriptor();
+	for (int i = 0; i < fivetran_types->value_count(); i++) {
+		const auto fivetran_type = static_cast<fivetran_sdk::v2::DataType>(fivetran_types->value(i)->number());
+		if (fivetran_type == fivetran_sdk::v2::UNSPECIFIED) {
+			continue;
+		}
+		INFO("Fivetran type " << fivetran_types->value(i)->name());
+
+		const auto duckdb_type = get_duckdb_type(fivetran_type);
+		REQUIRE(duckdb_type != duckdb::LogicalTypeId::INVALID);
+
+		duckdb::DuckDB db(nullptr);
+		duckdb::Connection con(db);
+		auto logger = mdlog::Logger::CreateNopLogger();
+		MdSqlGenerator generator(logger);
+
+		const table_def table {"memory", "main", "t"};
+		REQUIRE_NO_FAIL(con.Query("CREATE TABLE t (id INTEGER PRIMARY KEY)"));
+		REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1)"));
+
+		column_def new_key {.name = "new_key", .type = duckdb_type, .primary_key = true};
+		if (duckdb_type == duckdb::LogicalTypeId::DECIMAL) {
+			new_key.width = DECIMAL_DEFAULT_WIDTH;
+			new_key.scale = DECIMAL_DEFAULT_SCALE;
+		}
+		const std::vector<column_def> requested = {
+		    column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true}, new_key};
+		generator.alter_table(con, table, requested, /*drop_columns=*/false);
+
+		// The existing row survives the recreate, with the default filled in for the new key column.
+		auto res = con.Query("SELECT COUNT(*) FROM t WHERE \"new_key\" IS NOT NULL");
+		REQUIRE_NO_FAIL(res);
+		REQUIRE(res->GetValue(0, 0).GetValue<int64_t>() == 1);
+	}
+}
