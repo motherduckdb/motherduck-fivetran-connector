@@ -6,6 +6,7 @@
 #include "md_logging.hpp"
 #include "schema_types.hpp"
 
+#include <chrono>
 #include <string>
 
 /// Context for a single request to the MotherDuck destination server.
@@ -42,4 +43,5 @@ private:
 	duckdb::Connection con;
 	// Logger has to have a shorter lifetime than the connection
 	mdlog::Logger logger;
+	std::chrono::steady_clock::time_point started_at;
 };

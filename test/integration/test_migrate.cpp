@@ -297,10 +297,10 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
 		REQUIRE(res->RowCount() == 4); // The order is: id, data, value, amount
 
 		// duckdb::Value() creates a NULL value
-		check_row(res, 0, {duckdb::Value(), "PRI", "INTEGER"});                                 // id
-		check_row(res, 1, {duckdb::Value(), duckdb::Value(), "VARCHAR"});                       // data
+		check_row(res, 0, {duckdb::Value(), "PRI", "INTEGER"});                                  // id
+		check_row(res, 1, {duckdb::Value(), duckdb::Value(), "VARCHAR"});                        // data
 		check_row(res, 2, {"CAST(\'42\' AS DECIMAL(17, 4))", duckdb::Value(), "DECIMAL(17,4)"}); // value
-		check_row(res, 3, {duckdb::Value(), duckdb::Value(), "DECIMAL(31,6)"});                 // amount
+		check_row(res, 3, {duckdb::Value(), duckdb::Value(), "DECIMAL(31,6)"});                  // amount
 	}
 
 	// Clean up
@@ -1363,14 +1363,12 @@ TEST_CASE("Migrate - soft delete to history", "[integration][migrate]") {
 	auto con = get_test_connection(MD_TOKEN);
 
 	// Create a table with soft delete column
-	con->BeginTransaction();
 	con->Query("CREATE TABLE " + TEST_SCHEMA_NAME + "." + table_name +
 	           " (id INT PRIMARY KEY, name VARCHAR, "
 	           "_fivetran_deleted BOOLEAN, _fivetran_synced TIMESTAMPTZ);");
 	con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name +
 	           " VALUES (1, 'active', false, NOW()), "
 	           "(2, 'deleted', true, NOW());");
-	con->Commit();
 
 	// Migrate to history mode
 	{

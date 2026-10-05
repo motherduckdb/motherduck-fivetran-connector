@@ -3,12 +3,18 @@
 #include "duckdb.hpp"
 
 #include <cstdint>
-#include <mutex>
+#include <optional>
 #include <string>
 
 namespace mdlog {
 
 enum class LogLevel : std::uint8_t { DEBUG, INFO, WARNING, SEVERE };
+
+/// Whether logging to DuckDB is enabled (via MD_DISABLE_DUCKDB_LOGGING).
+bool duckdb_logging_enabled();
+
+/// Configures the DuckDB instance to collect the connector's log messages.
+std::optional<std::string> initialize_duckdb_logging(duckdb::Connection& con);
 
 class Logger {
 public:
@@ -49,7 +55,6 @@ private:
 	duckdb::Connection* con;
 	std::string duckdb_id = "none";
 	std::string connection_id = "none";
-	mutable std::once_flag initialize_duckdb_logging_flag;
 
 	void log_to_stdout(LogLevel level, const std::string& message) const;
 	void log_to_duckdb(LogLevel level, const std::string& message) const;

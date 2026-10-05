@@ -2,9 +2,12 @@
 
 #include "duckdb.hpp"
 
+#include <cstddef>
+#include <cstdlib>
 #include <iostream>
-#include <mutex>
+#include <optional>
 #include <string>
+#include <string_view>
 
 namespace mdlog {
 
@@ -23,6 +26,34 @@ constexpr const char* level_to_string(const LogLevel level) {
 	return "UNKNOWN";
 }
 
+/// Escape message to be embedded into JSON object
+void append_as_json_string(std::string& out, const std::string& value) {
+	for (const char c : value) {
+		const auto byte = static_cast<unsigned char>(c);
+		if (c == '"' || c == '\\') {
+			out += '\\';
+			out += c;
+		} else if (byte >= 0x20) {
+			out += c;
+		} else if (c == '\n') {
+			out += "\\n";
+		} else if (c == '\r') {
+			out += "\\r";
+		} else if (c == '\t') {
+			out += "\\t";
+		} else if (c == '\b') {
+			out += "\\b";
+		} else if (c == '\f') {
+			out += "\\f";
+		} else {
+			constexpr char HEX_DIGITS[] = "0123456789abcdef";
+			out += "\\u00";
+			out += HEX_DIGITS[byte >> 4];
+			out += HEX_DIGITS[byte & 0xF];
+		}
+	}
+}
+
 Logger::SinkType operator|(Logger::SinkType lhs, Logger::SinkType rhs) {
 	return static_cast<Logger::SinkType>(static_cast<int>(lhs) | static_cast<int>(rhs));
 }
@@ -31,6 +62,19 @@ bool HasFlag(const Logger::SinkType value, const Logger::SinkType flag) {
 	return static_cast<Logger::SinkType>(static_cast<int>(value) & static_cast<int>(flag)) != Logger::SinkType::NONE;
 }
 } // namespace
+
+bool duckdb_logging_enabled() {
+	const char* env_var = std::getenv("MD_DISABLE_DUCKDB_LOGGING");
+	return env_var == nullptr || std::string_view(env_var) == "0";
+}
+
+std::optional<std::string> initialize_duckdb_logging(duckdb::Connection& con) {
+	const auto res = con.Query("CALL enable_logging('Fivetran', storage='motherduck_log_storage', level='DEBUG')");
+	if (res->HasError()) {
+		return res->GetError();
+	}
+	return std::nullopt;
+}
 
 Logger::Logger(const SinkType sinks) : enabled_sinks(sinks), con(nullptr) {
 	// The other constructor should be used for DuckDB logging
@@ -53,9 +97,27 @@ Logger::Logger(duckdb::Connection* con_) : enabled_sinks(SinkType::STDOUT | Sink
 void Logger::log_to_stdout(const LogLevel level, const std::string& message) const {
 	// Fivetran does not support DEBUG level on stdout, emit as INFO instead.
 	const LogLevel stdout_level = level == LogLevel::DEBUG ? LogLevel::INFO : level;
-	std::cout << "{\"level\":\"" << level_to_string(stdout_level) << "\",\"message\":\""
-	          << duckdb::KeywordHelper::EscapeQuotes(message, '"') << ", duckdb_id=<" << duckdb_id
-	          << ">, connection_id=<" << connection_id << ">\",\"message-origin\":\"sdk_destination\"}" << std::endl;
+	// Fits the JSON scaffolding plus the longest level name. Escaping can still grow the buffer.
+	constexpr std::size_t RECORD_OVERHEAD = 100;
+	std::string record;
+	record.reserve(RECORD_OVERHEAD + message.size() + duckdb_id.size() + connection_id.size());
+
+	record += "{\"level\":\"";
+	record += level_to_string(stdout_level);
+	record += "\",\"message\":\"";
+	// The IDs need no escaping: they are UUIDs or the "none" default.
+	append_as_json_string(record, message);
+	record += ", duckdb_id=<";
+	record += duckdb_id;
+	record += ">, connection_id=<";
+	record += connection_id;
+	record += ">\",\"message-origin\":\"sdk_destination\"}\n";
+
+	// Do writes under lock to prevent garbled log messages from multiple threads
+	static std::mutex stdout_mutex;
+	const std::lock_guard<std::mutex> lock(stdout_mutex);
+	std::cout.write(record.data(), static_cast<std::streamsize>(record.size()));
+	std::cout.flush();
 }
 
 void Logger::log_to_duckdb(const LogLevel level, const std::string& message) const {
@@ -93,14 +155,6 @@ void Logger::log(const LogLevel level, const std::string& message) const {
 	}
 
 	if (HasFlag(enabled_sinks, SinkType::DUCKDB)) {
-		// enable_logging is a global setting, so it only needs to be called once
-		// per DuckDB instance. And the DuckDB instance is a singleton.
-		std::call_once(
-		    initialize_duckdb_logging_flag,
-		    [](duckdb::Connection& con) {
-			    con.Query("CALL enable_logging('Fivetran', storage='motherduck_log_storage', level='INFO')");
-		    },
-		    *con);
 		log_to_duckdb(level, message);
 	}
 }

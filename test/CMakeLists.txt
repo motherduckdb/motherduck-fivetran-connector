@@ -12,12 +12,17 @@ add_executable(integration_tests
         test_decryption.cpp
         test_memory_backed_file.cpp
         test_md_error.cpp
+        test_logging.cpp
         test_process_file.cpp
         test_merge_into.cpp
         test_alter_table.cpp
+        test_crash_handler.cpp
+        test_throw_if_query_error.cpp
+        test_scoped_transaction.cpp
         test_helpers.cpp
         integration/common.cpp
         integration/test_config_tester.cpp
+        integration/test_logging.cpp
         integration/test_migrate.cpp
         integration/test_server.cpp
         integration/test_server_parallel.cpp

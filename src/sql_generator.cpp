@@ -5,6 +5,7 @@
 #include "md_error.hpp"
 #include "md_logging.hpp"
 #include "schema_types.hpp"
+#include "scoped_transaction.hpp"
 
 #include <cassert>
 #include <chrono>
@@ -26,6 +27,32 @@
 
 using duckdb::KeywordHelper;
 
+namespace {
+// GetError() asserts HasError(), so it must not be touched before the early return.
+template <typename T>
+void throw_if_error(T& result, const std::string& error_message) {
+	if (!result.HasError()) {
+		return;
+	}
+	// Out-of-memory is user-actionable, so it reaches Fivetran as a task rather than a hard sync failure.
+	if (result.GetErrorObject().Type() == duckdb::ExceptionType::OUT_OF_MEMORY) {
+		throw md_error::RecoverableError("The Duckling ran out of memory while ingesting data from the Fivetran "
+		                                 "sync. Switching to a larger Duckling instance size typically resolves "
+		                                 "this problem.\nOriginal error: " +
+		                                 result.GetErrorObject().RawMessage());
+	}
+	throw std::runtime_error(error_message + ": " + result.GetError());
+}
+} // namespace
+
+void throw_if_query_error(duckdb::BaseQueryResult& result, const std::string& error_message) {
+	throw_if_error(result, error_message);
+}
+
+void throw_if_query_error(duckdb::PreparedStatement& statement, const std::string& error_message) {
+	throw_if_error(statement, error_message);
+}
+
 void find_primary_keys(const std::vector<column_def>& cols, std::vector<const column_def*>& columns_pk,
                        std::vector<const column_def*>* columns_regular, const std::string& ignored_primary_key) {
 	for (auto& col : cols) {
@@ -36,39 +63,6 @@ void find_primary_keys(const std::vector<column_def>& cols, std::vector<const co
 		}
 	}
 }
-
-struct TransactionContext {
-	explicit TransactionContext(duckdb::Connection& con_) : con(con_) {
-		auto should_begin = !con.HasActiveTransaction();
-		if (should_begin) {
-			con.BeginTransaction();
-		}
-		has_begun = should_begin;
-	}
-
-	void Commit() {
-		if (has_begun) {
-			con.Commit();
-			has_begun = false;
-		}
-	}
-
-	~TransactionContext() {
-		// We should commit the context before it goes out of scope. When this
-		// doesn't happen, HasActiveTransaction() is true. However, if the context
-		// did not begin a new transaction because the connection already had an
-		// active transaction from an outer scope (i.e. should_begin, and therefore
-		// has_begun are false), we don't want to rollback because it is expected
-		// that the outer transaction should remain active.
-		if (con.HasActiveTransaction() && has_begun) {
-			con.Rollback();
-		}
-	}
-
-private:
-	duckdb::Connection& con;
-	bool has_begun;
-};
 
 namespace {
 // Utility
@@ -106,9 +100,7 @@ MdSqlGenerator::MdSqlGenerator(mdlog::Logger& logger_) : logger(logger_) {
 
 std::string MdSqlGenerator::generate_temp_table_name(duckdb::Connection& con, const std::string& prefix) const {
 	const auto current_db_res = con.Query("SELECT current_database()");
-	if (current_db_res->HasError()) {
-		current_db_res->ThrowError("Could not get current database to generate temporary table name: ");
-	}
+	throw_if_query_error(*current_db_res, "Could not get current database to generate temporary table name");
 	assert(current_db_res->RowCount() == 1);
 	assert(current_db_res->ColumnCount() == 1);
 	const std::string current_db = current_db_res->GetValue(0, 0).ToString();
@@ -142,30 +134,19 @@ void MdSqlGenerator::run_query(duckdb::Connection& con, const std::string& log_p
                                const std::string& error_message) const {
 	logger.info(log_prefix + ": " + query);
 	const auto result = con.Query(query);
-	if (result->HasError()) {
-		throw std::runtime_error(error_message + ": " + result->GetError());
-	}
+	throw_if_query_error(*result, error_message);
 }
 
 bool MdSqlGenerator::table_exists(duckdb::Connection& con, const table_def& table) const {
-	const std::string query = "SELECT table_name FROM duckdb_tables() WHERE "
-	                          "database_name=? AND schema_name=? AND table_name=?";
+	const std::string query = "SELECT table_name FROM duckdb_tables() WHERE database_name=" +
+	                          KeywordHelper::WriteQuoted(table.db_name, '\'') +
+	                          " AND schema_name=" + KeywordHelper::WriteQuoted(table.schema_name, '\'') +
+	                          " AND table_name=" + KeywordHelper::WriteQuoted(table.table_name, '\'');
 	const std::string err_prefix = "Could not find whether table <" + table.to_escaped_string() + "> exists";
-	logger.debug("table_exists: " + std::string(query) + ", database_name=" + table.db_name +
-	             ", schema_name=" + table.schema_name + ", table_name=" + table.table_name);
-	const auto statement = con.Prepare(query);
-	if (statement->HasError()) {
-		throw std::runtime_error(err_prefix + " (at bind step): " + statement->GetError());
-	}
-	duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name), duckdb::Value(table.schema_name),
-	                                        duckdb::Value(table.table_name)};
-	auto result = statement->Execute(params, false);
-	if (result->HasError()) {
-		result->ThrowError(err_prefix);
-	}
-	const auto materialized_result =
-	    duckdb::unique_ptr_cast<duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
-	return materialized_result->RowCount() > 0;
+	logger.debug("table_exists: " + query);
+	const auto result = con.Query(query);
+	throw_if_query_error(*result, err_prefix);
+	return result->RowCount() > 0;
 }
 
 bool MdSqlGenerator::table_has_unique_primary_key(duckdb::Connection& con, const table_def& table) const {
@@ -241,25 +222,46 @@ retry_transaction_errors(const std::function<duckdb::unique_ptr<duckdb::Material
 
 void MdSqlGenerator::create_schema_if_not_exists_with_retries(duckdb::Connection& con, const std::string& db_name,
                                                               const std::string& schema_name) const {
+	// The retry below only works in auto-commit mode. Inside an explicit transaction the conflicting statement
+	// aborts the transaction, so every later attempt fails with "Current transaction is aborted (please
+	// ROLLBACK)" rather than the conflict error the retry recognises, and the first conflict becomes fatal.
+	if (con.HasActiveTransaction()) {
+		throw std::logic_error("Schema creation must run outside a transaction, otherwise catalog write-write "
+		                       "conflicts between parallel syncs can no longer be retried");
+	}
+
 	const auto create_result =
 	    retry_transaction_errors([&]() { return create_schema_if_not_exists(con, db_name, schema_name, logger); });
 
-	if (create_result->HasError()) {
-		throw std::runtime_error("Could not create schema <" + schema_name + "> in database <" + db_name +
-		                         ">: " + create_result->GetError());
-	}
+	throw_if_query_error(*create_result, "Could not create schema <" + schema_name + "> in database <" + db_name + ">");
 }
 
+// Placeholder default for a key column that is added to an existing table: its rows need a non-NULL value.
 std::string get_default_value(duckdb::LogicalTypeId type) {
 	switch (type) {
 	case duckdb::LogicalTypeId::VARCHAR:
 		return "''";
+	case duckdb::LogicalTypeId::BLOB:
+		return "CAST('' AS BLOB)";
 	case duckdb::LogicalTypeId::DATE:
 	case duckdb::LogicalTypeId::TIMESTAMP:
 	case duckdb::LogicalTypeId::TIMESTAMP_TZ:
 		return "'epoch'";
-	default:
+	case duckdb::LogicalTypeId::TIME:
+		return "'00:00:00'";
+	case duckdb::LogicalTypeId::BOOLEAN:
+	case duckdb::LogicalTypeId::SMALLINT:
+	case duckdb::LogicalTypeId::INTEGER:
+	case duckdb::LogicalTypeId::BIGINT:
+	case duckdb::LogicalTypeId::DECIMAL:
+	case duckdb::LogicalTypeId::FLOAT:
+	case duckdb::LogicalTypeId::DOUBLE:
 		return "0";
+	default:
+		// Every type get_duckdb_type() can produce is listed above, anything else is a gap in this switch and would
+		// otherwise surface as an opaque cast error from DuckDB.
+		throw std::invalid_argument("No default value defined for column type <" + duckdb::LogicalTypeIdToString(type) +
+		                            ">");
 	}
 }
 
@@ -302,53 +304,37 @@ void MdSqlGenerator::create_table(duckdb::Connection& con, const table_def& tabl
 	logger.info("create_table: " + query);
 
 	const auto result = con.Query(query);
-	if (result->HasError()) {
-		const std::string& error_msg = result->GetError();
-
-		if (error_msg.find("is attached in read-only mode") != std::string::npos) {
-			throw md_error::RecoverableError("The database is attached in read-only mode. Please make sure your "
-			                                 "MotherDuck token is a Read/Write "
-			                                 "Token and check that it can write to the target database.");
-		}
-
-		throw std::runtime_error("Could not create table <" + absolute_table_name + ">: " + error_msg);
+	if (result->HasError() && result->GetError().find("is attached in read-only mode") != std::string::npos) {
+		throw md_error::RecoverableError("The database is attached in read-only mode. Please make sure your "
+		                                 "MotherDuck token is a Read/Write "
+		                                 "Token and check that it can write to the target database.");
 	}
+	throw_if_query_error(*result, "Could not create table <" + absolute_table_name + ">");
 }
 
 std::vector<column_def> MdSqlGenerator::describe_table(duckdb::Connection& con, const table_def& table) {
 	// TBD is_identity is never set, used is_nullable=no temporarily but really
 	// should use duckdb_constraints table.
 
-	std::vector<column_def> columns;
-
-	auto query = "SELECT "
-	             "column_name, "
-	             "data_type_id, "
-	             "column_default, "
-	             "NOT is_nullable, "
-	             "numeric_precision, "
-	             "numeric_scale "
-	             "FROM duckdb_columns() "
-	             "WHERE database_name=? "
-	             "AND schema_name=? "
-	             "AND table_name=?";
+	const std::string query = "SELECT "
+	                          "column_name, "
+	                          "data_type_id, "
+	                          "column_default, "
+	                          "NOT is_nullable, "
+	                          "numeric_precision, "
+	                          "numeric_scale "
+	                          "FROM duckdb_columns() "
+	                          "WHERE database_name=" +
+	                          KeywordHelper::WriteQuoted(table.db_name, '\'') +
+	                          " AND schema_name=" + KeywordHelper::WriteQuoted(table.schema_name, '\'') +
+	                          " AND table_name=" + KeywordHelper::WriteQuoted(table.table_name, '\'');
 	const std::string err = "Could not describe table <" + table.to_escaped_string() + ">";
-	logger.info("describe_table: " + std::string(query));
-	auto statement = con.Prepare(query);
-	if (statement->HasError()) {
-		throw std::runtime_error(err + " (at bind step): " + statement->GetError());
-	}
-	duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name), duckdb::Value(table.schema_name),
-	                                        duckdb::Value(table.table_name)};
-	auto result = statement->Execute(params, false);
+	logger.info("describe_table: " + query);
+	const auto result = con.Query(query);
+	throw_if_query_error(*result, err);
 
-	if (result->HasError()) {
-		throw std::runtime_error(err + ": " + result->GetError());
-	}
-
-	auto& materialized_result = result->Cast<duckdb::MaterializedQueryResult>();
-
-	for (const auto& row : materialized_result.Collection().GetRows()) {
+	std::vector<column_def> columns;
+	for (const auto& row : result->Collection().GetRows()) {
 		duckdb::LogicalTypeId column_type = static_cast<duckdb::LogicalTypeId>(row.GetValue(1).GetValue<int8_t>());
 		column_def col {
 		    row.GetValue(0).GetValue<duckdb::string>(), column_type, row.GetValue(2).GetValue<duckdb::string>(),
@@ -445,10 +431,8 @@ void MdSqlGenerator::check_no_duplicate_primary_keys(duckdb::Connection& con, co
 		const auto query = sql.str();
 		logger.info("check_no_duplicate_primary_keys: " + query);
 		const auto result = con.Query(query);
-		if (result->HasError()) {
-			throw std::runtime_error("Could not check for duplicate primary keys in table <" + absolute_table_name +
-			                         ">: " + result->GetError());
-		}
+		throw_if_query_error(*result,
+		                     "Could not check for duplicate primary keys in table <" + absolute_table_name + ">");
 		has_duplicates = result->RowCount() > 0;
 	} else {
 		// All new primary key columns are newly added, so every existing row would
@@ -456,10 +440,8 @@ void MdSqlGenerator::check_no_duplicate_primary_keys(duckdb::Connection& con, co
 		const std::string query = "SELECT COUNT(*) FROM " + absolute_table_name;
 		logger.info("check_no_duplicate_primary_keys: " + query);
 		const auto result = con.Query(query);
-		if (result->HasError()) {
-			throw std::runtime_error("Could not check for duplicate primary keys in table <" + absolute_table_name +
-			                         ">: " + result->GetError());
-		}
+		throw_if_query_error(*result,
+		                     "Could not check for duplicate primary keys in table <" + absolute_table_name + ">");
 		has_duplicates = result->GetValue(0, 0).GetValue<int64_t>() > 1;
 	}
 
@@ -607,6 +589,8 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 	// dropped). Only Strict mode reacts by recreating the table.
 	bool key_changed = false;
 
+	ScopedTransaction transaction(con, logger);
+
 	logger.info("    in MdSqlGenerator::alter_table for " + absolute_table_name);
 	const auto& existing_columns = describe_table(con, table);
 	// The requested columns by name, for lookups against the existing ones.
@@ -706,8 +690,6 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 		}
 	}
 
-	TransactionContext transaction_context(con);
-
 	if (recreate_table) {
 		logger.info("    recreating table");
 		// Rebuild the column list in the original order: leave out the deleted
@@ -741,7 +723,7 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 		                     key_columns_added, key_columns_removed, pk_mode);
 	}
 
-	transaction_context.Commit();
+	transaction.Commit();
 }
 
 void MdSqlGenerator::upsert(duckdb::Connection& con, const table_def& table, const std::string& staging_table_name,
@@ -782,9 +764,7 @@ void MdSqlGenerator::upsert(duckdb::Connection& con, const table_def& table, con
 	auto query = sql.str();
 	logger.info("upsert: " + query);
 	auto result = con.Query(query);
-	if (result->HasError()) {
-		throw std::runtime_error("Could not upsert table <" + absolute_table_name + ">" + result->GetError());
-	}
+	throw_if_query_error(*result, "Could not upsert table <" + absolute_table_name + ">");
 }
 
 void MdSqlGenerator::insert(duckdb::Connection& con, const table_def& table, const std::string& staging_table_name,
@@ -800,9 +780,7 @@ void MdSqlGenerator::insert(duckdb::Connection& con, const table_def& table, con
 	auto query = sql.str();
 	logger.info("insert: " + query);
 	auto result = con.Query(query);
-	if (result->HasError()) {
-		throw std::runtime_error("Could not insert into table <" + absolute_table_name + ">" + result->GetError());
-	}
+	throw_if_query_error(*result, "Could not insert into table <" + absolute_table_name + ">");
 }
 
 void MdSqlGenerator::update_values(duckdb::Connection& con, const table_def& table,
@@ -841,9 +819,7 @@ void MdSqlGenerator::update_values(duckdb::Connection& con, const table_def& tab
 	auto query = sql.str();
 	logger.info("update: " + query);
 	auto result = con.Query(query);
-	if (result->HasError()) {
-		throw std::runtime_error("Could not update table <" + absolute_table_name + ">: " + result->GetError());
-	}
+	throw_if_query_error(*result, "Could not update table <" + absolute_table_name + ">");
 }
 
 std::string MdSqlGenerator::create_latest_active_records_table(duckdb::Connection& con,
@@ -851,9 +827,7 @@ std::string MdSqlGenerator::create_latest_active_records_table(duckdb::Connectio
 	const std::string lar_table_name = generate_temp_table_name(con, "__fivetran_latest_active_records");
 	const auto create_lar_table_res =
 	    con.Query("CREATE TABLE " + lar_table_name + " AS FROM " + source_table.to_escaped_string() + " WITH NO DATA");
-	if (create_lar_table_res->HasError()) {
-		create_lar_table_res->ThrowError("Could not create latest_active_records table: ");
-	}
+	throw_if_query_error(*create_lar_table_res, "Could not create latest_active_records table");
 	return lar_table_name;
 }
 
@@ -908,10 +882,8 @@ void MdSqlGenerator::add_partial_historical_values(duckdb::Connection& con, cons
 	auto query = sql.str();
 	logger.info("update (add partial historical values): " + query);
 	auto result = con.Query(query);
-	if (result->HasError()) {
-		throw std::runtime_error("Could not update (add partial historical values) table <" + absolute_table_name +
-		                         ">: " + result->GetError());
-	}
+	throw_if_query_error(*result,
+	                     "Could not update (add partial historical values) table <" + absolute_table_name + ">");
 }
 
 void MdSqlGenerator::delete_rows(duckdb::Connection& con, const table_def& table, const std::string& staging_table_name,
@@ -930,9 +902,7 @@ void MdSqlGenerator::delete_rows(duckdb::Connection& con, const table_def& table
 	auto query = sql.str();
 	logger.info("delete_rows: " + query);
 	auto result = con.Query(query);
-	if (result->HasError()) {
-		throw std::runtime_error("Error deleting rows from table <" + absolute_table_name + ">: " + result->GetError());
-	}
+	throw_if_query_error(*result, "Error deleting rows from table <" + absolute_table_name + ">");
 }
 
 void MdSqlGenerator::deactivate_historical_records(duckdb::Connection& con, const table_def& table,
@@ -956,10 +926,7 @@ void MdSqlGenerator::deactivate_historical_records(duckdb::Connection& con, cons
 		auto query = sql.str();
 		logger.info("delete_overlapping_records: " + query);
 		auto result = con.Query(query);
-		if (result->HasError()) {
-			throw std::runtime_error("Error deleting overlapping records from table <" + absolute_table_name +
-			                         ">: " + result->GetError());
-		}
+		throw_if_query_error(*result, "Error deleting overlapping records from table <" + absolute_table_name + ">");
 	}
 
 	{
@@ -984,10 +951,7 @@ void MdSqlGenerator::deactivate_historical_records(duckdb::Connection& con, cons
 		auto query = sql.str();
 		logger.info("stash latest records: " + query);
 		auto result = con.Query(query);
-		if (result->HasError()) {
-			throw std::runtime_error("Error stashing latest records from table <" + absolute_table_name +
-			                         ">: " + result->GetError());
-		}
+		throw_if_query_error(*result, "Error stashing latest records from table <" + absolute_table_name + ">");
 	}
 
 	{
@@ -1004,9 +968,7 @@ void MdSqlGenerator::deactivate_historical_records(duckdb::Connection& con, cons
 		auto query = sql.str();
 		logger.info("deactivate records: " + query);
 		auto result = con.Query(query);
-		if (result->HasError()) {
-			throw std::runtime_error("Error deactivating records <" + absolute_table_name + ">: " + result->GetError());
-		}
+		throw_if_query_error(*result, "Error deactivating records <" + absolute_table_name + ">");
 	}
 }
 
@@ -1029,10 +991,7 @@ void MdSqlGenerator::delete_historical_rows(duckdb::Connection& con, const table
 	auto query = sql.str();
 	logger.info("delete historical records: " + query);
 	auto result = con.Query(query);
-	if (result->HasError()) {
-		throw std::runtime_error("Error deleting historical records <" + absolute_table_name +
-		                         ">: " + result->GetError());
-	}
+	throw_if_query_error(*result, "Error deleting historical records <" + absolute_table_name + ">");
 }
 
 void MdSqlGenerator::truncate_table(duckdb::Connection& con, const table_def& table, const std::string& synced_column,
@@ -1052,12 +1011,10 @@ void MdSqlGenerator::truncate_table(duckdb::Connection& con, const table_def& ta
 	logger.info("truncate_table request: synced column = " + synced_column);
 	sql << " WHERE " << KeywordHelper::WriteQuoted(synced_column, '"') << " < make_timestamp(?)";
 	auto query = sql.str();
-	const std::string err = "Error truncating table at bind step <" + absolute_table_name + ">";
+	const std::string err = "Error truncating table <" + absolute_table_name + ">";
 	logger.info("truncate_table: " + query);
 	auto statement = con.Prepare(query);
-	if (statement->HasError()) {
-		throw std::runtime_error(err + " (at bind step):" + statement->GetError());
-	}
+	throw_if_query_error(*statement, err + " (at bind step)");
 
 	// DuckDB make_timestamp takes microseconds; Fivetran sends millisecond
 	// precision -- safe to divide with truncation
@@ -1066,9 +1023,7 @@ void MdSqlGenerator::truncate_table(duckdb::Connection& con, const table_def& ta
 
 	logger.info("truncate_table: cutoff_microseconds = <" + std::to_string(cutoff_microseconds) + ">");
 	auto result = statement->Execute(params, false);
-	if (result->HasError()) {
-		throw std::runtime_error(err + ": " + result->GetError());
-	}
+	throw_if_query_error(*result, err);
 }
 
 // Migration operations
@@ -1094,7 +1049,7 @@ void MdSqlGenerator::drop_column_in_history_mode(duckdb::Connection& con, const 
 	// Per spec: In history mode, dropping a column preserves historical data.
 	// We execute 3 queries as described in the spec if the table is not empty.
 
-	TransactionContext transaction_context(con);
+	ScopedTransaction transaction(con, logger);
 
 	{
 		// Query 1: Insert new rows for active records where column is not null
@@ -1144,13 +1099,13 @@ void MdSqlGenerator::drop_column_in_history_mode(duckdb::Connection& con, const 
 		          "Could not update previous records for drop_column_in_history_mode");
 	}
 
-	transaction_context.Commit();
+	transaction.Commit();
 }
 
 void MdSqlGenerator::copy_table(duckdb::Connection& con, const table_def& from_table, const table_def& to_table,
                                 const std::string& log_prefix, const PrimaryKeyMode pk_mode,
                                 const std::vector<const column_def*>& additional_pks) {
-	TransactionContext transaction_context(con);
+	ScopedTransaction transaction(con, logger);
 
 	{
 		std::ostringstream sql;
@@ -1175,7 +1130,7 @@ void MdSqlGenerator::copy_table(duckdb::Connection& con, const table_def& from_t
 	add_defaults(con, columns, to_table, log_prefix);
 	apply_primary_key_constraint(con, combined_pks, to_table, log_prefix, pk_mode);
 
-	transaction_context.Commit();
+	transaction.Commit();
 }
 
 void MdSqlGenerator::add_defaults(duckdb::Connection& con, const std::vector<column_def>& columns,
@@ -1272,10 +1227,7 @@ void MdSqlGenerator::copy_column(duckdb::Connection& con, const table_def& table
 	             " AND table_name = " + KeywordHelper::WriteQuoted(table.table_name, '\'') +
 	             " AND column_name = " + KeywordHelper::WriteQuoted(from_column_name, '\'');
 	auto result = con.Query(query);
-
-	if (result->HasError()) {
-		throw std::runtime_error("copy_column get_type: " + result->GetError());
-	}
+	throw_if_query_error(*result, "copy_column get_type");
 	if (result->RowCount() < 1) {
 		throw std::runtime_error("Column with name " + quoted_from + " not found");
 	}
@@ -1293,7 +1245,7 @@ void MdSqlGenerator::copy_column(duckdb::Connection& con, const table_def& table
 		to_column.scale = result->GetValue(3, 0).GetValue<uint8_t>();
 	}
 
-	TransactionContext transaction_context(con);
+	ScopedTransaction transaction(con, logger);
 
 	add_column(con, table, to_column, "copy_column add");
 	run_query(con, "copy_column update",
@@ -1301,7 +1253,7 @@ void MdSqlGenerator::copy_column(duckdb::Connection& con, const table_def& table
 	              " = " + quoted_from,
 	          "Could not copy column values");
 
-	transaction_context.Commit();
+	transaction.Commit();
 }
 
 void MdSqlGenerator::copy_table_to_history_mode(duckdb::Connection& con, const table_def& from_table,
@@ -1310,7 +1262,6 @@ void MdSqlGenerator::copy_table_to_history_mode(duckdb::Connection& con, const t
 	const std::string from_table_name = from_table.to_escaped_string();
 	const std::string to_table_name = to_table.to_escaped_string();
 
-	// This already runs inside a transaction.
 	// There is no need to add _fivetran_start as an additional primary key at
 	// this point, as that happens in the migrate_*_to_history() below.
 	copy_table(con, from_table, to_table, "copy_table_to_history_mode copy_table", pk_mode);
@@ -1357,10 +1308,7 @@ bool MdSqlGenerator::history_table_is_valid(duckdb::Connection& con, const table
 	// a regular add/drop column when the table is empty.
 
 	auto result = con.Query("SELECT COUNT(*) FROM " + table.to_escaped_string());
-
-	if (result->HasError()) {
-		throw std::runtime_error("Could not query table size: " + result->GetError());
-	}
+	throw_if_query_error(*result, "Could not query table size");
 
 	if (result->GetValue(0, 0).GetValue<int64_t>() == 0) {
 		// The table is empty
@@ -1369,10 +1317,7 @@ bool MdSqlGenerator::history_table_is_valid(duckdb::Connection& con, const table
 
 	auto max_result = con.Query("SELECT MAX(\"_fivetran_start\") <= " + quoted_timestamp + " FROM " +
 	                            table.to_escaped_string() + " WHERE \"_fivetran_active\" = true");
-
-	if (max_result->HasError()) {
-		throw std::runtime_error("Could not query _fivetran_start value: " + max_result->GetError());
-	}
+	throw_if_query_error(*max_result, "Could not query _fivetran_start value");
 
 	if (max_result->GetValue(0, 0).GetValue<bool>() != true) {
 		throw std::runtime_error("The _fivetran_start column contains values larger "
@@ -1389,12 +1334,12 @@ void MdSqlGenerator::add_column_in_history_mode(duckdb::Connection& con, const t
 
 	const std::string quoted_timestamp = KeywordHelper::WriteQuoted(operation_timestamp, '\'') + "::TIMESTAMPTZ";
 
-	TransactionContext transaction_context(con);
+	ScopedTransaction transaction(con, logger);
 	add_column(con, table, column, "add_column_in_history_mode create");
 
 	if (!history_table_is_valid(con, table, quoted_timestamp)) {
 		// The table is empty and the column has been added
-		transaction_context.Commit();
+		transaction.Commit();
 		return;
 	}
 
@@ -1444,7 +1389,7 @@ void MdSqlGenerator::add_column_in_history_mode(duckdb::Connection& con, const t
 		          "Could not update records for add_column_in_history_mode");
 	}
 
-	transaction_context.Commit();
+	transaction.Commit();
 }
 
 void MdSqlGenerator::update_column_value(duckdb::Connection& con, const table_def& table, const std::string& column,
@@ -1496,7 +1441,7 @@ void MdSqlGenerator::migrate_soft_delete_to_history(duckdb::Connection& con, con
 	table_def temp_table {original_table.db_name, original_table.schema_name, original_table.table_name + "_temp"};
 
 	{
-		TransactionContext transaction_context(con);
+		ScopedTransaction transaction(con, logger);
 
 		add_column(con, original_table,
 		           column_def {.name = "_fivetran_start", .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
@@ -1531,13 +1476,11 @@ void MdSqlGenerator::migrate_soft_delete_to_history(duckdb::Connection& con, con
 			run_query(con, "migrate_soft_delete_to_history update", sql, "Could not set history column values");
 		}
 
-		transaction_context.Commit();
+		transaction.Commit();
 	}
 
 	{
-		// See duckdb issue #20570: we can only start the transaction here at this
-		// point.
-		TransactionContext transaction_context(con);
+		ScopedTransaction transaction(con, logger);
 
 		// Always drop the _fivetran_deleted column, with IF EXISTS as a safeguard
 		drop_column(con, original_table, "_fivetran_deleted", "migrate_soft_delete_to_history drop", true);
@@ -1552,7 +1495,7 @@ void MdSqlGenerator::migrate_soft_delete_to_history(duckdb::Connection& con, con
 		copy_table(con, temp_table, original_table, "migrate_soft_delete_to_history copy", pk_mode, additional_pks);
 		drop_table(con, temp_table, "migrate_soft_delete_to_history drop");
 
-		transaction_context.Commit();
+		transaction.Commit();
 	}
 }
 
@@ -1561,7 +1504,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(duckdb::Connection& con, con
                                                     const PrimaryKeyMode pk_mode) {
 	const std::string quoted_deleted_col = KeywordHelper::WriteQuoted(soft_deleted_column, '"');
 
-	TransactionContext transaction_context(con);
+	ScopedTransaction transaction(con, logger);
 
 	// From the duckdb docs:
 	// "ADD CONSTRAINT and DROP CONSTRAINT clauses are not yet supported in
@@ -1632,14 +1575,14 @@ void MdSqlGenerator::migrate_history_to_soft_delete(duckdb::Connection& con, con
 	drop_table(con, table, "migrate_history_to_soft_delete drop");
 	rename_table(con, temp_table, table.table_name, "migrate_history_to_soft_delete rename");
 
-	transaction_context.Commit();
+	transaction.Commit();
 }
 
 void MdSqlGenerator::migrate_history_to_live(duckdb::Connection& con, const table_def& table, bool keep_deleted_rows,
                                              const PrimaryKeyMode pk_mode) {
 	const std::string absolute_table_name = table.to_escaped_string();
 
-	TransactionContext transaction_context(con);
+	ScopedTransaction transaction(con, logger);
 
 	// Optionally delete inactive rows
 	if (!keep_deleted_rows) {
@@ -1689,7 +1632,7 @@ void MdSqlGenerator::migrate_history_to_live(duckdb::Connection& con, const tabl
 	drop_table(con, table, "migrate_history_to_live drop");
 	rename_table(con, temp_table, table.table_name, "migrate_history_to_live rename");
 
-	transaction_context.Commit();
+	transaction.Commit();
 }
 
 void MdSqlGenerator::migrate_live_to_soft_delete(duckdb::Connection& con, const table_def& table,
@@ -1697,7 +1640,7 @@ void MdSqlGenerator::migrate_live_to_soft_delete(duckdb::Connection& con, const 
 	const std::string absolute_table_name = table.to_escaped_string();
 	const std::string quoted_deleted_col = KeywordHelper::WriteQuoted(soft_deleted_column, '"');
 
-	TransactionContext transaction_context(con);
+	ScopedTransaction transaction(con, logger);
 
 	add_column(con, table,
 	           column_def {
@@ -1712,7 +1655,7 @@ void MdSqlGenerator::migrate_live_to_soft_delete(duckdb::Connection& con, const 
 	              " IS NULL",
 	          "Could not set soft_deleted_column values");
 
-	transaction_context.Commit();
+	transaction.Commit();
 }
 
 void MdSqlGenerator::migrate_live_to_history(duckdb::Connection& con, const table_def& table,
@@ -1721,7 +1664,7 @@ void MdSqlGenerator::migrate_live_to_history(duckdb::Connection& con, const tabl
 	table_def temp_table {table.db_name, table.schema_name, table.table_name + "_temp"};
 	const std::string temp_absolute_table_name = temp_table.to_escaped_string();
 
-	TransactionContext transaction_context(con);
+	ScopedTransaction transaction(con, logger);
 
 	add_column(con, table,
 	           column_def {
@@ -1762,5 +1705,5 @@ void MdSqlGenerator::migrate_live_to_history(duckdb::Connection& con, const tabl
 	copy_table(con, temp_table, table, "migrate_live_to_history copy", pk_mode, additional_pks);
 	drop_table(con, temp_table, "migrate_live_to_history drop");
 
-	transaction_context.Commit();
+	transaction.Commit();
 }

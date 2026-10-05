@@ -7,6 +7,7 @@
 #include "md_logging.hpp"
 #include "memory_backed_file.hpp"
 #include "schema_types.hpp"
+#include "scoped_transaction.hpp"
 #include "sql_generator.hpp"
 
 #include <fstream>
@@ -287,11 +288,7 @@ void ProcessFile(duckdb::Connection& con, const IngestProperties& props, mdlog::
 		reset_file_cursor(temp_file.value().fd);
 	}
 
-	bool should_commit = false;
-	if (!con.HasActiveTransaction()) {
-		con.BeginTransaction();
-		should_commit = true;
-	}
+	ScopedTransaction transaction(con, logger);
 
 	MdSqlGenerator sql_generator(logger);
 	const std::string staging_table_name = sql_generator.generate_temp_table_name(con, "__fivetran_ingest_staging");
@@ -302,16 +299,16 @@ void ProcessFile(duckdb::Connection& con, const IngestProperties& props, mdlog::
 	                         generate_read_csv_query(decrypted_file_path, props, compression, logger);
 	logger.info("    creating staging table: " + final_query);
 	const auto create_staging_table_res = con.Query(final_query);
-	if (create_staging_table_res->HasError()) {
-		const auto& error_msg = create_staging_table_res->GetError();
-		if (error_msg.find("Change the maximum length size, e.g., max_line_size=") != std::string::npos) {
-			throw md_error::RecoverableError("A data record was too large to be processed. To fix this, increase the "
-			                                 "\"Max Record Size (MiB)\" in the "
-			                                 "connector configuration. Original error:" +
-			                                 error_msg);
-		}
-		create_staging_table_res->ThrowError("Failed to create staging table for CSV file <" + props.filename + ">: ");
+	if (create_staging_table_res->HasError() &&
+	    create_staging_table_res->GetError().find("Change the maximum length size, e.g., max_line_size=") !=
+	        std::string::npos) {
+		throw md_error::RecoverableError("A data record was too large to be processed. To fix this, increase the "
+		                                 "\"Max Record Size (MiB)\" in the "
+		                                 "connector configuration. Original error:" +
+		                                 create_staging_table_res->GetError());
 	}
+	throw_if_query_error(*create_staging_table_res,
+	                     "Failed to create staging table for CSV file <" + props.filename + ">");
 	logger.info("    staging table created for file " + props.filename);
 
 	// `read_csv` opened and read the file for binding. Reset the file cursor
@@ -329,9 +326,7 @@ void ProcessFile(duckdb::Connection& con, const IngestProperties& props, mdlog::
 		              props.filename + ">: " + drop_staging_table_res->GetError());
 	}
 
-	if (should_commit) {
-		// This throws any errors during commit
-		con.Commit();
-	}
+	// This throws any errors during commit
+	transaction.Commit();
 }
 } // namespace csv_processor
