@@ -560,7 +560,7 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 		}
 	}
 
-	ScopedTransaction transaction(con);
+	ScopedTransaction transaction(con, logger);
 
 	if (recreate_table) {
 		logger.info("    recreating table");
@@ -906,7 +906,7 @@ void MdSqlGenerator::drop_column_in_history_mode(duckdb::Connection& con, const 
 	// Per spec: In history mode, dropping a column preserves historical data.
 	// We execute 3 queries as described in the spec if the table is not empty.
 
-	ScopedTransaction transaction(con);
+	ScopedTransaction transaction(con, logger);
 
 	{
 		// Query 1: Insert new rows for active records where column is not null
@@ -961,7 +961,7 @@ void MdSqlGenerator::drop_column_in_history_mode(duckdb::Connection& con, const 
 
 void MdSqlGenerator::copy_table(duckdb::Connection& con, const table_def& from_table, const table_def& to_table,
                                 const std::string& log_prefix, const std::vector<const column_def*>& additional_pks) {
-	ScopedTransaction transaction(con);
+	ScopedTransaction transaction(con, logger);
 
 	{
 		std::ostringstream sql;
@@ -1065,7 +1065,7 @@ void MdSqlGenerator::copy_column(duckdb::Connection& con, const table_def& table
 		to_column.scale = result->GetValue(3, 0).GetValue<uint8_t>();
 	}
 
-	ScopedTransaction transaction(con);
+	ScopedTransaction transaction(con, logger);
 
 	add_column(con, table, to_column, "copy_column add");
 	run_query(con, "copy_column update",
@@ -1154,7 +1154,7 @@ void MdSqlGenerator::add_column_in_history_mode(duckdb::Connection& con, const t
 
 	const std::string quoted_timestamp = KeywordHelper::WriteQuoted(operation_timestamp, '\'') + "::TIMESTAMPTZ";
 
-	ScopedTransaction transaction(con);
+	ScopedTransaction transaction(con, logger);
 	add_column(con, table, column, "add_column_in_history_mode create");
 
 	if (!history_table_is_valid(con, table, quoted_timestamp)) {
@@ -1260,7 +1260,7 @@ void MdSqlGenerator::migrate_soft_delete_to_history(duckdb::Connection& con, con
 	table_def temp_table {original_table.db_name, original_table.schema_name, original_table.table_name + "_temp"};
 
 	{
-		ScopedTransaction transaction(con);
+		ScopedTransaction transaction(con, logger);
 
 		add_column(con, original_table,
 		           column_def {.name = "_fivetran_start", .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
@@ -1299,8 +1299,7 @@ void MdSqlGenerator::migrate_soft_delete_to_history(duckdb::Connection& con, con
 	}
 
 	{
-		// See duckdb issue #20570: we can only start the transaction here at this point.
-		ScopedTransaction transaction(con);
+		ScopedTransaction transaction(con, logger);
 
 		// Always drop the _fivetran_deleted column, with IF EXISTS as a safeguard
 		drop_column(con, original_table, "_fivetran_deleted", "migrate_soft_delete_to_history drop", true);
@@ -1323,7 +1322,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(duckdb::Connection& con, con
                                                     const std::string& soft_deleted_column) {
 	const std::string quoted_deleted_col = KeywordHelper::WriteQuoted(soft_deleted_column, '"');
 
-	ScopedTransaction transaction(con);
+	ScopedTransaction transaction(con, logger);
 
 	// From the duckdb docs:
 	// "ADD CONSTRAINT and DROP CONSTRAINT clauses are not yet supported in
@@ -1400,7 +1399,7 @@ void MdSqlGenerator::migrate_history_to_soft_delete(duckdb::Connection& con, con
 void MdSqlGenerator::migrate_history_to_live(duckdb::Connection& con, const table_def& table, bool keep_deleted_rows) {
 	const std::string absolute_table_name = table.to_escaped_string();
 
-	ScopedTransaction transaction(con);
+	ScopedTransaction transaction(con, logger);
 
 	// Optionally delete inactive rows
 	if (!keep_deleted_rows) {
@@ -1457,7 +1456,7 @@ void MdSqlGenerator::migrate_live_to_soft_delete(duckdb::Connection& con, const 
 	const std::string absolute_table_name = table.to_escaped_string();
 	const std::string quoted_deleted_col = KeywordHelper::WriteQuoted(soft_deleted_column, '"');
 
-	ScopedTransaction transaction(con);
+	ScopedTransaction transaction(con, logger);
 
 	add_column(con, table,
 	           column_def {
@@ -1480,7 +1479,7 @@ void MdSqlGenerator::migrate_live_to_history(duckdb::Connection& con, const tabl
 	table_def temp_table {table.db_name, table.schema_name, table.table_name + "_temp"};
 	const std::string temp_absolute_table_name = temp_table.to_escaped_string();
 
-	ScopedTransaction transaction(con);
+	ScopedTransaction transaction(con, logger);
 
 	add_column(con, table,
 	           column_def {

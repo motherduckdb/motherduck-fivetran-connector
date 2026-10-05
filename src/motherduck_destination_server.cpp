@@ -408,9 +408,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 	auto& logger = ctx->GetLogger();
 
 	try {
-		// In light of https://github.com/motherduckdb/motherduck-fivetran-connector/pull/129/changes, we should not
-		// create a ScopedTransaction here. The ProcessFile method creates one before the first query, so we still
-		// avoid having hanging transactions that should be rolled back when we reach e.g. the logger.
+		// We do not start a ScopedTransaction here but in ProcessFile instead to prevent the transaction state from
+		// growing to large.
 		auto schema_name = get_schema_name(request);
 
 		const auto max_record_size = get_max_record_size(request->configuration(), logger);
@@ -515,9 +514,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 	};
 
 	try {
-		// In light of https://github.com/motherduckdb/motherduck-fivetran-connector/pull/129/changes, we should not
-		// create a ScopedTransaction here. The ProcessFile method creates one before the first query, so we still
-		// avoid having hanging transactions that should be rolled back when we reach e.g. the logger.
+		// We do not start a ScopedTransaction here but in ProcessFile instead to prevent the transaction state from
+		// growing to large.
 		auto schema_name = get_schema_name(request);
 
 		const auto max_record_size = get_max_record_size(request->configuration(), logger);
@@ -709,8 +707,9 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 	auto& logger = ctx->GetLogger();
 
 	try {
-		// The SQL generator needs to manage transactions, so we don't create a transaction context here, also see
-		// duckdb issue #20570.
+		// We cannot update and drop a column in the same DuckDB transaction (see
+		// https://github.com/duckdb/duckdb/issues/20570). Therefore, we can't do the migration in a single transaction
+		// and let the SQL generator manage them instead.
 		const auto& details = request->details();
 		const std::string schema_name = get_migration_schema_name(details);
 		const std::string& table_name = details.table();

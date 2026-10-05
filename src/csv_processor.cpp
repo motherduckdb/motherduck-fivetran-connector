@@ -290,7 +290,7 @@ void ProcessFile(duckdb::Connection& con, const IngestProperties& props, mdlog::
 
 	// Every failure below throws, so the scope rolls the transaction back. Without it the failed
 	// transaction would stay open on the connection until the request ends.
-	ScopedTransaction transaction(con);
+	ScopedTransaction transaction(con, logger);
 
 	MdSqlGenerator sql_generator(logger);
 	const std::string staging_table_name = sql_generator.generate_temp_table_name(con, "__fivetran_ingest_staging");
