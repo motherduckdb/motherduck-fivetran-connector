@@ -51,6 +51,7 @@ RequestContext::~RequestContext() {
 	const auto elapsed_ms =
 	    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started_at).count();
 
+	// Fallback rollback in case a transaction did not use ScopedTransaction.
 	// A destructor is implicitly noexcept, so anything thrown here terminates the
 	// process and is reported as a crash. Rollback goes through Query("ROLLBACK")
 	// and throws when the connection is no longer usable, which is a situation we need to handle.
