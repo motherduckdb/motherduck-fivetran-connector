@@ -409,7 +409,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 
 	try {
 		// We do not start a ScopedTransaction here but in ProcessFile instead to prevent the transaction state from
-		// growing to large.
+		// growing too large.
 		auto schema_name = get_schema_name(request);
 
 		const auto max_record_size = get_max_record_size(request->configuration(), logger);
@@ -515,7 +515,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 
 	try {
 		// We do not start a ScopedTransaction here but in ProcessFile instead to prevent the transaction state from
-		// growing to large.
+		// growing too large.
 		auto schema_name = get_schema_name(request);
 
 		const auto max_record_size = get_max_record_size(request->configuration(), logger);
