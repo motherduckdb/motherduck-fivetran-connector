@@ -1,3 +1,4 @@
+#include "cout_capture.hpp"
 #include "md_logging.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -12,26 +13,6 @@
 using Catch::Matchers::ContainsSubstring;
 
 namespace {
-
-// Redirects std::cout into a buffer for the lifetime of the object.
-class CoutCapture {
-public:
-	CoutCapture() : original_buffer(std::cout.rdbuf(buffer.rdbuf())) {
-	}
-	~CoutCapture() {
-		std::cout.rdbuf(original_buffer);
-	}
-	CoutCapture(const CoutCapture&) = delete;
-	CoutCapture& operator=(const CoutCapture&) = delete;
-
-	std::string str() const {
-		return buffer.str();
-	}
-
-private:
-	std::stringstream buffer;
-	std::streambuf* original_buffer;
-};
 
 std::vector<std::string> split_lines(const std::string& output) {
 	std::vector<std::string> lines;
@@ -48,14 +29,14 @@ TEST_CASE("Log records are escaped as JSON strings", "[md_logging]") {
 	const auto logger = mdlog::Logger::CreateStdoutLogger();
 
 	SECTION("Quotes and backslashes are backslash-escaped") {
-		CoutCapture capture;
+		test::CoutCapture capture;
 		logger.info("path \"C:\\tmp\" missing");
 
 		REQUIRE_THAT(capture.str(), ContainsSubstring("\"message\":\"path \\\"C:\\\\tmp\\\" missing,"));
 	}
 
 	SECTION("A multi-line message stays on one line") {
-		CoutCapture capture;
+		test::CoutCapture capture;
 		logger.severe("Parser Error:\nsyntax error\r\n\tat line 1");
 
 		const auto lines = split_lines(capture.str());
@@ -64,14 +45,14 @@ TEST_CASE("Log records are escaped as JSON strings", "[md_logging]") {
 	}
 
 	SECTION("Backspace and form feed get their named escapes") {
-		CoutCapture capture;
+		test::CoutCapture capture;
 		logger.info("back\bfeed\fend");
 
 		REQUIRE_THAT(capture.str(), ContainsSubstring("back\\bfeed\\fend"));
 	}
 
 	SECTION("Other control characters become \\u escapes") {
-		CoutCapture capture;
+		test::CoutCapture capture;
 		// Split literal: "\x07e" would otherwise be read as one hex escape.
 		logger.info("bell\x07"
 		            "end");
@@ -88,7 +69,7 @@ TEST_CASE("Concurrent logging emits one intact record per line", "[md_logging]")
 
 	std::string output;
 	{
-		CoutCapture capture;
+		test::CoutCapture capture;
 		std::vector<std::thread> threads;
 		for (unsigned int t = 0; t < num_threads; t++) {
 			threads.emplace_back([&logger, t]() {

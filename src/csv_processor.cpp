@@ -288,8 +288,6 @@ void ProcessFile(duckdb::Connection& con, const IngestProperties& props, mdlog::
 		reset_file_cursor(temp_file.value().fd);
 	}
 
-	// Every failure below throws, so the scope rolls the transaction back. Without it the failed
-	// transaction would stay open on the connection until the request ends.
 	ScopedTransaction transaction(con, logger);
 
 	MdSqlGenerator sql_generator(logger);

@@ -510,6 +510,8 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 	// Columns with changed types. Used for the alter-in-place path only.
 	std::set<std::string> alter_types;
 
+	ScopedTransaction transaction(con, logger);
+
 	logger.info("    in MdSqlGenerator::alter_table for " + absolute_table_name);
 	const auto& existing_columns = describe_table(con, table);
 	// The requested columns by name, for lookups against the existing ones.
@@ -575,8 +577,6 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 			logger.info("    adding column " + col.name);
 		}
 	}
-
-	ScopedTransaction transaction(con, logger);
 
 	if (recreate_table) {
 		logger.info("    recreating table");
@@ -1097,7 +1097,6 @@ void MdSqlGenerator::copy_table_to_history_mode(duckdb::Connection& con, const t
 	const std::string from_table_name = from_table.to_escaped_string();
 	const std::string to_table_name = to_table.to_escaped_string();
 
-	// This already runs inside a transaction.
 	// There is no need to add _fivetran_start as an additional primary key at
 	// this point, as that happens in the migrate_*_to_history() below.
 	copy_table(con, from_table, to_table, "copy_table_to_history_mode copy_table");

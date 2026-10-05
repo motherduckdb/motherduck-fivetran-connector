@@ -165,8 +165,8 @@ add_library(motherduck_destination_sources STATIC
         src/openssl_helper.cpp
         src/request_context.cpp
         src/schema_types.cpp
-        src/sql_generator.cpp
         src/scoped_transaction.cpp
+        src/sql_generator.cpp
 )
 
 target_include_directories(motherduck_destination_sources PUBLIC

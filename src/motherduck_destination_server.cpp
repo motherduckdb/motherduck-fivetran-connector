@@ -708,8 +708,8 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 
 	try {
 		// We cannot update and drop a column in the same DuckDB transaction (see
-		// https://github.com/duckdb/duckdb/issues/20570). Therefore, we can't do the migration in a single transaction
-		// and let the SQL generator manage them instead.
+		// https://github.com/duckdb/duckdb/issues/20570). Therefore, we can't execute the migration in a single
+		// transaction and let the SQL generator manage them instead.
 		const auto& details = request->details();
 		const std::string schema_name = get_migration_schema_name(details);
 		const std::string& table_name = details.table();

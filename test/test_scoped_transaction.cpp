@@ -1,3 +1,4 @@
+#include "cout_capture.hpp"
 #include "duckdb.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/client_context_state.hpp"
@@ -8,8 +9,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <cstdint>
-#include <iostream>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -68,6 +67,20 @@ TEST_CASE("ScopedTransaction", "[scoped_transaction]") {
 		con.Commit();
 		REQUIRE(count_rows(con) == 1);
 	}
+
+	SECTION("a scope that does not commit leaves a transaction it does not own alone") {
+		con.BeginTransaction();
+		REQUIRE_FALSE(con.Query("INSERT INTO t VALUES (1)")->HasError());
+		{
+			ScopedTransaction transaction(con, logger);
+			REQUIRE_FALSE(con.Query("INSERT INTO t VALUES (2)")->HasError());
+			// No Commit(): rolling back here would discard the caller's work as well.
+		}
+		REQUIRE(con.HasActiveTransaction());
+		REQUIRE(count_rows(con) == 2);
+		con.Commit();
+		REQUIRE(count_rows(con) == 2);
+	}
 }
 
 TEST_CASE("ScopedTransaction logs instead of throwing when the rollback fails", "[scoped_transaction]") {
@@ -77,18 +90,21 @@ TEST_CASE("ScopedTransaction logs instead of throwing when the rollback fails", 
 	REQUIRE_FALSE(con.Query("CREATE TABLE t (i INTEGER)")->HasError());
 	con.context->registered_state->Insert("failing_rollback", duckdb::make_shared_ptr<FailingRollbackState>());
 
-	std::stringstream buffer;
-	std::streambuf* real_cout = nullptr;
+	std::string logged;
 	{
-		ScopedTransaction transaction(con, logger);
-		REQUIRE_FALSE(con.Query("INSERT INTO t VALUES (1)")->HasError());
-		real_cout = std::cout.rdbuf(buffer.rdbuf());
+		// The capture outlives the scope below, so it still holds what the destructor logged, and std::cout is
+		// restored before the assertions report anything.
+		test::CoutCapture capture;
+		{
+			ScopedTransaction transaction(con, logger);
+			REQUIRE_FALSE(con.Query("INSERT INTO t VALUES (1)")->HasError());
+		}
+		logged = capture.str();
 	}
-	std::cout.rdbuf(real_cout);
 	con.context->registered_state->Remove("failing_rollback");
 
-	REQUIRE_THAT(buffer.str(), Catch::Matchers::ContainsSubstring("Failed to roll back transaction") &&
-	                               Catch::Matchers::ContainsSubstring("injected rollback failure"));
+	REQUIRE_THAT(logged, Catch::Matchers::ContainsSubstring("Failed to roll back transaction") &&
+	                         Catch::Matchers::ContainsSubstring("injected rollback failure"));
 	REQUIRE_FALSE(con.HasActiveTransaction());
 	REQUIRE(count_rows(con) == 0);
 }
