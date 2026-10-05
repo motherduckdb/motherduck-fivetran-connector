@@ -232,6 +232,7 @@ grpc::Status DestinationSdkImpl::DescribeTable(::grpc::ServerContext*,
 		return create_grpc_status_from_exception(ex);
 	}
 	auto& con = ctx->GetConnection();
+
 	auto& logger = ctx->GetLogger();
 
 	try {
@@ -265,7 +266,6 @@ grpc::Status DestinationSdkImpl::DescribeTable(::grpc::ServerContext*,
 				ft_col->mutable_params()->mutable_decimal()->set_scale(col.scale.value_or(DECIMAL_DEFAULT_SCALE));
 			}
 		}
-
 	} catch (const md_error::RecoverableError& mde) {
 		const std::string log_prefix = "DescribeTable endpoint failed for schema <" + request->schema_name() +
 		                               ">, table <" + request->table_name() + ">: ";
@@ -380,7 +380,6 @@ grpc::Status DestinationSdkImpl::Truncate(::grpc::ServerContext*, const ::fivetr
 			logger.warning("Table <" + request->table_name() + "> not found in schema <" + request->schema_name() +
 			               ">; not truncated");
 		}
-
 	} catch (const md_error::RecoverableError& mde) {
 		const std::string log_prefix = "Truncate endpoint failed for schema <" + request->schema_name() + ">, table <" +
 		                               request->table_name() + ">: ";
@@ -409,6 +408,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 	auto& logger = ctx->GetLogger();
 
 	try {
+		// We do not start a ScopedTransaction here but in ProcessFile instead to prevent the transaction state from
+		// growing too large.
 		auto schema_name = get_schema_name(request);
 
 		const auto max_record_size = get_max_record_size(request->configuration(), logger);
@@ -475,7 +476,6 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 				sql_generator->delete_rows(con, table_name, staging_table_name, columns_pk);
 			});
 		}
-
 	} catch (const md_error::RecoverableError& mde) {
 		const auto msg = "WriteBatch endpoint failed for schema <" + request->schema_name() + ">, table <" +
 		                 request->table().name() + ">: " + std::string(mde.what());
@@ -514,6 +514,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 	};
 
 	try {
+		// We do not start a ScopedTransaction here but in ProcessFile instead to prevent the transaction state from
+		// growing too large.
 		auto schema_name = get_schema_name(request);
 
 		const auto max_record_size = get_max_record_size(request->configuration(), logger);
@@ -705,6 +707,9 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 	auto& logger = ctx->GetLogger();
 
 	try {
+		// We cannot update and drop a column in the same DuckDB transaction (see
+		// https://github.com/duckdb/duckdb/issues/20570). Therefore, we can't execute the migration in a single
+		// transaction and let the SQL generator manage them instead.
 		const auto& details = request->details();
 		const std::string schema_name = get_migration_schema_name(details);
 		const std::string& table_name = details.table();
@@ -919,7 +924,6 @@ grpc::Status DestinationSdkImpl::Migrate(::grpc::ServerContext*, const ::fivetra
 			response->set_unsupported(true);
 			return ::grpc::Status::OK;
 		}
-
 		response->set_success(true);
 	} catch (const md_error::RecoverableError& mde) {
 		const std::string schema = request->details().schema();

@@ -667,7 +667,8 @@ TEST_CASE("Test reading a CSV file with a huge VARCHAR column", "[csv_processor]
 			                                             // Do nothing
 		                                             }),
 		                  md_error::RecoverableError);
-		con.Rollback();
+		// The failed ingest must not leave its transaction open on the connection
+		REQUIRE_FALSE(con.HasActiveTransaction());
 		REQUIRE_THROWS_WITH(csv_processor::ProcessFile(con, props, logger,
 		                                               [](const std::string&) {
 			                                               // Do nothing
