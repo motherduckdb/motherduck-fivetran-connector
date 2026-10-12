@@ -367,7 +367,7 @@ void MdSqlGenerator::add_column(duckdb::Connection& con, const table_def& table,
 			if (column.column_default.value() == "NULL") {
 				logger.info("Detected string \"NULL\" as default value for column " + column.name);
 			}
-			// We should not expect NULLs here according to fivetran, so we also cast
+			// We should not expect NULLs here according to Fivetran, so we also cast
 			// the string "NULL" to the string "NULL" for varchar columns, not NULLs.
 			sql << " DEFAULT CAST(" << KeywordHelper::WriteQuoted(column.column_default.value(), '\'') << " AS "
 				<< format_type(column) << ")";
