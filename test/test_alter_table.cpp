@@ -364,7 +364,7 @@ TEST_CASE("AlterTable recreate defaults a new key column of every Fivetran type"
 		}
 		const std::vector<column_def> requested = {
 		    column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true}, new_key};
-		generator.alter_table(con, table, requested, /*drop_columns=*/false);
+		generator.alter_table(con, table, requested, /*drop_columns=*/false, PrimaryKeyMode::Strict);
 
 		// The existing row survives the recreate, with the default filled in for the new key column.
 		auto res = con.Query("SELECT COUNT(*) FROM t WHERE \"new_key\" IS NOT NULL");

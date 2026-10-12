@@ -671,7 +671,8 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 	const bool table_has_pks = table_has_unique_primary_key(con, table);
 	const bool must_shed_legacy_pks = pk_mode == PrimaryKeyMode::NotNull && table_has_pks;
 	const bool has_switched_to_strict_mode = pk_mode == PrimaryKeyMode::Strict && !table_has_pks;
-	const bool recreate_table = (key_changed && pk_mode == PrimaryKeyMode::Strict) || (key_changed && has_switched_to_strict_mode || must_shed_legacy_pks;
+	const bool recreate_table = (key_changed && pk_mode == PrimaryKeyMode::Strict) ||
+	                            (key_changed && must_shed_legacy_pks) || has_switched_to_strict_mode;
 	logger.info("    inventoried columns; recreate_table = " + std::to_string(recreate_table) +
 	            "; num alter_types = " + std::to_string(alter_types.size()));
 
