@@ -276,9 +276,10 @@ void MdSqlGenerator::create_table(duckdb::Connection& con, const table_def& tabl
 		if (columns_with_default_value.find(col.name) != columns_with_default_value.end()) {
 			ddl << " DEFAULT " + get_default_value(col.type);
 		}
-		// Key columns are always NOT NULL: in NotNull mode that is the only thing
+		// Primary key columns are always NOT NULL: in NotNull mode that is the only thing
 		// marking them as such, and in Strict mode the PRIMARY KEY below implies it
-		// anyway. This is what describe_table() relies on to recover the key set.
+		// anyway. NOT NULL is still a valid attribute even when there is PRIMARY KEY specified as well.
+		// The not-null constraint is what describe_table() relies on to recover the key set.
 		if (col.primary_key) {
 			ddl << " NOT NULL";
 		}
