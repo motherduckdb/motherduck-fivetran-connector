@@ -150,23 +150,17 @@ bool MdSqlGenerator::table_exists(duckdb::Connection& con, const table_def& tabl
 }
 
 bool MdSqlGenerator::table_has_unique_primary_key(duckdb::Connection& con, const table_def& table) const {
-	const std::string query = "SELECT 1 FROM duckdb_constraints() WHERE "
-	                          "database_name=? AND schema_name=? AND table_name=? AND constraint_type='PRIMARY KEY'";
+	const std::string query = "SELECT 1 FROM duckdb_constraints() WHERE database_name=" +
+	                          KeywordHelper::WriteQuoted(table.db_name, '\'') +
+	                          " AND schema_name=" + KeywordHelper::WriteQuoted(table.schema_name, '\'') +
+	                          " AND table_name=" + KeywordHelper::WriteQuoted(table.table_name, '\'') +
+	                          " AND constraint_type='PRIMARY KEY'";
 	const std::string err_prefix =
 	    "Could not check for a primary key constraint on <" + table.to_escaped_string() + ">";
-	const auto statement = con.Prepare(query);
-	if (statement->HasError()) {
-		throw std::runtime_error(err_prefix + " (at bind step): " + statement->GetError());
-	}
-	duckdb::vector<duckdb::Value> params = {duckdb::Value(table.db_name), duckdb::Value(table.schema_name),
-	                                        duckdb::Value(table.table_name)};
-	auto result = statement->Execute(params, false);
-	if (result->HasError()) {
-		result->ThrowError(err_prefix);
-	}
-	const auto materialized_result =
-	    duckdb::unique_ptr_cast<duckdb::QueryResult, duckdb::MaterializedQueryResult>(std::move(result));
-	return materialized_result->RowCount() > 0;
+	logger.debug("table_has_unique_primary_key: " + query);
+	const auto result = con.Query(query);
+	throw_if_query_error(*result, err_prefix);
+	return result->RowCount() > 0;
 }
 
 namespace {
