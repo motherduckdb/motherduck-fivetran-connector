@@ -9,6 +9,11 @@
 #include <string>
 
 namespace {
+PrimaryKeyMode get_pk_mode(const google::protobuf::Map<std::string, std::string>& request_config) {
+	const bool strict = config::find_bool_property(request_config, config::PROP_STRICT_PRIMARY_KEYS, false);
+	return strict ? PrimaryKeyMode::Strict : PrimaryKeyMode::NotNull;
+}
+
 mdlog::Logger get_logger_for_env(duckdb::Connection& con) {
 	if (mdlog::duckdb_logging_enabled()) {
 		return mdlog::Logger::CreateMultiSinkLogger(&con);
@@ -38,7 +43,7 @@ void log_fivetran_user_info_once(const mdlog::Logger& logger, const std::string&
 RequestContext::RequestContext(const std::string& endpoint_name_, ConnectionFactory& connection_factory,
                                const google::protobuf::Map<std::string, std::string>& request_config)
     : endpoint_name(endpoint_name_), db_name(config::find_property(request_config, config::PROP_DATABASE)),
-      md_token(config::find_property(request_config, config::PROP_TOKEN)),
+      md_token(config::find_property(request_config, config::PROP_TOKEN)), pk_mode(get_pk_mode(request_config)),
       con(connection_factory.CreateConnection(md_token, db_name)), logger(get_logger_for_env(con)),
       started_at(std::chrono::steady_clock::now()) {
 	log_fivetran_user_info_once(logger, db_name);
