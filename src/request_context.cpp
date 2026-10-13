@@ -43,8 +43,7 @@ void log_fivetran_user_info_once(const mdlog::Logger& logger, const std::string&
 RequestContext::RequestContext(const std::string& endpoint_name_, ConnectionFactory& connection_factory,
                                const google::protobuf::Map<std::string, std::string>& request_config)
     : endpoint_name(endpoint_name_), db_name(config::find_property(request_config, config::PROP_DATABASE)),
-      md_token(config::find_property(request_config, config::PROP_TOKEN)),
-      pk_mode(get_pk_mode(request_config)),
+      md_token(config::find_property(request_config, config::PROP_TOKEN)), pk_mode(get_pk_mode(request_config)),
       con(connection_factory.CreateConnection(md_token, db_name)), logger(get_logger_for_env(con)),
       started_at(std::chrono::steady_clock::now()) {
 	log_fivetran_user_info_once(logger, db_name);

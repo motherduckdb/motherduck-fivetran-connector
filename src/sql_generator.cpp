@@ -150,11 +150,10 @@ bool MdSqlGenerator::table_exists(duckdb::Connection& con, const table_def& tabl
 }
 
 bool MdSqlGenerator::table_has_unique_primary_key(duckdb::Connection& con, const table_def& table) const {
-	const std::string query = "SELECT 1 FROM duckdb_constraints() WHERE database_name=" +
-	                          KeywordHelper::WriteQuoted(table.db_name, '\'') +
-	                          " AND schema_name=" + KeywordHelper::WriteQuoted(table.schema_name, '\'') +
-	                          " AND table_name=" + KeywordHelper::WriteQuoted(table.table_name, '\'') +
-	                          " AND constraint_type='PRIMARY KEY'";
+	const std::string query =
+	    "SELECT 1 FROM duckdb_constraints() WHERE database_name=" + KeywordHelper::WriteQuoted(table.db_name, '\'') +
+	    " AND schema_name=" + KeywordHelper::WriteQuoted(table.schema_name, '\'') +
+	    " AND table_name=" + KeywordHelper::WriteQuoted(table.table_name, '\'') + " AND constraint_type='PRIMARY KEY'";
 	const std::string err_prefix =
 	    "Could not check for a primary key constraint on <" + table.to_escaped_string() + ">";
 	logger.debug("table_has_unique_primary_key: " + query);
@@ -357,11 +356,14 @@ void MdSqlGenerator::add_column(duckdb::Connection& con, const table_def& table,
 	sql << KeywordHelper::WriteQuoted(column.name, '"') << " " << format_type(column);
 
 	if (column.column_default.has_value()) {
-		// default_is_sql_literal says that it already is a valid SQL literal for that type (as produced by get_default_value()).
+		// default_is_sql_literal says that it already is a valid SQL literal for that type (as produced by
+		// get_default_value()).
 		if (default_is_sql_literal) {
-			// No cast if we set the default to a literal. DuckDB rewrites the ALTER statement if the default is not a ConstantExpression, and a CastExpression is not.
-			// It would be rewritten to `ALTER TABLE t ADD COLUMN c DEFAULT NULL` + `UPDATE t SET c = <expr>` + `ALTER TABLE t ALTER c SET DEFAULT <expr>`.
-			// The problem with this is that after that, in a multi-statement transaction, a subsequent `ALTER COLUMN c SET NOT NULL` statement would fail with a TransactionContextException.
+			// No cast if we set the default to a literal. DuckDB rewrites the ALTER statement if the default is not a
+			// ConstantExpression, and a CastExpression is not. It would be rewritten to `ALTER TABLE t ADD COLUMN c
+			// DEFAULT NULL` + `UPDATE t SET c = <expr>` + `ALTER TABLE t ALTER c SET DEFAULT <expr>`. The problem with
+			// this is that after that, in a multi-statement transaction, a subsequent `ALTER COLUMN c SET NOT NULL`
+			// statement would fail with a TransactionContextException.
 			sql << " DEFAULT " << column.column_default.value();
 		} else {
 			if (column.column_default.value() == "NULL") {
@@ -370,9 +372,8 @@ void MdSqlGenerator::add_column(duckdb::Connection& con, const table_def& table,
 			// We should not expect NULLs here according to Fivetran, so we also cast
 			// the string "NULL" to the string "NULL" for varchar columns, not NULLs.
 			sql << " DEFAULT CAST(" << KeywordHelper::WriteQuoted(column.column_default.value(), '\'') << " AS "
-				<< format_type(column) << ")";
+			    << format_type(column) << ")";
 		}
-
 	}
 
 	return run_query(con, log_prefix, sql.str(),
@@ -699,8 +700,9 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 
 	// A PRIMARY KEY constraint cannot be altered or dropped in place, hence we need to recreate the table in strict
 	// primary key mode. If the table still carries a primary key constraint from before switching to NotNull mode, we
-	// also recreate the table. Otherwise, in NotNull mode, we do not need to recreate the table because we can run SET NOT NULL/DROP NOT NULL in place.
-	// Lastly, if the user switched from NotNull to Strict mode, we also recreate the table.
+	// also recreate the table. Otherwise, in NotNull mode, we do not need to recreate the table because we can run SET
+	// NOT NULL/DROP NOT NULL in place. Lastly, if the user switched from NotNull to Strict mode, we also recreate the
+	// table.
 	const bool table_has_pks = table_has_unique_primary_key(con, table);
 	const bool must_remove_legacy_pks = pk_mode == PrimaryKeyMode::NotNull && table_has_pks;
 	const bool has_switched_to_strict_mode = pk_mode == PrimaryKeyMode::Strict && !table_has_pks;
@@ -769,7 +771,8 @@ void MdSqlGenerator::upsert(duckdb::Connection& con, const table_def& table, con
 	all_columns.insert(all_columns.end(), columns_pk.begin(), columns_pk.end());
 	all_columns.insert(all_columns.end(), columns_regular.begin(), columns_regular.end());
 
-	// We use MERGE INTO because it does not require a PRIMARY KEY constraint on the merge columns, in contrast to INSERT INTO ... ON CONFLICT.
+	// We use MERGE INTO because it does not require a PRIMARY KEY constraint on the merge columns, in contrast to
+	// INSERT INTO ... ON CONFLICT.
 	std::ostringstream sql;
 	sql << "MERGE INTO " << absolute_table_name << " AS target USING " << staging_table_name << " AS source ON "
 	    << primary_key_join(columns_pk, "target", "source");
