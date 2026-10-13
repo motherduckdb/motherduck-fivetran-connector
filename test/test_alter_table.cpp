@@ -73,14 +73,14 @@ std::vector<std::string> primary_key_names(const std::vector<column_def>& column
 
 } // namespace
 
-TEST_CASE("AlterTable recreates a legacy PRIMARY KEY table when widening the key (NotNull mode)", "[alter]") {
+TEST_CASE("AlterTable in NotNull mode recreates a strict-mode table when widening the key", "[alter]") {
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
 	auto logger = mdlog::Logger::CreateNopLogger();
 	MdSqlGenerator generator(logger);
 	const PrimaryKeyMode pk_mode = PrimaryKeyMode::NotNull;
 
-	// Legacy table from the old connector: enforced PRIMARY KEY on id.
+	// Table created in strict mode: enforced PRIMARY KEY on id.
 	ok(con, "CREATE TABLE " + QUALIFIED + " (\"id\" INTEGER, \"v\" VARCHAR, PRIMARY KEY (\"id\"))");
 	ok(con, "INSERT INTO " + QUALIFIED + " VALUES (1, 'a')");
 
@@ -90,7 +90,7 @@ TEST_CASE("AlterTable recreates a legacy PRIMARY KEY table when widening the key
 	                                     key_col("region", duckdb::LogicalTypeId::VARCHAR)};
 	generator.alter_table(con, TABLE, requested, /*drop_columns=*/false, pk_mode);
 
-	// The legacy PK is gone (recreated without one) and the new key column is NOT NULL.
+	// The strict-mode PK is gone (recreated without one) and the new key column is NOT NULL.
 	REQUIRE(primary_key_count(con) == 0);
 	REQUIRE(column_is_not_null(con, "region"));
 	REQUIRE(column_is_not_null(con, "id"));
@@ -101,14 +101,14 @@ TEST_CASE("AlterTable recreates a legacy PRIMARY KEY table when widening the key
 	REQUIRE(row_count(con, QUALIFIED) == 3);
 }
 
-TEST_CASE("AlterTable recreates a legacy PRIMARY KEY table when dropping a key column (NotNull mode)", "[alter]") {
+TEST_CASE("AlterTable in NotNull mode recreates a strict-mode table when dropping a key column", "[alter]") {
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
 	auto logger = mdlog::Logger::CreateNopLogger();
 	MdSqlGenerator generator(logger);
 	const PrimaryKeyMode pk_mode = PrimaryKeyMode::NotNull;
 
-	// Legacy composite PRIMARY KEY (id, b).
+	// Table created in strict mode: composite PRIMARY KEY (id, b).
 	ok(con, "CREATE TABLE " + QUALIFIED + " (\"id\" INTEGER, \"b\" INTEGER, PRIMARY KEY (\"id\", \"b\"))");
 	ok(con, "INSERT INTO " + QUALIFIED + " VALUES (1, 1)");
 
@@ -130,7 +130,7 @@ TEST_CASE("AlterTable changes the key in place for a NOT NULL table (no PRIMARY 
 	MdSqlGenerator generator(logger);
 	const PrimaryKeyMode pk_mode = PrimaryKeyMode::NotNull;
 
-	// A table created by the new connector: NOT NULL key, no PRIMARY KEY.
+	// Table created in NotNull mode: NOT NULL key, no PRIMARY KEY.
 	ok(con, "CREATE TABLE " + QUALIFIED + " (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)");
 	ok(con, "INSERT INTO " + QUALIFIED + " VALUES (1, 'a')");
 
@@ -149,7 +149,7 @@ TEST_CASE("AlterTable changes the key in place for a NOT NULL table (no PRIMARY 
 	REQUIRE(row_count(con, QUALIFIED) == 3);
 }
 
-TEST_CASE("AlterTable in strict mode rebuilds the PRIMARY KEY on a legacy table's new key", "[alter]") {
+TEST_CASE("AlterTable in strict mode rebuilds the PRIMARY KEY over the new key", "[alter]") {
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
 	auto logger = mdlog::Logger::CreateNopLogger();
