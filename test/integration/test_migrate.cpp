@@ -245,6 +245,10 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
 	DestinationSdkImpl service;
 	const std::string from_table = "migrate_copy_from_" + std::to_string(randint());
 	const std::string to_table = "migrate_copy_to_" + std::to_string(randint());
+	const bool strict = GENERATE(false, true);
+	CAPTURE(strict);
+	// Only strict mode re-adds a PRIMARY KEY constraint, which DESCRIBE reports as "PRI".
+	const duckdb::Value pk_key = strict ? duckdb::Value("PRI") : duckdb::Value();
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -267,6 +271,7 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, from_table);
+		set_strict_primary_keys(request, strict);
 		request.mutable_details()->mutable_copy()->mutable_copy_table()->set_from_table(from_table);
 		request.mutable_details()->mutable_copy()->mutable_copy_table()->set_to_table(to_table);
 
@@ -291,16 +296,16 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
 	// Check decimal precision
 
 	{
-		auto res = con->Query("SELECT \"default\", key, column_type FROM (describe " + TEST_SCHEMA_NAME + "." +
-		                      to_table + ")");
+		auto res = con->Query("SELECT \"default\", key, \"null\", column_type FROM (describe " + TEST_SCHEMA_NAME +
+		                      "." + to_table + ")");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->RowCount() == 4); // The order is: id, data, value, amount
 
-		// duckdb::Value() creates a NULL value
-		check_row(res, 0, {duckdb::Value(), "PRI", "INTEGER"});                                  // id
-		check_row(res, 1, {duckdb::Value(), duckdb::Value(), "VARCHAR"});                        // data
-		check_row(res, 2, {"CAST(\'42\' AS DECIMAL(17, 4))", duckdb::Value(), "DECIMAL(17,4)"}); // value
-		check_row(res, 3, {duckdb::Value(), duckdb::Value(), "DECIMAL(31,6)"});                  // amount
+		// duckdb::Value() creates a NULL value. The key column is NOT NULL in both modes.
+		check_row(res, 0, {duckdb::Value(), pk_key, "NO", "INTEGER"});                                  // id
+		check_row(res, 1, {duckdb::Value(), duckdb::Value(), "YES", "VARCHAR"});                        // data
+		check_row(res, 2, {"CAST(\'42\' AS DECIMAL(17, 4))", duckdb::Value(), "YES", "DECIMAL(17,4)"}); // value
+		check_row(res, 3, {duckdb::Value(), duckdb::Value(), "YES", "DECIMAL(31,6)"});                  // amount
 	}
 
 	// Clean up
@@ -395,6 +400,10 @@ TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration
 	const std::string source_table = "migrate_copy_hist_src_" + std::to_string(randint());
 	const std::string dest_table = "migrate_copy_hist_dst_" + std::to_string(randint());
 	const std::string soft_deleted_column = GENERATE("_fivetran_deleted", "custom_soft_deleted");
+	const bool strict = GENERATE(false, true);
+	CAPTURE(strict);
+	// Only strict mode re-adds a PRIMARY KEY constraint, which DESCRIBE reports as "PRI".
+	const duckdb::Value pk_key = strict ? duckdb::Value("PRI") : duckdb::Value();
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -435,6 +444,7 @@ TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, source_table);
+		set_strict_primary_keys(request, strict);
 		auto* copy_hist = request.mutable_details()->mutable_copy()->mutable_copy_table_to_history_mode();
 		copy_hist->set_from_table(source_table);
 		copy_hist->set_to_table(dest_table);
@@ -484,19 +494,20 @@ TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration
 
 	// Verify id is part of primary key and defaults are set
 	{
-		auto res = con->Query("SELECT key, \"default\" FROM (describe " + TEST_SCHEMA_NAME + "." + dest_table +
-		                      ") WHERE column_name != \'" + soft_deleted_column + "\' ORDER BY column_name");
+		const std::string describe = "describe " + TEST_SCHEMA_NAME + "." + dest_table;
+		auto res = con->Query("SELECT key, \"null\", \"default\" FROM (" + describe + ") WHERE column_name != \'" +
+		                      soft_deleted_column + "\' ORDER BY column_name");
 		REQUIRE_NO_FAIL(res);
 		// The order is: _fivetran_active, _fivetran_end, _fivetran_start, _fivetran_synced, id, name
 		REQUIRE(res->RowCount() == 6);
 
 		// _fivetran_active is not a pk and has a default
-		check_row(res, 0, {duckdb::Value(), "CAST('CAST(''true'' AS BOOLEAN)' AS BOOLEAN)"});
-		check_row(res, 1, {duckdb::Value(), duckdb::Value()}); // _fivetran_end is not a pk
-		check_row(res, 2, {"PRI", duckdb::Value()});           // _fivetran_start is a pk
-		check_row(res, 3, {duckdb::Value(), duckdb::Value()}); // _fivetran_synced is not a pk
-		check_row(res, 4, {"PRI", duckdb::Value()});           // id is a pk
-		check_row(res, 5, {duckdb::Value(), duckdb::Value()}); // name is not a pk
+		check_row(res, 0, {duckdb::Value(), "YES", "CAST('CAST(''true'' AS BOOLEAN)' AS BOOLEAN)"});
+		check_row(res, 1, {duckdb::Value(), "YES", duckdb::Value()}); // _fivetran_end is not a pk
+		check_row(res, 2, {pk_key, "NO", duckdb::Value()});           // _fivetran_start is a pk
+		check_row(res, 3, {duckdb::Value(), "YES", duckdb::Value()}); // _fivetran_synced is not a pk
+		check_row(res, 4, {pk_key, "NO", duckdb::Value()});           // id is a pk
+		check_row(res, 5, {duckdb::Value(), "YES", duckdb::Value()}); // name is not a pk
 	}
 
 	// Clean up

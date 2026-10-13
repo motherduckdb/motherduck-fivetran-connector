@@ -237,11 +237,11 @@ TEST_CASE("AlterTable recreate raises a task when an existing column with NULLs 
 	REQUIRE(row_count(con, QUALIFIED) == 2);
 }
 
-TEST_CASE("DuckLake rejects SET NOT NULL on a table with transaction-local changes", "[alter][ducklake]") {
+TEST_CASE("DuckLake rejects SET NOT NULL on a newly added column", "[alter][ducklake]") {
 	// Documents a DuckLake limitation the NotNull key mode runs into: adding a
-	// column and marking it NOT NULL inside one transaction -- what
-	// alter_table_in_place does for a newly added key column -- is refused, because
-	// DuckLake needs committed column stats to validate the constraint. Skipped
+	// column and marking it NOT NULL -- what alter_table_in_place does for a newly
+	// added key column -- is refused, because DuckLake validates the constraint
+	// against column stats, which a newly added column does not have. Skipped
 	// where the ducklake extension is not already available (no download here).
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
@@ -266,10 +266,11 @@ TEST_CASE("DuckLake rejects SET NOT NULL on a table with transaction-local chang
 	REQUIRE_THAT(res->GetError(), Catch::Matchers::ContainsSubstring("SET NOT NULL"));
 	con.Query("ROLLBACK");
 
-	// Committing the ADD COLUMN first makes the same SET NOT NULL succeed, which is
-	// the shape a DuckLake-compatible implementation needs to use.
+	// Committing the ADD COLUMN first does not help: the column still has no stats.
 	REQUIRE_NO_FAIL(con.Query("ALTER TABLE lake.t ADD COLUMN \"region2\" VARCHAR DEFAULT ''"));
-	REQUIRE_NO_FAIL(con.Query("ALTER TABLE lake.t ALTER COLUMN \"region2\" SET NOT NULL"));
+	res = con.Query("ALTER TABLE lake.t ALTER COLUMN \"region2\" SET NOT NULL");
+	REQUIRE(res->HasError());
+	REQUIRE_THAT(res->GetError(), Catch::Matchers::ContainsSubstring("no column stats are available"));
 
 	con.Query("DETACH lake");
 	std::filesystem::remove_all(dir);

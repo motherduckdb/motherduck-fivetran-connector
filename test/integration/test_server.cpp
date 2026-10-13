@@ -110,7 +110,7 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable", "[integra
 	}
 }
 
-TEST_CASE("CreateTable in default mode uses NOT NULL without a PRIMARY KEY constraint", "[integration]") {
+TEST_CASE("CreateTable in NotNull mode uses NOT NULL without a PRIMARY KEY constraint", "[integration]") {
 	DestinationSdkImpl service;
 	const std::string table_name = "some_table" + std::to_string(randint());
 	auto con = get_test_connection(MD_TOKEN);
