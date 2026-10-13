@@ -5,6 +5,7 @@
 // upserts. The SQL shapes here mirror MdSqlGenerator::upsert.
 
 #include "duckdb.hpp"
+#include "integration/common.hpp"
 #include "md_logging.hpp"
 #include "schema_types.hpp"
 #include "sql_generator.hpp"
@@ -27,12 +28,6 @@ std::string scalar(duckdb::Connection& con, const std::string& query) {
 	return res->GetValue(0, 0).ToString();
 }
 
-void ok(duckdb::Connection& con, const std::string& query) {
-	auto res = con.Query(query);
-	INFO(query);
-	REQUIRE_FALSE(res->HasError());
-}
-
 // Mirrors the MERGE that MdSqlGenerator::upsert emits: match on the key columns,
 // update the regular columns on a match, insert the full row otherwise.
 const char* UPSERT_MERGE = R"(
@@ -47,12 +42,12 @@ TEST_CASE("MERGE upserts: matched rows update, unmatched rows insert", "[merge]"
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
 
-	ok(con, "CREATE TABLE t (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)");
-	ok(con, "INSERT INTO t VALUES (1, 'old')");
-	ok(con, "CREATE TABLE staging (\"id\" INTEGER, \"v\" VARCHAR)");
-	ok(con, "INSERT INTO staging VALUES (1, 'new'), (2, 'inserted')");
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE t (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1, 'old')"));
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE staging (\"id\" INTEGER, \"v\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO staging VALUES (1, 'new'), (2, 'inserted')"));
 
-	ok(con, UPSERT_MERGE);
+	REQUIRE_NO_FAIL(con.Query(UPSERT_MERGE));
 
 	REQUIRE(row_count(con, "t") == 2);
 	REQUIRE(scalar(con, "SELECT v FROM t WHERE id = 1") == "new");      // matched -> updated
@@ -66,14 +61,14 @@ TEST_CASE("MERGE upsert is idempotent when the same batch is retried", "[merge]"
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
 
-	ok(con, "CREATE TABLE t (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)");
-	ok(con, "CREATE TABLE staging (\"id\" INTEGER, \"v\" VARCHAR)");
-	ok(con, "INSERT INTO staging VALUES (1, 'a'), (2, 'b')");
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE t (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE staging (\"id\" INTEGER, \"v\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO staging VALUES (1, 'a'), (2, 'b')"));
 
-	ok(con, UPSERT_MERGE);
+	REQUIRE_NO_FAIL(con.Query(UPSERT_MERGE));
 	REQUIRE(row_count(con, "t") == 2);
 
-	ok(con, UPSERT_MERGE); // retry the exact same batch
+	REQUIRE_NO_FAIL(con.Query(UPSERT_MERGE)); // retry the exact same batch
 	REQUIRE(row_count(con, "t") == 2);
 	REQUIRE(scalar(con, "SELECT v FROM t WHERE id = 1") == "a");
 }
@@ -85,16 +80,16 @@ TEST_CASE("MERGE folds a key re-sent in a later batch into the existing row", "[
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
 
-	ok(con, "CREATE TABLE t (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)");
-	ok(con, "CREATE TABLE staging (\"id\" INTEGER, \"v\" VARCHAR)");
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE t (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE staging (\"id\" INTEGER, \"v\" VARCHAR)"));
 
 	// batch 1
-	ok(con, "INSERT INTO staging VALUES (1, 'a')");
-	ok(con, UPSERT_MERGE);
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO staging VALUES (1, 'a')"));
+	REQUIRE_NO_FAIL(con.Query(UPSERT_MERGE));
 	// batch 2 re-sends key 1 (updated) and adds key 2
-	ok(con, "DELETE FROM staging");
-	ok(con, "INSERT INTO staging VALUES (1, 'a-updated'), (2, 'b')");
-	ok(con, UPSERT_MERGE);
+	REQUIRE_NO_FAIL(con.Query("DELETE FROM staging"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO staging VALUES (1, 'a-updated'), (2, 'b')"));
+	REQUIRE_NO_FAIL(con.Query(UPSERT_MERGE));
 
 	REQUIRE(row_count(con, "t") == 2);
 	REQUIRE(scalar(con, "SELECT v FROM t WHERE id = 1") == "a-updated");
@@ -103,16 +98,17 @@ TEST_CASE("MERGE folds a key re-sent in a later batch into the existing row", "[
 TEST_CASE("Without a constraint, a duplicate key within one MERGE batch is inserted twice", "[merge]") {
 	// This is the ONLY way MERGE can introduce a duplicate: two rows with the same
 	// key, both absent from the target, in a single batch. Fivetran de-duplicates
-	// within a sync, so this should not occur in practice; strict mode (next test)
+	// within a batch, so this should not occur in practice; strict mode (next test)
 	// rejects it outright.
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
 
-	ok(con, "CREATE TABLE t (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)"); // NOT NULL only, no key constraint
-	ok(con, "CREATE TABLE staging (\"id\" INTEGER, \"v\" VARCHAR)");
-	ok(con, "INSERT INTO staging VALUES (1, 'x'), (1, 'y')"); // duplicate key, both new
+	// NOT NULL only, no key constraint
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE t (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE staging (\"id\" INTEGER, \"v\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO staging VALUES (1, 'x'), (1, 'y')")); // duplicate key, both new
 
-	ok(con, UPSERT_MERGE);
+	REQUIRE_NO_FAIL(con.Query(UPSERT_MERGE));
 
 	// Both source rows land under the same key: the target had no row for id=1,
 	// so neither source row matched, and each took the INSERT branch.
@@ -127,9 +123,9 @@ TEST_CASE("A PRIMARY KEY constraint rejects a duplicate key within one MERGE bat
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
 
-	ok(con, "CREATE TABLE t (\"id\" INTEGER PRIMARY KEY, \"v\" VARCHAR)");
-	ok(con, "CREATE TABLE staging (\"id\" INTEGER, \"v\" VARCHAR)");
-	ok(con, "INSERT INTO staging VALUES (1, 'x'), (1, 'y')");
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE t (\"id\" INTEGER PRIMARY KEY, \"v\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE staging (\"id\" INTEGER, \"v\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO staging VALUES (1, 'x'), (1, 'y')"));
 
 	auto res = con.Query(UPSERT_MERGE);
 	REQUIRE(res->HasError()); // PRIMARY KEY / UNIQUE constraint violation
@@ -142,12 +138,12 @@ TEST_CASE("MERGE does not error when several source rows match one target row", 
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
 
-	ok(con, "CREATE TABLE t (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)");
-	ok(con, "INSERT INTO t VALUES (1, 'orig')");
-	ok(con, "CREATE TABLE staging (\"id\" INTEGER, \"v\" VARCHAR)");
-	ok(con, "INSERT INTO staging VALUES (1, 'a'), (1, 'b')");
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE t (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1, 'orig')"));
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE staging (\"id\" INTEGER, \"v\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO staging VALUES (1, 'a'), (1, 'b')"));
 
-	ok(con, UPSERT_MERGE);
+	REQUIRE_NO_FAIL(con.Query(UPSERT_MERGE));
 
 	REQUIRE(row_count(con, "t") == 1);
 }
@@ -157,15 +153,15 @@ TEST_CASE("MERGE matches on a composite key across all key columns", "[merge]") 
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
 
-	ok(con, "CREATE TABLE t (\"a\" INTEGER NOT NULL, \"b\" INTEGER NOT NULL, \"v\" VARCHAR)");
-	ok(con, "INSERT INTO t VALUES (1, 1, 'old')");
-	ok(con, "CREATE TABLE staging (\"a\" INTEGER, \"b\" INTEGER, \"v\" VARCHAR)");
-	ok(con, "INSERT INTO staging VALUES (1, 1, 'match'), (1, 2, 'different-b')");
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE t (\"a\" INTEGER NOT NULL, \"b\" INTEGER NOT NULL, \"v\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1, 1, 'old')"));
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE staging (\"a\" INTEGER, \"b\" INTEGER, \"v\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO staging VALUES (1, 1, 'match'), (1, 2, 'different-b')"));
 
-	ok(con, R"(
+	REQUIRE_NO_FAIL(con.Query(R"(
 	MERGE INTO t AS target USING staging AS source ON target."a" = source."a" AND target."b" = source."b"
 	  WHEN MATCHED THEN UPDATE SET "v" = source."v"
-	  WHEN NOT MATCHED THEN INSERT ("a", "b", "v") VALUES (source."a", source."b", source."v"))");
+	  WHEN NOT MATCHED THEN INSERT ("a", "b", "v") VALUES (source."a", source."b", source."v"))"));
 
 	REQUIRE(row_count(con, "t") == 2);
 	REQUIRE(scalar(con, "SELECT v FROM t WHERE a = 1 AND b = 1") == "match");       // (1,1) matched -> updated
@@ -191,9 +187,9 @@ TEST_CASE("MdSqlGenerator::upsert produces a retry-safe MERGE (no PRIMARY KEY ne
 	find_primary_keys(cols, columns_pk, &columns_regular);
 
 	const table_def table {"memory", "main", "t"};
-	ok(con, "CREATE TABLE \"memory\".\"main\".\"t\" (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)");
-	ok(con, "CREATE TABLE staging (\"id\" INTEGER, \"v\" VARCHAR)");
-	ok(con, "INSERT INTO staging VALUES (1, 'a'), (2, 'b')");
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE \"memory\".\"main\".\"t\" (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE staging (\"id\" INTEGER, \"v\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO staging VALUES (1, 'a'), (2, 'b')"));
 
 	generator.upsert(con, table, "staging", columns_pk, columns_regular);
 	REQUIRE(row_count(con, "\"memory\".\"main\".\"t\"") == 2);
@@ -203,8 +199,8 @@ TEST_CASE("MdSqlGenerator::upsert produces a retry-safe MERGE (no PRIMARY KEY ne
 	REQUIRE(row_count(con, "\"memory\".\"main\".\"t\"") == 2);
 
 	// New value for an existing key updates in place.
-	ok(con, "DELETE FROM staging");
-	ok(con, "INSERT INTO staging VALUES (1, 'a-updated'), (3, 'c')");
+	REQUIRE_NO_FAIL(con.Query("DELETE FROM staging"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO staging VALUES (1, 'a-updated'), (3, 'c')"));
 	generator.upsert(con, table, "staging", columns_pk, columns_regular);
 	REQUIRE(row_count(con, "\"memory\".\"main\".\"t\"") == 3);
 	REQUIRE(scalar(con, "SELECT v FROM \"memory\".\"main\".\"t\" WHERE id = 1") == "a-updated");

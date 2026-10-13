@@ -12,6 +12,7 @@
 #include "sql_generator.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
 #include <string>
@@ -29,12 +30,6 @@ std::string scalar(duckdb::Connection& con, const std::string& query) {
 	auto res = con.Query(query);
 	REQUIRE_FALSE(res->HasError());
 	return res->GetValue(0, 0).ToString();
-}
-
-void ok(duckdb::Connection& con, const std::string& query) {
-	auto res = con.Query(query);
-	INFO(query);
-	REQUIRE_FALSE(res->HasError());
 }
 
 int64_t primary_key_count(duckdb::Connection& con) {
@@ -81,8 +76,8 @@ TEST_CASE("AlterTable in NotNull mode recreates a strict-mode table when widenin
 	const PrimaryKeyMode pk_mode = PrimaryKeyMode::NotNull;
 
 	// Table created in strict mode: enforced PRIMARY KEY on id.
-	ok(con, "CREATE TABLE " + QUALIFIED + " (\"id\" INTEGER, \"v\" VARCHAR, PRIMARY KEY (\"id\"))");
-	ok(con, "INSERT INTO " + QUALIFIED + " VALUES (1, 'a')");
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE " + QUALIFIED + " (\"id\" INTEGER, \"v\" VARCHAR, PRIMARY KEY (\"id\"))"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO " + QUALIFIED + " VALUES (1, 'a')"));
 
 	// Widen the key to (id, region) by adding a new key column.
 	std::vector<column_def> requested = {key_col("id", duckdb::LogicalTypeId::INTEGER),
@@ -97,7 +92,7 @@ TEST_CASE("AlterTable in NotNull mode recreates a strict-mode table when widenin
 	REQUIRE(row_count(con, QUALIFIED) == 1); // existing row preserved
 
 	// Data non-unique on the OLD pk (id) but unique on the new key now inserts fine.
-	ok(con, "INSERT INTO " + QUALIFIED + " VALUES (2, 'x', 'us'), (2, 'y', 'eu')");
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO " + QUALIFIED + " VALUES (2, 'x', 'us'), (2, 'y', 'eu')"));
 	REQUIRE(row_count(con, QUALIFIED) == 3);
 }
 
@@ -109,8 +104,9 @@ TEST_CASE("AlterTable in NotNull mode recreates a strict-mode table when droppin
 	const PrimaryKeyMode pk_mode = PrimaryKeyMode::NotNull;
 
 	// Table created in strict mode: composite PRIMARY KEY (id, b).
-	ok(con, "CREATE TABLE " + QUALIFIED + " (\"id\" INTEGER, \"b\" INTEGER, PRIMARY KEY (\"id\", \"b\"))");
-	ok(con, "INSERT INTO " + QUALIFIED + " VALUES (1, 1)");
+	REQUIRE_NO_FAIL(
+	    con.Query("CREATE TABLE " + QUALIFIED + " (\"id\" INTEGER, \"b\" INTEGER, PRIMARY KEY (\"id\", \"b\"))"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO " + QUALIFIED + " VALUES (1, 1)"));
 
 	// Drop b (part of the old PK); the key becomes just id.
 	std::vector<column_def> requested = {key_col("id", duckdb::LogicalTypeId::INTEGER)};
@@ -131,8 +127,8 @@ TEST_CASE("AlterTable changes the key in place for a NOT NULL table (no PRIMARY 
 	const PrimaryKeyMode pk_mode = PrimaryKeyMode::NotNull;
 
 	// Table created in NotNull mode: NOT NULL key, no PRIMARY KEY.
-	ok(con, "CREATE TABLE " + QUALIFIED + " (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)");
-	ok(con, "INSERT INTO " + QUALIFIED + " VALUES (1, 'a')");
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE " + QUALIFIED + " (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO " + QUALIFIED + " VALUES (1, 'a')"));
 
 	std::vector<column_def> requested = {key_col("id", duckdb::LogicalTypeId::INTEGER),
 	                                     col("v", duckdb::LogicalTypeId::VARCHAR),
@@ -145,7 +141,7 @@ TEST_CASE("AlterTable changes the key in place for a NOT NULL table (no PRIMARY 
 	REQUIRE(column_is_not_null(con, "region"));
 	REQUIRE(row_count(con, QUALIFIED) == 1);
 	// Non-unique on id but unique on (id, region) inserts fine.
-	ok(con, "INSERT INTO " + QUALIFIED + " VALUES (2, 'x', 'us'), (2, 'y', 'eu')");
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO " + QUALIFIED + " VALUES (2, 'x', 'us'), (2, 'y', 'eu')"));
 	REQUIRE(row_count(con, QUALIFIED) == 3);
 }
 
@@ -156,8 +152,9 @@ TEST_CASE("AlterTable in strict mode rebuilds the PRIMARY KEY over the new key",
 	MdSqlGenerator generator(logger);
 	const PrimaryKeyMode pk_mode = PrimaryKeyMode::Strict;
 
-	ok(con, "CREATE TABLE " + QUALIFIED + " (\"id\" INTEGER, \"v\" VARCHAR, PRIMARY KEY (\"id\"))");
-	ok(con, "INSERT INTO " + QUALIFIED + " VALUES (1, 'a'), (2, 'b')"); // unique ids -> new key stays unique
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE " + QUALIFIED + " (\"id\" INTEGER, \"v\" VARCHAR, PRIMARY KEY (\"id\"))"));
+	// unique ids -> new key stays unique
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO " + QUALIFIED + " VALUES (1, 'a'), (2, 'b')"));
 
 	std::vector<column_def> requested = {key_col("id", duckdb::LogicalTypeId::INTEGER),
 	                                     col("v", duckdb::LogicalTypeId::VARCHAR),
@@ -182,8 +179,8 @@ TEST_CASE("AlterTable raises a task when an existing column with NULLs joins the
 	MdSqlGenerator generator(logger);
 	const PrimaryKeyMode pk_mode = PrimaryKeyMode::NotNull;
 
-	ok(con, "CREATE TABLE " + QUALIFIED + " (\"id\" INTEGER NOT NULL, \"region\" VARCHAR)");
-	ok(con, "INSERT INTO " + QUALIFIED + " VALUES (1, 'us'), (2, NULL)"); // region has a NULL
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE " + QUALIFIED + " (\"id\" INTEGER NOT NULL, \"region\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO " + QUALIFIED + " VALUES (1, 'us'), (2, NULL)")); // region has a NULL
 
 	// Promote the existing, partly-NULL "region" column into the key.
 	std::vector<column_def> requested = {key_col("id", duckdb::LogicalTypeId::INTEGER),
@@ -205,6 +202,41 @@ TEST_CASE("AlterTable raises a task when an existing column with NULLs joins the
 	REQUIRE(row_count(con, QUALIFIED) == 2);
 }
 
+TEST_CASE("AlterTable recreate raises a task when an existing column with NULLs joins the primary key", "[alter]") {
+	// Same as above, but the table has an enforced PRIMARY KEY, so the key change recreates the table in both modes.
+	const bool strict = GENERATE(false, true);
+	CAPTURE(strict);
+	const PrimaryKeyMode pk_mode = strict ? PrimaryKeyMode::Strict : PrimaryKeyMode::NotNull;
+
+	duckdb::DuckDB db(nullptr);
+	duckdb::Connection con(db);
+	auto logger = mdlog::Logger::CreateNopLogger();
+	MdSqlGenerator generator(logger);
+
+	REQUIRE_NO_FAIL(
+	    con.Query("CREATE TABLE " + QUALIFIED + " (\"id\" INTEGER, \"region\" VARCHAR, PRIMARY KEY (\"id\"))"));
+	// The ids are unique, so the strict-mode duplicate check alone would not catch this.
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO " + QUALIFIED + " VALUES (1, 'us'), (2, NULL)"));
+
+	std::vector<column_def> requested = {key_col("id", duckdb::LogicalTypeId::INTEGER),
+	                                     key_col("region", duckdb::LogicalTypeId::VARCHAR)};
+
+	std::string task_message;
+	try {
+		generator.alter_table(con, TABLE, requested, /*drop_columns=*/false, pk_mode);
+		FAIL("expected a RecoverableError");
+	} catch (const md_error::RecoverableError& e) {
+		task_message = e.what();
+	}
+	REQUIRE_THAT(task_message, Catch::Matchers::ContainsSubstring("contains NULL values"));
+	REQUIRE_THAT(task_message, Catch::Matchers::ContainsSubstring("region"));
+
+	// The table is untouched: the PRIMARY KEY is still there, region is still nullable and both rows survive.
+	REQUIRE(primary_key_count(con) == 1);
+	REQUIRE_FALSE(column_is_not_null(con, "region"));
+	REQUIRE(row_count(con, QUALIFIED) == 2);
+}
+
 TEST_CASE("DuckLake rejects SET NOT NULL on a table with transaction-local changes", "[alter][ducklake]") {
 	// Documents a DuckLake limitation the NotNull key mode runs into: adding a
 	// column and marking it NOT NULL inside one transaction -- what
@@ -220,14 +252,15 @@ TEST_CASE("DuckLake rejects SET NOT NULL on a table with transaction-local chang
 	const std::string dir_name = "ducklake_notnull_" + duckdb::StringUtil::GenerateRandomName(8);
 	const auto dir = std::filesystem::temp_directory_path() / dir_name;
 	std::filesystem::create_directories(dir);
-	ok(con, "ATTACH 'ducklake:" + (dir / "catalog.ducklake").string() + "' AS lake (DATA_PATH '" +
-	            (dir / "data").string() + "/')");
+	REQUIRE_NO_FAIL(con.Query("ATTACH 'ducklake:" + (dir / "catalog.ducklake").string() + "' AS lake (DATA_PATH '" +
+	                          (dir / "data").string() + "/')"));
 
-	ok(con, "CREATE TABLE lake.t (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)"); // NOT NULL at CREATE works
-	ok(con, "INSERT INTO lake.t VALUES (1, 'a')");
+	// NOT NULL at CREATE works
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE lake.t (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO lake.t VALUES (1, 'a')"));
 
-	ok(con, "BEGIN TRANSACTION");
-	ok(con, "ALTER TABLE lake.t ADD COLUMN \"region\" VARCHAR DEFAULT ''");
+	REQUIRE_NO_FAIL(con.Query("BEGIN TRANSACTION"));
+	REQUIRE_NO_FAIL(con.Query("ALTER TABLE lake.t ADD COLUMN \"region\" VARCHAR DEFAULT ''"));
 	auto res = con.Query("ALTER TABLE lake.t ALTER COLUMN \"region\" SET NOT NULL");
 	REQUIRE(res->HasError());
 	REQUIRE_THAT(res->GetError(), Catch::Matchers::ContainsSubstring("SET NOT NULL"));
@@ -235,8 +268,8 @@ TEST_CASE("DuckLake rejects SET NOT NULL on a table with transaction-local chang
 
 	// Committing the ADD COLUMN first makes the same SET NOT NULL succeed, which is
 	// the shape a DuckLake-compatible implementation needs to use.
-	ok(con, "ALTER TABLE lake.t ADD COLUMN \"region2\" VARCHAR DEFAULT ''");
-	ok(con, "ALTER TABLE lake.t ALTER COLUMN \"region2\" SET NOT NULL");
+	REQUIRE_NO_FAIL(con.Query("ALTER TABLE lake.t ADD COLUMN \"region2\" VARCHAR DEFAULT ''"));
+	REQUIRE_NO_FAIL(con.Query("ALTER TABLE lake.t ALTER COLUMN \"region2\" SET NOT NULL"));
 
 	con.Query("DETACH lake");
 	std::filesystem::remove_all(dir);

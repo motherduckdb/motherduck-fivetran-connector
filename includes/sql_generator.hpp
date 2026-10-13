@@ -279,6 +279,9 @@ private:
 	void check_no_duplicate_primary_keys(duckdb::Connection& con, const table_def& table,
 	                                     const std::vector<column_def>& all_columns_in_new_table,
 	                                     const std::set<std::string>& existing_columns_in_new_table) const;
+	void check_no_null_primary_keys(duckdb::Connection& con, const table_def& table,
+	                                const std::vector<column_def>& all_columns_in_new_table,
+	                                const std::set<std::string>& existing_columns_in_new_table) const;
 	// `pk_columns_added`/`pk_columns_removed` name existing columns whose key membership changed
 	// (used only in NotNull mode to toggle NOT NULL in place).
 	void alter_table_in_place(duckdb::Connection& con, const table_def& table,

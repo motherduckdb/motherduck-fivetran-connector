@@ -448,10 +448,45 @@ void MdSqlGenerator::check_no_duplicate_primary_keys(duckdb::Connection& con, co
 	}
 }
 
+// An existing column can only join the primary key if every row has a value for it. Only the source can resolve
+// that, so the user gets a task rather than a bare constraint error.
+static md_error::RecoverableError null_in_primary_key_error(const table_def& table, const std::string& column_name) {
+	return md_error::RecoverableError(
+	    "Column \"" + column_name + "\" of " + table.schema_name + "." + table.table_name +
+	    " cannot be made part of the primary key because it contains NULL values. To proceed, populate or "
+	    "remove the rows where it is NULL, or drop the table and trigger a historical re-sync.");
+}
+
+void MdSqlGenerator::check_no_null_primary_keys(duckdb::Connection& con, const table_def& table,
+                                                const std::vector<column_def>& all_new_columns,
+                                                const std::set<std::string>& existing_columns_in_new_table) const {
+	// New key columns get a default value, so only existing columns can hold NULLs. Columns that already are key
+	// columns are NOT NULL, which DuckDB answers from statistics without scanning.
+	const auto absolute_table_name = table.to_escaped_string();
+	for (const auto& col : all_new_columns) {
+		if (!col.primary_key || existing_columns_in_new_table.find(col.name) == existing_columns_in_new_table.end()) {
+			continue;
+		}
+
+		const std::string query = "SELECT 1 FROM " + absolute_table_name + " WHERE " +
+		                          KeywordHelper::WriteQuoted(col.name, '"') + " IS NULL LIMIT 1";
+		logger.info("check_no_null_primary_keys: " + query);
+		const auto result = con.Query(query);
+		throw_if_query_error(*result, "Could not check for NULL values in column <" + col.name + "> of table <" +
+		                                  absolute_table_name + ">");
+		if (result->RowCount() > 0) {
+			throw null_in_primary_key_error(table, col.name);
+		}
+	}
+}
+
 void MdSqlGenerator::alter_table_recreate(duckdb::Connection& con, const table_def& table,
                                           const std::vector<column_def>& all_columns_in_new_table,
                                           const std::set<std::string>& existing_columns_in_new_table,
                                           const PrimaryKeyMode pk_mode) {
+	// Key columns are NOT NULL in both modes, so NULLs would fail the reinsert below with a bare constraint error.
+	check_no_null_primary_keys(con, table, all_columns_in_new_table, existing_columns_in_new_table);
+
 	// Only in strict mode the new key needs to be unique over the existing data.
 	// In NotNull mode, duplicates are tolerated. It is the source's responsibility to deduplicate data if desired.
 	if (pk_mode == PrimaryKeyMode::Strict) {
@@ -726,9 +761,7 @@ void MdSqlGenerator::upsert(duckdb::Connection& con, const table_def& table, con
 
 	const std::string absolute_table_name = table.to_escaped_string();
 
-	// Fivetran guarantees a primary key for every synced table, but stay
-	// defensive: without key columns there is nothing to match on, so fall back
-	// to a plain insert (matching the historical behaviour of this method).
+	// Fivetran guarantees a primary key for every synced table
 	assert(!columns_pk.empty());
 
 	std::vector<const column_def*> all_columns;
@@ -1193,14 +1226,8 @@ void MdSqlGenerator::set_not_null(duckdb::Connection& con, const table_def& tabl
 
 	const std::string& error_msg = result->GetError();
 
-	// An existing column can only join the primary key if every row has a value
-	// for it. Only the source can resolve that, so hand the user a task rather
-	// than failing the sync with a bare constraint error.
 	if (not_null && error_msg.find("NOT NULL constraint failed") != std::string::npos) {
-		throw md_error::RecoverableError(
-		    "Column \"" + column_name + "\" of " + table.schema_name + "." + table.table_name +
-		    " cannot be made part of the primary key because it contains NULL values. To proceed, populate or "
-		    "remove the rows where it is NULL, or drop the table and trigger a historical re-sync.");
+		throw null_in_primary_key_error(table, column_name);
 	}
 
 	throw std::runtime_error("Could not " + std::string(not_null ? "set" : "drop") + " NOT NULL on column <" +
