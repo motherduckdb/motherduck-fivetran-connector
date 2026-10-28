@@ -28,7 +28,7 @@ TEST_CASE("ConfigurationForm", "[integration][config]") {
 	REQUIRE(response.fields(3).has_toggle_field());
 	REQUIRE(response.fields(3).default_value() == "false");
 
-	REQUIRE(response.tests_size() == 4);
+	REQUIRE(response.tests_size() == 5);
 }
 
 TEST_CASE("DescribeTable fails when database missing", "[integration][describe-table]") {
@@ -1745,9 +1745,9 @@ TEST_CASE("AlterTable strict mode rejects a non-unique primary key change", "[in
 	}
 }
 
-TEST_CASE("AlterTable default mode allows a non-unique primary key change", "[integration]") {
-	// This is the same scenario as the strict-mode duplicate test, but in the
-	// default NOT NULL mode there is no uniqueness constraint, so re-keying
+TEST_CASE("AlterTable NotNull mode allows a non-unique primary key change", "[integration]") {
+	// This is the same scenario as the strict-mode duplicate test, but in
+	// NotNull mode there is no uniqueness constraint, so re-keying
 	// (id, name) -> (id, name2) succeeds in place even though "id" is not unique.
 	DestinationSdkImpl service;
 
@@ -1769,6 +1769,7 @@ TEST_CASE("AlterTable default mode allows a non-unique primary key change", "[in
 	{
 		::fivetran_sdk::v2::AlterTableRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		set_strict_primary_keys(request, false);
 		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
 		add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, false);
 		add_col(request, "name2", ::fivetran_sdk::v2::DataType::STRING, true);

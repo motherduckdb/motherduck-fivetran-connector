@@ -1473,6 +1473,62 @@ TEST_CASE("Migrate - soft delete to history with custom soft deleted column", "[
 	con->Query("DROP TABLE IF EXISTS " + TEST_SCHEMA_NAME + "." + table_name);
 }
 
+TEST_CASE("Migrate - to history applies the history key to a table without a primary key", "[integration][migrate]") {
+	const bool strict = GENERATE(false, true);
+	const auto migration_type =
+	    GENERATE(::fivetran_sdk::v2::LIVE_TO_HISTORY, ::fivetran_sdk::v2::SOFT_DELETE_TO_HISTORY);
+	CAPTURE(strict, migration_type);
+
+	DestinationSdkImpl service;
+	const std::string table_name = "migrate_to_hist_no_pk_" + std::to_string(randint());
+	const std::string qualified_name = TEST_SCHEMA_NAME + "." + table_name;
+
+	auto con = get_test_connection(MD_TOKEN);
+
+	// A table created in NotNull mode
+	REQUIRE_NO_FAIL(con->Query("CREATE TABLE " + qualified_name +
+	                           " (id INT NOT NULL, name VARCHAR, _fivetran_deleted BOOLEAN, _fivetran_synced "
+	                           "TIMESTAMPTZ)"));
+	REQUIRE_NO_FAIL(con->Query("INSERT INTO " + qualified_name +
+	                           " VALUES (1, 'active', false, NOW()), (2, 'deleted', true, NOW())"));
+
+	{
+		::fivetran_sdk::v2::MigrateRequest request;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		set_strict_primary_keys(request, strict);
+		request.mutable_details()->mutable_table_sync_mode_migration()->set_type(migration_type);
+		if (migration_type == ::fivetran_sdk::v2::SOFT_DELETE_TO_HISTORY) {
+			request.mutable_details()->mutable_table_sync_mode_migration()->set_soft_deleted_column(
+			    "_fivetran_deleted");
+		}
+
+		::fivetran_sdk::v2::MigrateResponse response;
+		auto status = service.Migrate(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+		REQUIRE(response.success());
+	}
+
+	{
+		auto res = con->Query("SELECT count(*) FROM " + qualified_name);
+		REQUIRE_NO_FAIL(res);
+		REQUIRE(res->GetValue(0, 0).GetValue<int64_t>() == 2);
+	}
+
+	// The history key is id and _fivetran_start. Only strict mode enforces it with a PRIMARY KEY, which DESCRIBE
+	// reports as "PRI".
+	auto res = con->Query("SELECT column_name, \"null\", key FROM (DESCRIBE " + qualified_name +
+	                      ") WHERE column_name IN ('id', '_fivetran_start') ORDER BY column_name");
+	REQUIRE_NO_FAIL(res);
+	REQUIRE(res->RowCount() == 2);
+	for (idx_t row = 0; row < res->RowCount(); row++) {
+		CAPTURE(res->GetValue(0, row).ToString());
+		REQUIRE(res->GetValue(1, row).ToString() == "NO");
+		REQUIRE((res->GetValue(2, row).ToString() == "PRI") == strict);
+	}
+
+	con->Query("DROP TABLE IF EXISTS " + qualified_name);
+}
+
 TEST_CASE("Migrate - fails with empty table name", "[integration][migrate]") {
 	DestinationSdkImpl service;
 

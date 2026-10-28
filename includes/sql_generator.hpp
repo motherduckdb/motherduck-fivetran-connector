@@ -283,11 +283,14 @@ private:
 	                                const std::vector<column_def>& all_columns_in_new_table,
 	                                const std::set<std::string>& existing_columns_in_new_table) const;
 	// `pk_columns_added`/`pk_columns_removed` name existing columns whose key membership changed
-	// (used only in NotNull mode to toggle NOT NULL in place).
+	// (used to toggle NOT NULL in place). In strict mode, a table without a PRIMARY KEY constraint gets one over the
+	// key columns of `requested_columns`.
 	void alter_table_in_place(duckdb::Connection& con, const table_def& table,
+	                          const std::vector<column_def>& requested_columns,
 	                          const std::vector<column_def>& added_columns,
 	                          const std::set<std::string>& deleted_columns, const std::set<std::string>& alter_types,
 	                          const std::map<std::string, column_def>& new_column_map,
 	                          const std::set<std::string>& pk_columns_added,
-	                          const std::set<std::string>& pk_columns_removed, PrimaryKeyMode pk_mode);
+	                          const std::set<std::string>& pk_columns_removed, bool table_has_pks,
+	                          PrimaryKeyMode pk_mode);
 };

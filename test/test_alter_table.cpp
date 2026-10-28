@@ -169,6 +169,87 @@ TEST_CASE("AlterTable in strict mode rebuilds the PRIMARY KEY over the new key",
 	REQUIRE(dup->HasError());
 }
 
+TEST_CASE("AlterTable in strict mode adds the PRIMARY KEY in place to a NotNull-mode table", "[alter]") {
+	duckdb::DuckDB db(nullptr);
+	duckdb::Connection con(db);
+	auto logger = mdlog::Logger::CreateNopLogger();
+	MdSqlGenerator generator(logger);
+
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE " + QUALIFIED + " (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO " + QUALIFIED + " VALUES (1, 'a'), (2, 'b')"));
+	const std::string table_oid_query = "SELECT table_oid FROM duckdb_tables() WHERE table_name = 't'";
+	const auto table_oid = scalar(con, table_oid_query);
+
+	// The key stays the same, the request only adds a regular column.
+	std::vector<column_def> requested = {key_col("id", duckdb::LogicalTypeId::INTEGER),
+	                                     col("v", duckdb::LogicalTypeId::VARCHAR),
+	                                     col("w", duckdb::LogicalTypeId::VARCHAR)};
+	generator.alter_table(con, TABLE, requested, /*drop_columns=*/false, PrimaryKeyMode::Strict);
+
+	REQUIRE(primary_key_count(con) == 1);
+	REQUIRE(row_count(con, QUALIFIED) == 2);
+	REQUIRE_FALSE(column_is_not_null(con, "w"));
+	// A recreated table would have a new oid.
+	REQUIRE(scalar(con, table_oid_query) == table_oid);
+}
+
+TEST_CASE("AlterTable in strict mode changes the key of a NotNull-mode table in place", "[alter]") {
+	duckdb::DuckDB db(nullptr);
+	duckdb::Connection con(db);
+	auto logger = mdlog::Logger::CreateNopLogger();
+	MdSqlGenerator generator(logger);
+
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE " + QUALIFIED + " (\"id\" INTEGER NOT NULL, \"v\" VARCHAR NOT NULL)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO " + QUALIFIED + " VALUES (1, 'a'), (2, 'b')"));
+	const std::string table_oid_query = "SELECT table_oid FROM duckdb_tables() WHERE table_name = 't'";
+	const auto table_oid = scalar(con, table_oid_query);
+
+	// v leaves the key and region joins it.
+	std::vector<column_def> requested = {key_col("id", duckdb::LogicalTypeId::INTEGER),
+	                                     col("v", duckdb::LogicalTypeId::VARCHAR),
+	                                     key_col("region", duckdb::LogicalTypeId::VARCHAR)};
+	generator.alter_table(con, TABLE, requested, /*drop_columns=*/false, PrimaryKeyMode::Strict);
+
+	REQUIRE(primary_key_names(generator.describe_table(con, TABLE)) == std::vector<std::string> {"id", "region"});
+	REQUIRE(primary_key_count(con) == 1);
+	REQUIRE(row_count(con, QUALIFIED) == 2);
+	REQUIRE(scalar(con, table_oid_query) == table_oid);
+	// The PRIMARY KEY covers the new key, so a duplicate on (id, region) is rejected.
+	REQUIRE(con.Query("INSERT INTO " + QUALIFIED + " VALUES (1, NULL, '')")->HasError());
+}
+
+TEST_CASE("AlterTable in strict mode raises a task when a NotNull-mode table contains duplicate keys", "[alter]") {
+	duckdb::DuckDB db(nullptr);
+	duckdb::Connection con(db);
+	auto logger = mdlog::Logger::CreateNopLogger();
+	MdSqlGenerator generator(logger);
+
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE " + QUALIFIED + " (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO " + QUALIFIED + " VALUES (1, 'a'), (1, 'b')"));
+
+	// The new column w either leaves the key unchanged or joins it. Both rows get the same default for w, so the
+	// key stays duplicated either way.
+	const bool w_is_key = GENERATE(false, true);
+	CAPTURE(w_is_key);
+	std::vector<column_def> requested = {
+	    key_col("id", duckdb::LogicalTypeId::INTEGER), col("v", duckdb::LogicalTypeId::VARCHAR),
+	    w_is_key ? key_col("w", duckdb::LogicalTypeId::VARCHAR) : col("w", duckdb::LogicalTypeId::VARCHAR)};
+
+	std::string task_message;
+	try {
+		generator.alter_table(con, TABLE, requested, /*drop_columns=*/false, PrimaryKeyMode::Strict);
+		FAIL("expected a RecoverableError");
+	} catch (const md_error::RecoverableError& e) {
+		task_message = e.what();
+	}
+	REQUIRE_THAT(task_message, Catch::Matchers::ContainsSubstring("contains duplicate primary keys"));
+
+	// Rolled back: no PRIMARY KEY, no new column, both rows survive.
+	REQUIRE(primary_key_count(con) == 0);
+	REQUIRE(scalar(con, "SELECT count(*) FROM duckdb_columns() WHERE table_name = 't' AND column_name = 'w'") == "0");
+	REQUIRE(row_count(con, QUALIFIED) == 2);
+}
+
 TEST_CASE("AlterTable raises a task when an existing column with NULLs joins the primary key", "[alter]") {
 	// The column can only become NOT NULL if every row has a value, which only the
 	// source can fix, so the connector surfaces a task instead of a raw constraint
