@@ -5,6 +5,9 @@
 #include "sql_generator.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -40,7 +43,7 @@ TEST_CASE("AlterTable recreate preserves data in columns the request omits if dr
 	    column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
 	    column_def {.name = "v", .type = duckdb::LogicalTypeId::VARCHAR},
 	    column_def {.name = "new_col", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true}};
-	generator.alter_table(con, table, requested, /*drop_columns=*/false);
+	generator.alter_table(con, table, requested, /*drop_columns=*/false, PrimaryKeyMode::Strict);
 
 	// "to_be_deleted" column is still there
 	const auto columns = generator.describe_table(con, table);
@@ -69,7 +72,7 @@ TEST_CASE("AlterTable recreate drops the columns the request drops if drop_colum
 	    column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
 	    column_def {.name = "v", .type = duckdb::LogicalTypeId::VARCHAR},
 	    column_def {.name = "new_col", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true}};
-	generator.alter_table(con, table, requested, /*drop_columns=*/true);
+	generator.alter_table(con, table, requested, /*drop_columns=*/true, PrimaryKeyMode::Strict);
 
 	const auto columns = generator.describe_table(con, table);
 	REQUIRE(columns.size() == 3);
@@ -100,7 +103,7 @@ TEST_CASE("AlterTable removes the constraints of columns the request omits if dr
 	const std::vector<column_def> requested = {
 	    column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
 	    column_def {.name = "v", .type = duckdb::LogicalTypeId::VARCHAR}};
-	generator.alter_table(con, table, requested, /*drop_columns=*/false);
+	generator.alter_table(con, table, requested, /*drop_columns=*/false, PrimaryKeyMode::Strict);
 
 	REQUIRE(primary_key_names(generator.describe_table(con, table)) == std::vector<std::string> {"id"});
 
@@ -115,9 +118,14 @@ TEST_CASE("AlterTable removes the constraints of columns the request omits if dr
 	REQUIRE_NO_FAIL(con.Query("INSERT INTO t (id, v) VALUES (3, 'c')"));
 }
 
-TEST_CASE("AlterTable recreate defaults a new key column of every Fivetran type", "[alter]") {
+TEST_CASE("AlterTable defaults a new key column of every Fivetran type", "[alter]") {
 	// Adding a key column to a populated table needs a default the column type accepts. Check that there is a usable
-	// default for each column type.
+	// default for each column type, both when the table is recreated (it has a PRIMARY KEY) and when the column is
+	// added in place and set NOT NULL in the same transaction (it has none).
+	const bool table_has_pk = GENERATE(false, true);
+	CAPTURE(table_has_pk);
+	const PrimaryKeyMode pk_mode = table_has_pk ? PrimaryKeyMode::Strict : PrimaryKeyMode::NotNull;
+
 	const auto* fivetran_types = fivetran_sdk::v2::DataType_descriptor();
 	for (int i = 0; i < fivetran_types->value_count(); i++) {
 		const auto fivetran_type = static_cast<fivetran_sdk::v2::DataType>(fivetran_types->value(i)->number());
@@ -135,7 +143,8 @@ TEST_CASE("AlterTable recreate defaults a new key column of every Fivetran type"
 		MdSqlGenerator generator(logger);
 
 		const table_def table {"memory", "main", "t"};
-		REQUIRE_NO_FAIL(con.Query("CREATE TABLE t (id INTEGER PRIMARY KEY)"));
+		REQUIRE_NO_FAIL(con.Query(table_has_pk ? "CREATE TABLE t (id INTEGER PRIMARY KEY)"
+		                                       : "CREATE TABLE t (id INTEGER NOT NULL)"));
 		REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1)"));
 
 		column_def new_key {.name = "new_key", .type = duckdb_type, .primary_key = true};
@@ -145,11 +154,12 @@ TEST_CASE("AlterTable recreate defaults a new key column of every Fivetran type"
 		}
 		const std::vector<column_def> requested = {
 		    column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true}, new_key};
-		generator.alter_table(con, table, requested, /*drop_columns=*/false);
+		generator.alter_table(con, table, requested, /*drop_columns=*/false, pk_mode);
 
-		// The existing row survives the recreate, with the default filled in for the new key column.
+		// The existing row survives, with the default filled in for the new key column.
 		auto res = con.Query("SELECT COUNT(*) FROM t WHERE \"new_key\" IS NOT NULL");
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->GetValue(0, 0).GetValue<int64_t>() == 1);
+		REQUIRE(primary_key_names(generator.describe_table(con, table)) == std::vector<std::string> {"id", "new_key"});
 	}
 }

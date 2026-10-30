@@ -3,6 +3,7 @@
 #include "config.hpp"
 #include "duckdb.hpp"
 #include "ingest_properties.hpp"
+#include "schema_types.hpp"
 
 #include <array>
 #include <cctype>
@@ -164,14 +165,82 @@ TestResult run_max_record_size_valid_test(const google::protobuf::Map<std::strin
 		                             " \"Max Record Size\" to a valid positive integer.");
 	}
 }
+
+/// Checks that strict mode can add a PRIMARY KEY to every table that does not have one yet, i.e. that no such table
+/// contains duplicate keys. Otherwise, the sync would fail on the table's next schema change.
+TestResult run_no_duplicate_primary_keys_test(duckdb::Connection& con,
+                                              const google::protobuf::Map<std::string, std::string>& configuration) {
+	if (!config::find_bool_property(configuration, config::PROP_STRICT_PRIMARY_KEYS, true)) {
+		return TestResult(true);
+	}
+
+	const auto db_name = config::find_property(configuration, config::PROP_DATABASE);
+
+	// We use the _fivetran_synced column to find tables managed by Fivetran and the NOT NULL constraint to identify
+	// possible primary key columns.
+	const auto tables_res =
+	    con.Query("SELECT t.schema_name, t.table_name, "
+	              "list(c.column_name ORDER BY c.column_index) FILTER (WHERE NOT c.is_nullable) "
+	              "FROM duckdb_tables() t JOIN duckdb_columns() c ON c.table_oid = t.table_oid "
+	              "WHERE t.database_name = " +
+	              duckdb::KeywordHelper::WriteQuoted(db_name, '\'') +
+	              " AND NOT t.has_primary_key AND NOT t.temporary AND NOT t.internal "
+	              "GROUP BY t.schema_name, t.table_name "
+	              "HAVING bool_or(c.column_name = '_fivetran_synced') AND bool_or(NOT c.is_nullable) "
+	              "ORDER BY t.schema_name, t.table_name");
+	if (tables_res->HasError()) {
+		return TestResult(false, "Failed to list tables without a primary key: " + tables_res->GetError());
+	}
+
+	std::string tables_with_duplicates;
+	for (const auto& row : tables_res->Collection().GetRows()) {
+		const auto schema_name = row.GetValue(0).ToString();
+		const auto table_name = row.GetValue(1).ToString();
+		const std::string qualified_name = table_def {db_name, schema_name, table_name}.to_escaped_string();
+
+		const auto key_column_list = row.GetValue(2);
+		std::string key_columns;
+		for (const auto& column : duckdb::ListValue::GetChildren(key_column_list)) {
+			if (!key_columns.empty()) {
+				key_columns += ", ";
+			}
+			key_columns += duckdb::KeywordHelper::WriteQuoted(column.ToString(), '"');
+		}
+
+		const auto duplicates_res =
+		    con.Query("SELECT 1 FROM " + qualified_name + " GROUP BY " + key_columns + " HAVING COUNT(*) > 1 LIMIT 1");
+		if (duplicates_res->HasError()) {
+			return TestResult(false, "Failed to check table " + schema_name + "." + table_name +
+			                             " for duplicate primary keys: " + duplicates_res->GetError());
+		}
+		if (duplicates_res->RowCount() > 0) {
+			if (!tables_with_duplicates.empty()) {
+				tables_with_duplicates += ", ";
+			}
+			tables_with_duplicates += schema_name + "." + table_name;
+		}
+	}
+
+	if (tables_with_duplicates.empty()) {
+		return TestResult(true);
+	}
+
+	return TestResult(false, "Strict primary keys cannot be enabled because these tables contain duplicate primary "
+	                         "keys: " +
+	                             tables_with_duplicates +
+	                             ". To proceed, either manually remove the duplicate records, drop the tables and "
+	                             "trigger a historical re-sync, or turn off the \"Strict Primary Keys\" option.");
+}
 } // namespace
 
-std::array<TestCase, 4> get_test_cases() {
+std::array<TestCase, 5> get_test_cases() {
 	return {TestCase {TEST_AUTHENTICATE, "Test that user is authenticated"},
 	        TestCase {TEST_DATABASE_TYPE, "Test that database is not read-only"},
 	        TestCase {TEST_WRITE_PERMISSIONS, "Test that auth token has write permissions"},
 	        TestCase {TEST_MAX_RECORD_SIZE_VALID, "Test that the \"Max Record Size\" is a valid "
-	                                              "integer"}};
+	                                              "integer"},
+	        TestCase {TEST_NO_DUPLICATE_PRIMARY_KEYS,
+	                  "Test that no table contains duplicate primary keys if \"Strict Primary Keys\" is enabled"}};
 }
 
 TestResult run_test(const std::string& test_name, duckdb::Connection& con,
@@ -187,6 +256,9 @@ TestResult run_test(const std::string& test_name, duckdb::Connection& con,
 	}
 	if (test_name == TEST_MAX_RECORD_SIZE_VALID) {
 		return run_max_record_size_valid_test(configuration);
+	}
+	if (test_name == TEST_NO_DUPLICATE_PRIMARY_KEYS) {
+		return run_no_duplicate_primary_keys_test(con, configuration);
 	}
 	throw std::runtime_error("Unknown test name: " + test_name);
 }

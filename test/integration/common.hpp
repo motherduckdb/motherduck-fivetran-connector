@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../constants.hpp"
+#include "config.hpp"
 #include "duckdb.hpp"
 #include "extension_helper.hpp"
 #include "fivetran_duckdb_interop.hpp"
@@ -153,12 +154,20 @@ void define_test_multikey_table(T& request, const std::string& table_name) {
 	add_col(request, "_fivetran_synced", ::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
 }
 
+template <typename T>
+void set_strict_primary_keys(T& request, bool strict) {
+	(*request.mutable_configuration())[config::PROP_STRICT_PRIMARY_KEYS] = strict ? "true" : "false";
+}
+
 /* compression and encryption are off/none by default */
 
+// Strict primary keys are off by default too. add_config sets the toggle
+// explicitly because the server treats an unset toggle as strict.
 template <typename T>
 void add_config(T& request, const std::string& token, const std::string& database, const std::string& table) {
 	(*request.mutable_configuration())["motherduck_token"] = token;
 	(*request.mutable_configuration())["motherduck_database"] = database;
+	set_strict_primary_keys(request, false);
 	request.mutable_table()->set_name(table);
 	request.set_schema_name(test::constants::TEST_SCHEMA_NAME);
 }
@@ -167,6 +176,7 @@ inline void add_config(fivetran_sdk::v2::MigrateRequest& request, const std::str
                        const std::string& table) {
 	(*request.mutable_configuration())["motherduck_token"] = token;
 	(*request.mutable_configuration())["motherduck_database"] = database;
+	set_strict_primary_keys(request, false);
 	request.mutable_details()->set_table(table);
 	request.mutable_details()->set_schema(test::constants::TEST_SCHEMA_NAME);
 }
@@ -177,6 +187,7 @@ template <typename T>
 void add_config(T& request, const std::string& token, const std::string& database, const std::string& table) {
 	(*request.mutable_configuration())["motherduck_token"] = token;
 	(*request.mutable_configuration())["motherduck_database"] = database;
+	set_strict_primary_keys(request, false);
 	request.set_table_name(table);
 	request.set_schema_name(test::constants::TEST_SCHEMA_NAME);
 }
@@ -185,6 +196,7 @@ template <typename T>
 void add_config(T& request, const std::string& token, const std::string& database) {
 	(*request.mutable_configuration())["motherduck_token"] = token;
 	(*request.mutable_configuration())["motherduck_database"] = database;
+	set_strict_primary_keys(request, false);
 	request.set_schema_name(test::constants::TEST_SCHEMA_NAME);
 }
 
@@ -204,9 +216,11 @@ void define_history_test_table_reordered(T& request, const std::string& table_na
 }
 
 template <std::size_t N>
-void create_table(DestinationSdkImpl& service, const std::string& table_name, const std::array<column_def, N> columns) {
+void create_table(DestinationSdkImpl& service, const std::string& table_name, const std::array<column_def, N> columns,
+                  bool strict_primary_keys = false) {
 	::fivetran_sdk::v2::CreateTableRequest request;
 	add_config(request, test::constants::MD_TOKEN, test::constants::TEST_DATABASE_NAME, table_name);
+	set_strict_primary_keys(request, strict_primary_keys);
 	define_table(request, table_name, columns);
 
 	::fivetran_sdk::v2::CreateTableResponse response;

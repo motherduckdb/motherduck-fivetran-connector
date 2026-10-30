@@ -190,3 +190,60 @@ TEST_CASE("Test config tester for max_record_size values", "[integration][config
 		REQUIRE(response.success());
 	}
 }
+
+TEST_CASE("Test fails when strict primary keys are enabled and a table contains duplicate keys",
+          "[integration][configtest]") {
+	auto con = get_test_connection(MD_TOKEN);
+	ensure_workspace_mode(*con);
+
+	// A dedicated database, so that tables of other tests do not interfere
+	const std::string db_name = "fivetran_test_strict_duplicates";
+	REQUIRE_NO_FAIL(con->Query("CREATE OR REPLACE DATABASE " + db_name));
+	// A table created in NotNull mode with a duplicate key
+	REQUIRE_NO_FAIL(con->Query("CREATE TABLE " + db_name +
+	                           ".main.with_duplicates (id INT NOT NULL, _fivetran_synced TIMESTAMPTZ)"));
+	REQUIRE_NO_FAIL(con->Query("INSERT INTO " + db_name + ".main.with_duplicates VALUES (1, NOW()), (1, NOW())"));
+	// Not managed by Fivetran because it has no _fivetran_synced column, so its duplicates do not matter
+	REQUIRE_NO_FAIL(con->Query("CREATE TABLE " + db_name + ".main.user_table (id INT NOT NULL)"));
+	REQUIRE_NO_FAIL(con->Query("INSERT INTO " + db_name + ".main.user_table VALUES (1), (1)"));
+
+	::fivetran_sdk::v2::TestRequest request;
+	request.set_name(config_tester::TEST_NO_DUPLICATE_PRIMARY_KEYS);
+	auto& request_config = *request.mutable_configuration();
+	request_config["motherduck_database"] = db_name;
+	request_config["motherduck_token"] = MD_TOKEN;
+
+	DestinationSdkImpl service;
+	const auto run_test = [&]() {
+		::fivetran_sdk::v2::TestResponse response;
+		const auto status = service.Test(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+		return response;
+	};
+
+	SECTION("Fails in strict mode") {
+		request_config["strict_primary_keys"] = "true";
+		const auto response = run_test();
+		CAPTURE(response.failure());
+		REQUIRE_THAT(response.failure(),
+		             Catch::Matchers::ContainsSubstring("contain duplicate primary keys: main.with_duplicates."));
+		REQUIRE_THAT(response.failure(), !Catch::Matchers::ContainsSubstring("user_table"));
+	}
+
+	SECTION("Succeeds in strict mode once the duplicates are removed") {
+		REQUIRE_NO_FAIL(con->Query("DELETE FROM " + db_name + ".main.with_duplicates"));
+		request_config["strict_primary_keys"] = "true";
+		const auto response = run_test();
+		CAPTURE(response.failure());
+		REQUIRE(response.success());
+	}
+
+	SECTION("Succeeds in NotNull mode") {
+		request_config["strict_primary_keys"] = "false";
+		const auto response = run_test();
+		CAPTURE(response.failure());
+		REQUIRE(response.success());
+	}
+
+	CHECK_NO_FAIL(con->Query("DROP DATABASE " + db_name));
+}

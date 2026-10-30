@@ -17,6 +17,7 @@ inline constexpr const char* TEST_AUTHENTICATE = "test_authentication";
 inline constexpr const char* TEST_DATABASE_TYPE = "test_database_type";
 inline constexpr const char* TEST_WRITE_PERMISSIONS = "test_write_permissions";
 inline constexpr const char* TEST_MAX_RECORD_SIZE_VALID = "test_max_record_size_valid";
+inline constexpr const char* TEST_NO_DUPLICATE_PRIMARY_KEYS = "test_no_duplicate_primary_keys";
 
 struct TestCase {
 	explicit TestCase(std::string name_, std::string description_)
@@ -37,7 +38,7 @@ struct TestResult {
 	std::string failure_message;
 };
 
-std::array<TestCase, 4> get_test_cases();
+std::array<TestCase, 5> get_test_cases();
 
 TestResult run_test(const std::string& test_name, duckdb::Connection& con,
                     const google::protobuf::Map<std::string, std::string>& configuration);
