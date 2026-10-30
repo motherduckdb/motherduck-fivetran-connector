@@ -207,10 +207,12 @@ TEST_CASE("CreateTable without the strict primary keys property adds an enforced
 
 TEST_CASE("WriteBatch", "[integration][write-batch]") {
 	DestinationSdkImpl service;
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
 
 	// Schema will be main
 	const std::string table_name = "books" + std::to_string(randint());
-	create_table(service, table_name, TEST_COLUMNS);
+	create_table(service, table_name, TEST_COLUMNS, is_strict_pk_mode);
 
 	auto con = get_test_connection(MD_TOKEN);
 	{
@@ -417,59 +419,10 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 	}
 }
 
-TEST_CASE("WriteBatch upsert works in strict mode", "[integration][write-batch]") {
-	DestinationSdkImpl service;
-	const std::string table_name = "books" + std::to_string(randint());
-	constexpr bool is_strict_pk_mode = true;
-	create_table(service, table_name, TEST_COLUMNS, is_strict_pk_mode);
-
-	auto con = get_test_connection(MD_TOKEN);
-	{
-		// initial insert
-		::fivetran_sdk::v2::WriteBatchRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
-		request.mutable_file_params()->set_encryption(::fivetran_sdk::v2::Encryption::AES);
-		request.mutable_file_params()->set_compression(::fivetran_sdk::v2::Compression::ZSTD);
-		define_table(request, table_name, TEST_COLUMNS);
-		const std::string filepath = TEST_RESOURCES_DIR + "books_batch_1_insert.csv.zst.aes";
-		std::ifstream keyfile(filepath + ".key", std::ios::binary);
-		char key[33];
-		keyfile.read(key, 32);
-		key[32] = 0;
-		(*request.mutable_keys())[filepath] = key;
-		request.add_replace_files(filepath);
-
-		::fivetran_sdk::v2::WriteBatchResponse response;
-		auto status = service.WriteBatch(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
-	{
-		// upsert: updates id=2, inserts id=3 and id=99. Exercises MERGE INTO on a
-		// table that has an enforced PRIMARY KEY.
-		::fivetran_sdk::v2::WriteBatchRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
-		define_table(request, table_name, TEST_COLUMNS);
-		request.mutable_file_params()->set_null_string("magic-nullvalue");
-		request.add_replace_files(TEST_RESOURCES_DIR + "books_upsert.csv");
-
-		::fivetran_sdk::v2::WriteBatchResponse response;
-		auto status = service.WriteBatch(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-	}
-	{
-		auto res =
-		    con->Query("SELECT id, title, magic_number FROM " + TEST_SCHEMA_NAME + "." + table_name + " ORDER BY id");
-		REQUIRE_NO_FAIL(res);
-		REQUIRE(res->RowCount() == 4);
-		check_row(res, 0, {1, "The Hitchhiker's Guide to the Galaxy", 42});
-		check_row(res, 1, {2, "The Two Towers", 1});
-		check_row(res, 2, {3, "The Hobbit", 14});
-		check_row(res, 3, {99, "null", duckdb::Value()});
-	}
-}
-
 TEST_CASE("WriteBatch with blob and unmodified string", "[integration][write-batch]") {
 	DestinationSdkImpl service;
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
 
 	const std::string table_name = "blob" + std::to_string(randint());
 
@@ -480,7 +433,7 @@ TEST_CASE("WriteBatch with blob and unmodified string", "[integration][write-bat
 	    column_def {.name = "_fivetran_deleted", .type = duckdb::LogicalTypeId::BOOLEAN},
 	    column_def {.name = "_fivetran_synced", .type = duckdb::LogicalTypeId::TIMESTAMP_TZ},
 	};
-	create_table(service, table_name, columns);
+	create_table(service, table_name, columns, is_strict_pk_mode);
 
 	auto con = get_test_connection(MD_TOKEN);
 	{
@@ -517,6 +470,8 @@ TEST_CASE("WriteBatch with blob and unmodified string", "[integration][write-bat
 
 TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
 	DestinationSdkImpl service;
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
 
 	const std::string table_name = "multikey_table" + std::to_string(randint());
 
@@ -524,6 +479,7 @@ TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
 		// Create Table
 		::fivetran_sdk::v2::CreateTableRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		define_test_multikey_table(request, table_name);
 
 		::fivetran_sdk::v2::CreateTableResponse response;
@@ -735,6 +691,8 @@ TEST_CASE("WriteBatch fails with invalid max_record_size", "[integration][write-
 
 TEST_CASE("WriteBatch succeeds with empty max_record_size", "[integration][write-batch]") {
 	DestinationSdkImpl service;
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
 
 	const std::string table_name = "books" + std::to_string(randint());
 	{
@@ -742,6 +700,7 @@ TEST_CASE("WriteBatch succeeds with empty max_record_size", "[integration][write
 		::fivetran_sdk::v2::CreateTableRequest request;
 		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
 		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		define_table(request, table_name, TEST_COLUMNS);
 
 		::fivetran_sdk::v2::CreateTableResponse response;
@@ -768,6 +727,8 @@ TEST_CASE("WriteBatch succeeds with empty max_record_size", "[integration][write
 TEST_CASE("Test all types with create and describe table") {
 
 	DestinationSdkImpl service;
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
 
 	const std::string table_name = "all_types_table" + std::to_string(randint());
 
@@ -775,6 +736,7 @@ TEST_CASE("Test all types with create and describe table") {
 		// Create Table
 		::fivetran_sdk::v2::CreateTableRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 
 		add_col(request, "col_string", ::fivetran_sdk::v2::DataType::STRING, true);
 		add_col(request, "col_int", ::fivetran_sdk::v2::DataType::INT, true);
@@ -1087,10 +1049,12 @@ TEST_CASE("Capabilities", "[integration]") {
 
 TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
 	DestinationSdkImpl service;
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
 
 	// Schema will be main
 	const std::string table_name = "books" + std::to_string(randint());
-	create_table(service, table_name, HISTORY_TEST_COLUMNS);
+	create_table(service, table_name, HISTORY_TEST_COLUMNS, is_strict_pk_mode);
 
 	{
 		// upsert some data, so that delete-earliest has something to delete
@@ -1229,10 +1193,12 @@ TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
 
 TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 	DestinationSdkImpl service;
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
 
 	// Schema will be main
 	const std::string table_name = "books" + std::to_string(randint());
-	create_table(service, table_name, HISTORY_TEST_COLUMNS);
+	create_table(service, table_name, HISTORY_TEST_COLUMNS, is_strict_pk_mode);
 
 	{
 		// history write with the earliest file (that does not affect anything
@@ -1340,9 +1306,11 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 
 TEST_CASE("WriteHistoryBatch should delete overlapping records", "[integration][write-batch]") {
 	DestinationSdkImpl service;
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
 
 	const std::string table_name = "books" + std::to_string(randint());
-	create_table(service, table_name, HISTORY_TEST_COLUMNS);
+	create_table(service, table_name, HISTORY_TEST_COLUMNS, is_strict_pk_mode);
 
 	{
 		// Initial batch
@@ -1395,12 +1363,14 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with reordered CSV columns", "[integ
 	// order than the table definition. This verifies that INSERT statements
 	// use explicit column lists rather than relying on positional matching.
 	DestinationSdkImpl service;
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
 
 	const std::string table_name = "books_reordered" + std::to_string(randint());
 	// Create Table with columns in a specific order:
 	// id, title, magic_number, _fivetran_deleted, _fivetran_synced,
 	// _fivetran_active, _fivetran_start, _fivetran_end
-	create_table(service, table_name, HISTORY_TEST_COLUMNS);
+	create_table(service, table_name, HISTORY_TEST_COLUMNS, is_strict_pk_mode);
 
 	{
 		// Insert initial data using a CSV file where columns are in a DIFFERENT
@@ -1466,6 +1436,8 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with reordered CSV columns", "[integ
 
 TEST_CASE("WriteBatch and WriteHistoryBatch with upsert", "[integration][write-batch]") {
 	DestinationSdkImpl service;
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
 
 	// Integration test that tries to mimic the destination tester on input_5.json
 	// (with history mode) and creates two tables, of which one is a live table
@@ -1479,6 +1451,7 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with upsert", "[integration][write-b
 		// Create Tables
 		::fivetran_sdk::v2::CreateTableRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		define_transaction_test_table(request, transaction_table_name);
 
 		::fivetran_sdk::v2::CreateTableResponse response;
@@ -1487,6 +1460,7 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with upsert", "[integration][write-b
 
 		::fivetran_sdk::v2::CreateTableRequest request2;
 		add_config(request2, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request2, is_strict_pk_mode);
 		define_transaction_history_test_table(request2, transaction_history_table_name);
 
 		::fivetran_sdk::v2::CreateTableResponse response2;
