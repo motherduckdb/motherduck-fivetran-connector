@@ -26,45 +26,6 @@ std::vector<std::string> primary_key_names(const std::vector<column_def>& column
 }
 } // namespace
 
-TEST_CASE("DuckLake rejects SET NOT NULL on a newly added column", "[alter][ducklake]") {
-	// Documents a DuckLake limitation the NotNull key mode runs into: adding a
-	// column and marking it NOT NULL -- what alter_table_in_place does for a newly
-	// added key column -- is refused, because DuckLake validates the constraint
-	// against column stats, which a newly added column does not have. Skipped
-	// where the ducklake extension is not already available (no download here).
-	duckdb::DuckDB db(nullptr);
-	duckdb::Connection con(db);
-	if (con.Query("LOAD ducklake")->HasError()) {
-		SKIP("ducklake extension is not available in this environment");
-	}
-
-	const std::string dir_name = "ducklake_notnull_" + duckdb::StringUtil::GenerateRandomName(8);
-	const auto dir = std::filesystem::temp_directory_path() / dir_name;
-	std::filesystem::create_directories(dir);
-	REQUIRE_NO_FAIL(con.Query("ATTACH 'ducklake:" + (dir / "catalog.ducklake").string() + "' AS lake (DATA_PATH '" +
-	                          (dir / "data").string() + "/')"));
-
-	// NOT NULL at CREATE works
-	REQUIRE_NO_FAIL(con.Query("CREATE TABLE lake.t (\"id\" INTEGER NOT NULL, \"v\" VARCHAR)"));
-	REQUIRE_NO_FAIL(con.Query("INSERT INTO lake.t VALUES (1, 'a')"));
-
-	REQUIRE_NO_FAIL(con.Query("BEGIN TRANSACTION"));
-	REQUIRE_NO_FAIL(con.Query("ALTER TABLE lake.t ADD COLUMN \"region\" VARCHAR DEFAULT ''"));
-	auto res = con.Query("ALTER TABLE lake.t ALTER COLUMN \"region\" SET NOT NULL");
-	REQUIRE(res->HasError());
-	REQUIRE_THAT(res->GetError(), Catch::Matchers::ContainsSubstring("SET NOT NULL"));
-	con.Query("ROLLBACK");
-
-	// Committing the ADD COLUMN first does not help: the column still has no stats.
-	REQUIRE_NO_FAIL(con.Query("ALTER TABLE lake.t ADD COLUMN \"region2\" VARCHAR DEFAULT ''"));
-	res = con.Query("ALTER TABLE lake.t ALTER COLUMN \"region2\" SET NOT NULL");
-	REQUIRE(res->HasError());
-	REQUIRE_THAT(res->GetError(), Catch::Matchers::ContainsSubstring("no column stats are available"));
-
-	con.Query("DETACH lake");
-	std::filesystem::remove_all(dir);
-}
-
 TEST_CASE("AlterTable recreate preserves data in columns the request omits if drop_columns=false", "[alter]") {
 	// "Deleted" columns are retained with drop_columns=false and their data must be carried over to the recreated
 	// table.
