@@ -180,14 +180,14 @@ TestResult run_no_duplicate_primary_keys_test(duckdb::Connection& con,
 	// possible primary key columns.
 	const auto tables_res =
 	    con.Query("SELECT t.schema_name, t.table_name, "
-		          "list(c.column_name ORDER BY c.column_index) FILTER (WHERE NOT c.is_nullable) "
-		          "FROM duckdb_tables() t JOIN duckdb_columns() c ON c.table_oid = t.table_oid "
-		          "WHERE t.database_name = " +
-		          duckdb::KeywordHelper::WriteQuoted(db_name, '\'') +
-		          " AND NOT t.has_primary_key AND NOT t.temporary AND NOT t.internal "
-		          "GROUP BY t.schema_name, t.table_name "
-		          "HAVING bool_or(c.column_name = '_fivetran_synced') AND bool_or(NOT c.is_nullable) "
-		          "ORDER BY t.schema_name, t.table_name");
+	              "list(c.column_name ORDER BY c.column_index) FILTER (WHERE NOT c.is_nullable) "
+	              "FROM duckdb_tables() t JOIN duckdb_columns() c ON c.table_oid = t.table_oid "
+	              "WHERE t.database_name = " +
+	              duckdb::KeywordHelper::WriteQuoted(db_name, '\'') +
+	              " AND NOT t.has_primary_key AND NOT t.temporary AND NOT t.internal "
+	              "GROUP BY t.schema_name, t.table_name "
+	              "HAVING bool_or(c.column_name = '_fivetran_synced') AND bool_or(NOT c.is_nullable) "
+	              "ORDER BY t.schema_name, t.table_name");
 	if (tables_res->HasError()) {
 		return TestResult(false, "Failed to list tables without a primary key: " + tables_res->GetError());
 	}

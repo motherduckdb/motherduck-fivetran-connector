@@ -56,8 +56,8 @@ TEST_CASE("MERGE upsert is idempotent when the same batch is retried", "[merge]"
 	for (unsigned int i = 0; i < 3; i++) {
 		CAPTURE(i);
 		REQUIRE_NO_FAIL(con.Query("MERGE INTO target USING source ON target.id = source.id "
-									 "WHEN MATCHED THEN UPDATE SET v = source.v "
-									 "WHEN NOT MATCHED THEN INSERT (id, v) VALUES (source.id, source.v)"));
+		                          "WHEN MATCHED THEN UPDATE SET v = source.v "
+		                          "WHEN NOT MATCHED THEN INSERT (id, v) VALUES (source.id, source.v)"));
 		REQUIRE(row_count(con, "target") == 2);
 		REQUIRE(scalar(con, "SELECT v FROM target WHERE id = 1") == "a");
 	}

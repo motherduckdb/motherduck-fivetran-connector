@@ -93,12 +93,11 @@ TEST_CASE("AlterTable in NotNull mode recreates a strict-mode table when droppin
 	REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1, 1)"));
 
 	// Drop b (part of the old PK). The key becomes just id.
-	std::vector requested = {
-	    column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true}};
+	std::vector requested = {column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true}};
 	const PrimaryKeyMode pk_mode = PrimaryKeyMode::NotNull;
 	generator.alter_table(con, table, requested, /*drop_columns=*/true, pk_mode);
 
-	//b is gone, the PK is gone, and id column is NOT NULL.
+	// b is gone, the PK is gone, and id column is NOT NULL.
 	REQUIRE(primary_key_count(con) == 0);
 	REQUIRE(scalar(con, "SELECT count(*) FROM duckdb_columns() WHERE table_name = 't' AND column_name = 'b'") == "0");
 	REQUIRE(column_is_not_null(con, "id"));
@@ -173,10 +172,9 @@ TEST_CASE("AlterTable in strict mode adds the PRIMARY KEY in place to a NotNull-
 	const auto table_oid = scalar(con, table_oid_query);
 
 	// The key stays the same, the request only adds a regular column.
-	std::vector requested = {
-	    column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
-	    column_def {.name = "v", .type = duckdb::LogicalTypeId::VARCHAR},
-	    column_def {.name = "w", .type = duckdb::LogicalTypeId::VARCHAR}};
+	std::vector requested = {column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
+	                         column_def {.name = "v", .type = duckdb::LogicalTypeId::VARCHAR},
+	                         column_def {.name = "w", .type = duckdb::LogicalTypeId::VARCHAR}};
 	const PrimaryKeyMode pk_mode = PrimaryKeyMode::Strict;
 	generator.alter_table(con, table, requested, /*drop_columns=*/false, pk_mode);
 
@@ -229,10 +227,9 @@ TEST_CASE("AlterTable in strict mode raises a task when a NotNull-mode table con
 	// key stays duplicated either way.
 	const bool w_is_key = GENERATE(false, true);
 	CAPTURE(w_is_key);
-	std::vector requested = {
-	    column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
-	    column_def {.name = "v", .type = duckdb::LogicalTypeId::VARCHAR},
-	    column_def {.name = "w", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = w_is_key}};
+	std::vector requested = {column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
+	                         column_def {.name = "v", .type = duckdb::LogicalTypeId::VARCHAR},
+	                         column_def {.name = "w", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = w_is_key}};
 
 	std::string task_message;
 	try {
