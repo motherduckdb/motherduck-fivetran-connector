@@ -245,10 +245,10 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
 	DestinationSdkImpl service;
 	const std::string from_table = "migrate_copy_from_" + std::to_string(randint());
 	const std::string to_table = "migrate_copy_to_" + std::to_string(randint());
-	const bool strict = GENERATE(false, true);
-	CAPTURE(strict);
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
 	// Only strict mode re-adds a PRIMARY KEY constraint, which DESCRIBE reports as "PRI".
-	const duckdb::Value pk_key = strict ? duckdb::Value("PRI") : duckdb::Value();
+	const duckdb::Value pk_key = is_strict_pk_mode ? duckdb::Value("PRI") : duckdb::Value();
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -271,7 +271,7 @@ TEST_CASE("Migrate - copy table", "[integration][migrate]") {
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, from_table);
-		set_strict_primary_keys(request, strict);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		request.mutable_details()->mutable_copy()->mutable_copy_table()->set_from_table(from_table);
 		request.mutable_details()->mutable_copy()->mutable_copy_table()->set_to_table(to_table);
 
@@ -400,10 +400,10 @@ TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration
 	const std::string source_table = "migrate_copy_hist_src_" + std::to_string(randint());
 	const std::string dest_table = "migrate_copy_hist_dst_" + std::to_string(randint());
 	const std::string soft_deleted_column = GENERATE("_fivetran_deleted", "custom_soft_deleted");
-	const bool strict = GENERATE(false, true);
-	CAPTURE(strict);
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
 	// Only strict mode re-adds a PRIMARY KEY constraint, which DESCRIBE reports as "PRI".
-	const duckdb::Value pk_key = strict ? duckdb::Value("PRI") : duckdb::Value();
+	const duckdb::Value pk_key = is_strict_pk_mode ? duckdb::Value("PRI") : duckdb::Value();
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -444,7 +444,7 @@ TEST_CASE("Migrate - copy table to history mode from soft delete", "[integration
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, source_table);
-		set_strict_primary_keys(request, strict);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		auto* copy_hist = request.mutable_details()->mutable_copy()->mutable_copy_table_to_history_mode();
 		copy_hist->set_from_table(source_table);
 		copy_hist->set_to_table(dest_table);
@@ -1474,10 +1474,10 @@ TEST_CASE("Migrate - soft delete to history with custom soft deleted column", "[
 }
 
 TEST_CASE("Migrate - to history applies the history key to a table without a primary key", "[integration][migrate]") {
-	const bool strict = GENERATE(false, true);
+	const bool is_strict_pk_mode = GENERATE(false, true);
 	const auto migration_type =
 	    GENERATE(::fivetran_sdk::v2::LIVE_TO_HISTORY, ::fivetran_sdk::v2::SOFT_DELETE_TO_HISTORY);
-	CAPTURE(strict, migration_type);
+	CAPTURE(is_strict_pk_mode, migration_type);
 
 	DestinationSdkImpl service;
 	const std::string table_name = "migrate_to_hist_no_pk_" + std::to_string(randint());
@@ -1495,7 +1495,7 @@ TEST_CASE("Migrate - to history applies the history key to a table without a pri
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-		set_strict_primary_keys(request, strict);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_type(migration_type);
 		if (migration_type == ::fivetran_sdk::v2::SOFT_DELETE_TO_HISTORY) {
 			request.mutable_details()->mutable_table_sync_mode_migration()->set_soft_deleted_column(
@@ -1523,7 +1523,7 @@ TEST_CASE("Migrate - to history applies the history key to a table without a pri
 	for (idx_t row = 0; row < res->RowCount(); row++) {
 		CAPTURE(res->GetValue(0, row).ToString());
 		REQUIRE(res->GetValue(1, row).ToString() == "NO");
-		REQUIRE((res->GetValue(2, row).ToString() == "PRI") == strict);
+		REQUIRE((res->GetValue(2, row).ToString() == "PRI") == is_strict_pk_mode);
 	}
 
 	con->Query("DROP TABLE IF EXISTS " + qualified_name);

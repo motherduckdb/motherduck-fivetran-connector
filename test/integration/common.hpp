@@ -154,12 +154,22 @@ void define_test_multikey_table(T& request, const std::string& table_name) {
 	add_col(request, "_fivetran_synced", ::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
 }
 
+// Sets the "Strict Primary Keys" toggle on any request that carries a
+// configuration map.
+template <typename T>
+void set_strict_primary_keys(T& request, bool strict) {
+	(*request.mutable_configuration())[config::PROP_STRICT_PRIMARY_KEYS] = strict ? "true" : "false";
+}
+
 /* compression and encryption are off/none by default */
 
+// Strict primary keys are off by default too. add_config sets the toggle
+// explicitly because the server treats an unset toggle as strict.
 template <typename T>
 void add_config(T& request, const std::string& token, const std::string& database, const std::string& table) {
 	(*request.mutable_configuration())["motherduck_token"] = token;
 	(*request.mutable_configuration())["motherduck_database"] = database;
+	set_strict_primary_keys(request, false);
 	request.mutable_table()->set_name(table);
 	request.set_schema_name(test::constants::TEST_SCHEMA_NAME);
 }
@@ -168,6 +178,7 @@ inline void add_config(fivetran_sdk::v2::MigrateRequest& request, const std::str
                        const std::string& table) {
 	(*request.mutable_configuration())["motherduck_token"] = token;
 	(*request.mutable_configuration())["motherduck_database"] = database;
+	set_strict_primary_keys(request, false);
 	request.mutable_details()->set_table(table);
 	request.mutable_details()->set_schema(test::constants::TEST_SCHEMA_NAME);
 }
@@ -178,6 +189,7 @@ template <typename T>
 void add_config(T& request, const std::string& token, const std::string& database, const std::string& table) {
 	(*request.mutable_configuration())["motherduck_token"] = token;
 	(*request.mutable_configuration())["motherduck_database"] = database;
+	set_strict_primary_keys(request, false);
 	request.set_table_name(table);
 	request.set_schema_name(test::constants::TEST_SCHEMA_NAME);
 }
@@ -186,6 +198,7 @@ template <typename T>
 void add_config(T& request, const std::string& token, const std::string& database) {
 	(*request.mutable_configuration())["motherduck_token"] = token;
 	(*request.mutable_configuration())["motherduck_database"] = database;
+	set_strict_primary_keys(request, false);
 	request.set_schema_name(test::constants::TEST_SCHEMA_NAME);
 }
 
@@ -202,14 +215,6 @@ void define_history_test_table_reordered(T& request, const std::string& table_na
 	add_col(request, "_fivetran_start", ::fivetran_sdk::v2::DataType::UTC_DATETIME, true);
 	add_col(request, "id", ::fivetran_sdk::v2::DataType::INT, true);
 	add_col(request, "blob", ::fivetran_sdk::v2::DataType::BINARY, false);
-}
-
-// Sets the "Strict Primary Keys" toggle on any request that carries a
-// configuration map. Passing false is equivalent to leaving it unset (the
-// default), but is explicit in tests.
-template <typename T>
-void set_strict_primary_keys(T& request, bool strict) {
-	(*request.mutable_configuration())[config::PROP_STRICT_PRIMARY_KEYS] = strict ? "true" : "false";
 }
 
 template <std::size_t N>

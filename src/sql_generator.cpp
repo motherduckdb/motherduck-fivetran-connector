@@ -445,7 +445,7 @@ void MdSqlGenerator::check_no_duplicate_primary_keys(duckdb::Connection& con, co
 		throw md_error::RecoverableError(
 		    "The requested primary key change on " + table.schema_name + "." + table.table_name +
 		    " would create duplicate rows. To proceed, either manually remove the duplicate records or drop the table "
-		    "and trigger a historical re-sync.");
+		    "and trigger a historical re-sync, or turn off the \"Strict Primary Keys\" option.");
 	}
 }
 
@@ -485,7 +485,8 @@ void MdSqlGenerator::alter_table_recreate(duckdb::Connection& con, const table_d
                                           const std::vector<column_def>& all_columns_in_new_table,
                                           const std::set<std::string>& existing_columns_in_new_table,
                                           const PrimaryKeyMode pk_mode) {
-	// Key columns are NOT NULL in both modes, so NULLs would fail the reinsert below with a bare constraint error.
+	// Key columns are NOT NULL in both primary key modes, so NULLs would fail the reinsert below with a bare
+	// constraint error.
 	check_no_null_primary_keys(con, table, all_columns_in_new_table, existing_columns_in_new_table);
 
 	// Only in strict mode the new key needs to be unique over the existing data.
@@ -549,8 +550,7 @@ void MdSqlGenerator::alter_table_in_place(
 		// AlterTables request don't carry default values
 		assert(!col.column_default.has_value());
 
-		// A newly added key column must end up NOT NULL, so the existing rows need a
-		// value for it.
+		// A newly added primary key column must end up NOT NULL, so the existing rows need a value for it.
 		column_def column_to_add = col;
 		if (col.primary_key) {
 			column_to_add.column_default = get_default_value(col.type);
@@ -576,8 +576,8 @@ void MdSqlGenerator::alter_table_in_place(
 		          "Could not alter type for column <" + col_name + "> in table <" + absolute_table_name + ">");
 	}
 
-	// Toggle NOT NULL constraint for existing columns whose key membership changed. If the key changed, the table has
-	// no PRIMARY KEY constraint here. Otherwise, alter_table_recreate would have been called.
+	// Toggle NOT NULL constraint for existing columns whose primary key membership changed. If the primary key changed,
+	// the table has no PRIMARY KEY constraint here. Otherwise, alter_table_recreate would have been called.
 	assert(!table_has_pks || (pk_columns_added.empty() && pk_columns_removed.empty()));
 	for (const auto& col_name : pk_columns_added) {
 		set_not_null(con, table, col_name, true, "alter_table set_not_null");
@@ -590,8 +590,8 @@ void MdSqlGenerator::alter_table_in_place(
 		drop_column(con, table, col_name, "alter_table drop", false);
 	}
 
-	// The user switched from NotNull to Strict mode. Like create_table, a table without key columns gets no PRIMARY
-	// KEY.
+	// If we are in Strict mode and the table has no primary keys, this indicates that the user recently switched from
+	// NotNull to Strict mode. We can add the primary key in-place.
 	if (pk_mode == PrimaryKeyMode::Strict && !table_has_pks) {
 		std::vector<const column_def*> columns_pk;
 		find_primary_keys(requested_columns, columns_pk);
@@ -671,16 +671,15 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 				            "drop_columns is false");
 			}
 		} else {
-			// The column exists on both sides. Its key membership and its type can
-			// change in the same request, so both have to be checked independently.
+			// The column exists on both sides. Its primary key membership and its type
+			// can change in the same request, so both have to be checked independently.
 			if (new_col_it->second.primary_key && !col.primary_key) {
-				// The column joins the primary key. Tracked separately from the removal
-				// below so the in-place path can set NOT NULL on it.
+				// The column joins the primary key.
 				logger.info("Adding column <" + col.name + "> to the primary key");
 				pk_changed = true;
 				pk_columns_added.emplace(col.name);
 			} else if (!new_col_it->second.primary_key && col.primary_key) {
-				// The column leaves the primary key, so the in-place path drops its NOT NULL.
+				// The column leaves the primary key.
 				logger.info("Removing column <" + col.name + "> from the primary key");
 				pk_changed = true;
 				pk_columns_removed.emplace(col.name);
@@ -714,7 +713,7 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 	logger.info("    inventoried columns; recreate_table = " + std::to_string(recreate_table) +
 	            "; num alter_types = " + std::to_string(alter_types.size()));
 
-	// list added columns in order. Assumes that requested_columns is in the correct order.
+	// List added columns in order. Assumes that requested_columns is in the correct order.
 	std::vector<column_def> added_columns_ordered;
 	for (const auto& col : requested_columns) {
 		const auto& new_col_it = added_columns.find(col.name);
