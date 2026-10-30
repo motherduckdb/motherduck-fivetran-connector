@@ -229,13 +229,13 @@ void MdSqlGenerator::create_schema_if_not_exists_with_retries(duckdb::Connection
 	throw_if_query_error(*create_result, "Could not create schema <" + schema_name + "> in database <" + db_name + ">");
 }
 
-// Placeholder default for a key column that is added to an existing table: its rows need a non-NULL value.
+// Placeholder default for a key column that is added to an existing table: its rows need a non-NULL value. Only plain
+// literals, no casts, because add_column needs a constant default (see there).
 std::string get_default_value(duckdb::LogicalTypeId type) {
 	switch (type) {
 	case duckdb::LogicalTypeId::VARCHAR:
-		return "''";
 	case duckdb::LogicalTypeId::BLOB:
-		return "CAST('' AS BLOB)";
+		return "''";
 	case duckdb::LogicalTypeId::DATE:
 	case duckdb::LogicalTypeId::TIMESTAMP:
 	case duckdb::LogicalTypeId::TIMESTAMP_TZ:

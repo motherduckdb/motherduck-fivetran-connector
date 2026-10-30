@@ -16,6 +16,7 @@ add_executable(integration_tests
         test_process_file.cpp
         test_merge_into.cpp
         test_alter_table.cpp
+        test_alter_table_pk_modes.cpp
         test_crash_handler.cpp
         test_throw_if_query_error.cpp
         test_scoped_transaction.cpp

@@ -154,8 +154,6 @@ void define_test_multikey_table(T& request, const std::string& table_name) {
 	add_col(request, "_fivetran_synced", ::fivetran_sdk::v2::DataType::UTC_DATETIME, false);
 }
 
-// Sets the "Strict Primary Keys" toggle on any request that carries a
-// configuration map.
 template <typename T>
 void set_strict_primary_keys(T& request, bool strict) {
 	(*request.mutable_configuration())[config::PROP_STRICT_PRIMARY_KEYS] = strict ? "true" : "false";

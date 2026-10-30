@@ -122,7 +122,7 @@ TEST_CASE("CreateTable in NotNull mode uses NOT NULL without a PRIMARY KEY const
 	                 column_def {.name = "val", .type = duckdb::LogicalTypeId::VARCHAR},
 	             });
 
-	// No uniqueness is enforced in the default mode: the same key can be inserted
+	// No uniqueness is enforced in the NotNull mode: the same key can be inserted
 	// twice. (Checked behaviourally rather than through duckdb_constraints(), which
 	// this connection does not necessarily see for a just-created table.)
 	const std::string insert_dup =
