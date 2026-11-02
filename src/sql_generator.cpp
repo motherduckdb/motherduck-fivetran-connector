@@ -556,6 +556,8 @@ void MdSqlGenerator::alter_table_in_place(
 		add_column(con, table, column_to_add, "alter_table add", /*ignore_if_exists=*/false,
 		           /*default_is_sql_literal=*/col.primary_key);
 
+		// TODO: DuckDB 2.0 supports ADD COLUMN ... NOT NULL. Once we are on 2.0, add the constraint with the column
+		// instead of a separate SET NOT NULL.
 		if (col.primary_key) {
 			set_not_null(con, table, col.name, true, "alter_table add set_not_null");
 		}
