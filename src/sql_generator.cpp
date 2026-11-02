@@ -461,8 +461,8 @@ static md_error::RecoverableError null_in_primary_key_error(const table_def& tab
 void MdSqlGenerator::check_no_null_primary_keys(duckdb::Connection& con, const table_def& table,
                                                 const std::vector<column_def>& all_new_columns,
                                                 const std::set<std::string>& existing_columns_in_new_table) const {
-	// New key columns get a default value, so only existing columns can hold NULLs. Columns that already are key
-	// columns are NOT NULL, which DuckDB answers from statistics without scanning.
+	// New key columns get a default value, so only existing columns can hold NULLs. Columns that already are primary
+	// key columns are NOT NULL.
 	const auto absolute_table_name = table.to_escaped_string();
 	for (const auto& col : all_new_columns) {
 		if (!col.primary_key || existing_columns_in_new_table.find(col.name) == existing_columns_in_new_table.end()) {
