@@ -537,15 +537,13 @@ void MdSqlGenerator::alter_table_recreate(duckdb::Connection& con, const table_d
 }
 
 void MdSqlGenerator::alter_table_in_place(
-    duckdb::Connection& con, const table_def& table, const std::vector<column_def>& requested_columns,
-    const std::vector<column_def>& added_columns, const std::set<std::string>& deleted_columns,
-    const std::set<std::string>& alter_types, const std::map<std::string, column_def>& new_column_map,
-    const std::set<std::string>& pk_columns_added, const std::set<std::string>& pk_columns_removed,
-    const bool table_has_pks, const PrimaryKeyMode pk_mode) {
+    duckdb::Connection& con, const table_def& table, const std::vector<column_def>& added_columns,
+    const std::set<std::string>& deleted_columns, const std::set<std::string>& alter_types,
+    const std::map<std::string, column_def>& new_column_map, const std::set<std::string>& pk_columns_added,
+    const std::set<std::string>& pk_columns_removed, [[maybe_unused]] const PrimaryKeyMode pk_mode) {
 	for (const auto& col : added_columns) {
-		// Adding a primary key column to a table with a PRIMARY KEY constraint would imply that alter_table_recreate
-		// gets called.
-		assert(!col.primary_key || !table_has_pks);
+		// In strict mode, adding a primary key column implies that alter_table_recreate gets called.
+		assert(!col.primary_key || pk_mode == PrimaryKeyMode::NotNull);
 
 		// AlterTables request don't carry default values
 		assert(!col.column_default.has_value());
@@ -576,9 +574,9 @@ void MdSqlGenerator::alter_table_in_place(
 		          "Could not alter type for column <" + col_name + "> in table <" + absolute_table_name + ">");
 	}
 
-	// Toggle NOT NULL constraint for existing columns whose primary key membership changed. If the primary key changed,
-	// the table has no PRIMARY KEY constraint here. Otherwise, alter_table_recreate would have been called.
-	assert(!table_has_pks || (pk_columns_added.empty() && pk_columns_removed.empty()));
+	// Toggle NOT NULL constraint for existing columns whose primary key membership changed. In strict mode, a changed
+	// primary key implies that alter_table_recreate gets called.
+	assert(pk_mode == PrimaryKeyMode::NotNull || (pk_columns_added.empty() && pk_columns_removed.empty()));
 	for (const auto& col_name : pk_columns_added) {
 		set_not_null(con, table, col_name, true, "alter_table set_not_null");
 	}
@@ -588,16 +586,6 @@ void MdSqlGenerator::alter_table_in_place(
 
 	for (const auto& col_name : deleted_columns) {
 		drop_column(con, table, col_name, "alter_table drop", false);
-	}
-
-	// If we are in Strict mode and the table has no primary keys, this indicates that the user recently switched from
-	// NotNull to Strict mode. We can add the primary key in-place.
-	if (pk_mode == PrimaryKeyMode::Strict && !table_has_pks) {
-		std::vector<const column_def*> columns_pk;
-		find_primary_keys(requested_columns, columns_pk);
-		if (!columns_pk.empty()) {
-			apply_primary_key_constraint(con, columns_pk, table, "alter_table add_primary_key", pk_mode);
-		}
 	}
 }
 
@@ -623,7 +611,7 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 	std::set<std::string> pk_columns_added;
 	std::set<std::string> pk_columns_removed;
 	// True if the key set changes at all (a key column added, removed, or
-	// dropped). Tables with a PRIMARY KEY constraint react by being recreated.
+	// dropped). In strict mode, the table is recreated.
 	bool pk_changed = false;
 
 	ScopedTransaction transaction(con, logger);
@@ -705,11 +693,9 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 		pk_changed = true;
 	}
 
-	// A PRIMARY KEY constraint cannot be altered or dropped in place, hence a key change recreates the table if it
-	// carries one, in either primary key mode. Otherwise, the key change only toggles NOT NULL in place. Lastly, if the
-	// user switched from NotNull to Strict mode, the table has no primary key constraint yet, so we add it in place.
-	const bool table_has_pks = table_has_unique_primary_key(con, table);
-	const bool recreate_table = pk_changed && table_has_pks;
+	// A PRIMARY KEY constraint cannot be altered or dropped in place, hence a key change in strict mode recreates the
+	// table. In NotNull mode, the key change only toggles NOT NULL in place.
+	const bool recreate_table = pk_changed && pk_mode == PrimaryKeyMode::Strict;
 	logger.info("    inventoried columns; recreate_table = " + std::to_string(recreate_table) +
 	            "; num alter_types = " + std::to_string(alter_types.size()));
 
@@ -752,11 +738,45 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 		alter_table_recreate(con, table, all_columns, retained_columns, pk_mode);
 	} else {
 		logger.info("    altering table in place");
-		alter_table_in_place(con, table, requested_columns, added_columns_ordered, deleted_columns, alter_types,
-		                     new_column_map, pk_columns_added, pk_columns_removed, table_has_pks, pk_mode);
+		alter_table_in_place(con, table, added_columns_ordered, deleted_columns, alter_types, new_column_map,
+		                     pk_columns_added, pk_columns_removed, pk_mode);
 	}
 
 	transaction.Commit();
+}
+
+void MdSqlGenerator::ensure_primary_key_mode(duckdb::Connection& con, const table_def& table,
+                                             const PrimaryKeyMode pk_mode) {
+	const bool has_primary_key = table_has_unique_primary_key(con, table);
+	if (has_primary_key == (pk_mode == PrimaryKeyMode::Strict)) {
+		return;
+	}
+
+	const auto columns = describe_table(con, table);
+	if (pk_mode == PrimaryKeyMode::Strict) {
+		std::vector<const column_def*> columns_pk;
+		find_primary_keys(columns, columns_pk);
+		// Like create_table, a table without key columns gets no PRIMARY KEY. This also covers a missing table.
+		if (columns_pk.empty()) {
+			return;
+		}
+
+		logger.info("ensure_primary_key_mode: adding a PRIMARY KEY to " + table.to_escaped_string());
+		ScopedTransaction transaction(con, logger);
+		apply_primary_key_constraint(con, columns_pk, table, "ensure_primary_key_mode add_primary_key", pk_mode);
+		transaction.Commit();
+	} else {
+		// A PRIMARY KEY constraint cannot be dropped in place.
+		logger.info("ensure_primary_key_mode: recreating " + table.to_escaped_string() + " without a PRIMARY KEY");
+		std::set<std::string> column_names;
+		for (const auto& col : columns) {
+			column_names.insert(col.name);
+		}
+		ScopedTransaction transaction(con, logger);
+		// No changes to the table other than a different primary key mode.
+		alter_table_recreate(con, table, columns, column_names, pk_mode);
+		transaction.Commit();
+	}
 }
 
 void MdSqlGenerator::upsert(duckdb::Connection& con, const table_def& table, const std::string& staging_table_name,

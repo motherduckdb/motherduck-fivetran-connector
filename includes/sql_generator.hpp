@@ -115,8 +115,14 @@ public:
 	void drop_column(duckdb::Connection& con, const table_def& table, const std::string& column_name,
 	                 const std::string& log_prefix, bool not_exists_ok = false) const;
 
+	// Expects `table` to match `pk_mode` already (see ensure_primary_key_mode).
 	void alter_table(duckdb::Connection& con, const table_def& table, const std::vector<column_def>& requested_columns,
 	                 bool drop_columns, PrimaryKeyMode pk_mode);
+
+	// Makes the PRIMARY KEY constraint of `table` match `pk_mode`: in strict mode, a table without a primary key gets
+	// one, in NotNull mode, a table with a primary key is recreated without it. Must run before the request's own writes, because DuckDB cannot add a PRIMARY KEY after
+	// updates in the same transaction.
+	void ensure_primary_key_mode(duckdb::Connection& con, const table_def& table, PrimaryKeyMode pk_mode);
 
 	void upsert(duckdb::Connection& con, const table_def& table, const std::string& staging_table_name,
 	            const std::vector<const column_def*>& columns_pk,
@@ -283,14 +289,11 @@ private:
 	                                const std::vector<column_def>& all_columns_in_new_table,
 	                                const std::set<std::string>& existing_columns_in_new_table) const;
 	// `pk_columns_added`/`pk_columns_removed` name existing columns whose key membership changed
-	// (used to toggle NOT NULL in place). In strict mode, a table without a PRIMARY KEY constraint gets one over the
-	// key columns of `requested_columns`.
+	// (used to toggle NOT NULL in place).
 	void alter_table_in_place(duckdb::Connection& con, const table_def& table,
-	                          const std::vector<column_def>& requested_columns,
 	                          const std::vector<column_def>& added_columns,
 	                          const std::set<std::string>& deleted_columns, const std::set<std::string>& alter_types,
 	                          const std::map<std::string, column_def>& new_column_map,
 	                          const std::set<std::string>& pk_columns_added,
-	                          const std::set<std::string>& pk_columns_removed, bool table_has_pks,
-	                          PrimaryKeyMode pk_mode);
+	                          const std::set<std::string>& pk_columns_removed, PrimaryKeyMode pk_mode);
 };

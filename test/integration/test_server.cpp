@@ -26,9 +26,9 @@ TEST_CASE("ConfigurationForm", "[integration][config]") {
 	REQUIRE(response.fields(2).name() == "max_record_size");
 	REQUIRE(response.fields(3).name() == "strict_primary_keys");
 	REQUIRE(response.fields(3).has_toggle_field());
-	REQUIRE(response.fields(3).default_value() == "false");
+	REQUIRE(response.fields(3).default_value() == "true");
 
-	REQUIRE(response.tests_size() == 5);
+	REQUIRE(response.tests_size() == 4);
 }
 
 TEST_CASE("DescribeTable fails when database missing", "[integration][describe-table]") {
@@ -203,6 +203,35 @@ TEST_CASE("CreateTable without the strict primary keys property adds an enforced
 	REQUIRE_NO_FAIL(ins1);
 	auto ins2 = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + "(id) VALUES ('1')");
 	REQUIRE(ins2->HasError());
+}
+
+TEST_CASE("WriteBatch converts a table to the configured primary key mode", "[integration][write-batch]") {
+	DestinationSdkImpl service;
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
+
+	// The table was created before the user switched the mode.
+	const std::string table_name = "books" + std::to_string(randint());
+	create_table(service, table_name, TEST_COLUMNS, !is_strict_pk_mode);
+
+	{
+		::fivetran_sdk::v2::WriteBatchRequest request;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
+		define_table(request, table_name, TEST_COLUMNS);
+		request.mutable_file_params()->set_null_string("magic-nullvalue");
+		request.add_replace_files(TEST_RESOURCES_DIR + "books_upsert.csv");
+
+		::fivetran_sdk::v2::WriteBatchResponse response;
+		auto status = service.WriteBatch(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+		REQUIRE_FALSE(response.has_task());
+	}
+
+	// The batch wrote id 2, so another row with it duplicates the key.
+	auto con = get_test_connection(MD_TOKEN);
+	auto dup = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + " (id) VALUES (2)");
+	REQUIRE(dup->HasError() == is_strict_pk_mode);
 }
 
 TEST_CASE("WriteBatch", "[integration][write-batch]") {

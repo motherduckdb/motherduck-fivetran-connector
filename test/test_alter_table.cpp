@@ -1,5 +1,6 @@
 #include "duckdb.hpp"
 #include "integration/common.hpp"
+#include "md_error.hpp"
 #include "md_logging.hpp"
 #include "schema_types.hpp"
 #include "sql_generator.hpp"
@@ -162,4 +163,132 @@ TEST_CASE("AlterTable defaults a new key column of every Fivetran type", "[alter
 		REQUIRE(res->GetValue(0, 0).GetValue<int64_t>() == 1);
 		REQUIRE(primary_key_names(generator.describe_table(con, table)) == std::vector<std::string> {"id", "new_key"});
 	}
+}
+
+TEST_CASE("AlterTable in strict mode recreates the table when dropping a key column", "[alter]") {
+	duckdb::DuckDB db(nullptr);
+	duckdb::Connection con(db);
+	auto logger = mdlog::Logger::CreateNopLogger();
+	MdSqlGenerator generator(logger);
+
+	const table_def table {"memory", "main", "t"};
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE t (id INTEGER, b INTEGER, PRIMARY KEY (id, b))"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1, 1)"));
+
+	// Drop b (part of the old PK). The key becomes just id. DuckDB cannot drop a column the PRIMARY KEY depends on.
+	std::vector requested = {column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true}};
+	const PrimaryKeyMode pk_mode = PrimaryKeyMode::Strict;
+	generator.alter_table(con, table, requested, /*drop_columns=*/true, pk_mode);
+
+	// b is gone, the row survives and the PRIMARY KEY now covers id only.
+	const auto columns = generator.describe_table(con, table);
+	REQUIRE(columns.size() == 1);
+	REQUIRE(primary_key_names(columns) == std::vector<std::string> {"id"});
+	auto res = con.Query("SELECT id FROM t");
+	REQUIRE_NO_FAIL(res);
+	REQUIRE(res->RowCount() == 1);
+	REQUIRE_THAT(con.Query("INSERT INTO t VALUES (1)")->GetError(),
+	             Catch::Matchers::ContainsSubstring("Duplicate key \"id: 1\" violates primary key constraint"));
+}
+
+TEST_CASE("AlterTable changes the key in place for a NOT NULL table (no PRIMARY KEY, no recreate needed)", "[alter]") {
+	duckdb::DuckDB db(nullptr);
+	duckdb::Connection con(db);
+	auto logger = mdlog::Logger::CreateNopLogger();
+	MdSqlGenerator generator(logger);
+
+	const table_def table {"memory", "main", "t"};
+	// Table created in NotNull mode
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE t (id INTEGER NOT NULL, v VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1, 'a')"));
+
+	std::vector requested = {
+	    column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
+	    column_def {.name = "v", .type = duckdb::LogicalTypeId::VARCHAR},
+	    column_def {.name = "region", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true}};
+	const PrimaryKeyMode pk_mode = PrimaryKeyMode::NotNull;
+	generator.alter_table(con, table, requested, /*drop_columns=*/false, pk_mode);
+
+	// The new key column is NOT NULL and the existing row is preserved with its default.
+	REQUIRE(primary_key_names(generator.describe_table(con, table)) == std::vector<std::string> {"id", "region"});
+	auto res = con.Query("SELECT id, v, region FROM t");
+	REQUIRE_NO_FAIL(res);
+	REQUIRE(res->RowCount() == 1);
+	check_row(res, 0, {duckdb::Value::INTEGER(1), "a", ""});
+	// Still no PRIMARY KEY (we never introduce one in NotNull mode), so a duplicate key inserts fine.
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1, 'b', '')"));
+}
+
+TEST_CASE("AlterTable in strict mode rebuilds the PRIMARY KEY over the new key", "[alter]") {
+	duckdb::DuckDB db(nullptr);
+	duckdb::Connection con(db);
+	auto logger = mdlog::Logger::CreateNopLogger();
+	MdSqlGenerator generator(logger);
+
+	const table_def table {"memory", "main", "t"};
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE t (id INTEGER, v VARCHAR, PRIMARY KEY (id))"));
+	// unique ids -> new key stays unique
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1, 'a'), (2, 'b')"));
+
+	std::vector requested = {
+	    column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
+	    column_def {.name = "v", .type = duckdb::LogicalTypeId::VARCHAR},
+	    column_def {.name = "region", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true}};
+	const PrimaryKeyMode pk_mode = PrimaryKeyMode::Strict;
+	generator.alter_table(con, table, requested, /*drop_columns=*/false, pk_mode);
+
+	// Strict mode re-adds an enforced PRIMARY KEY (now over the new key set), so a
+	// duplicate on (id, region) is rejected.
+	auto res = con.Query("SELECT id FROM t");
+	REQUIRE_NO_FAIL(res);
+	REQUIRE(res->RowCount() == 2);
+	auto dup = con.Query("INSERT INTO t VALUES (1, 'c', '')"); // (1, '') already exists
+	REQUIRE(dup->HasError());
+	REQUIRE_THAT(dup->GetError(), Catch::Matchers::ContainsSubstring(
+	                                  "Duplicate key \"id: 1, region: \" violates primary key constraint"));
+}
+
+TEST_CASE("AlterTable raises a task when an existing column with NULLs joins the primary key", "[alter]") {
+	// The column can only become NOT NULL if every row has a value, which only the source can fix, so the connector
+	// surfaces a task instead of a raw constraint error. In NotNull mode, the key changes in place and SET NOT NULL
+	// fails. In strict mode, the table is recreated and the check before the recreate catches the NULL.
+	const bool strict = GENERATE(false, true);
+	CAPTURE(strict);
+	const PrimaryKeyMode pk_mode = strict ? PrimaryKeyMode::Strict : PrimaryKeyMode::NotNull;
+
+	duckdb::DuckDB db(nullptr);
+	duckdb::Connection con(db);
+	auto logger = mdlog::Logger::CreateNopLogger();
+	MdSqlGenerator generator(logger);
+
+	const table_def table {"memory", "main", "t"};
+	REQUIRE_NO_FAIL(con.Query(strict ? "CREATE TABLE t (id INTEGER PRIMARY KEY, region VARCHAR)"
+	                                 : "CREATE TABLE t (id INTEGER NOT NULL, region VARCHAR)"));
+	// region has a NULL. The ids are unique, so in strict mode, the duplicate check alone would not catch this.
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1, 'us'), (2, NULL)"));
+
+	// Promote the existing, partly-NULL "region" column into the key.
+	const std::vector<column_def> requested = {
+	    column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
+	    column_def {.name = "region", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true}};
+
+	// A RecoverableError is what the server turns into a Fivetran task.
+	std::string task_message;
+	try {
+		generator.alter_table(con, table, requested, /*drop_columns=*/false, pk_mode);
+		FAIL("expected a RecoverableError");
+	} catch (const md_error::RecoverableError& e) {
+		task_message = e.what();
+	}
+	REQUIRE_THAT(task_message, Catch::Matchers::ContainsSubstring("contains NULL values"));
+	REQUIRE_THAT(task_message, Catch::Matchers::ContainsSubstring("region"));
+
+	// The table is untouched: region is still nullable, both rows survive and strict mode keeps its PRIMARY KEY.
+	REQUIRE(primary_key_names(generator.describe_table(con, table)) == std::vector<std::string> {"id"});
+	auto res = con.Query("SELECT id, region FROM t ORDER BY id");
+	REQUIRE_NO_FAIL(res);
+	REQUIRE(res->RowCount() == 2);
+	check_row(res, 0, {duckdb::Value::INTEGER(1), "us"});
+	check_row(res, 1, {duckdb::Value::INTEGER(2), duckdb::Value()});
+	REQUIRE(con.Query("INSERT INTO t VALUES (1, 'eu')")->HasError() == strict);
 }

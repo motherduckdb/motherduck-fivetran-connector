@@ -197,14 +197,14 @@ grpc::Status DestinationSdkImpl::ConfigurationForm(::grpc::ServerContext*,
 	strict_primary_keys_field.set_name(config::PROP_STRICT_PRIMARY_KEYS);
 	strict_primary_keys_field.set_label("Strict Primary Keys");
 	strict_primary_keys_field.set_description(
-	    "When enabled, tables are created with an enforced PRIMARY KEY constraint. Consequently, an index has to be "
-	    "built and maintained on the target table. Leave this OFF (the "
-	    "default) to mark primary key columns NOT NULL without a uniqueness constraint. This is helpful if uniqueness "
-	    "is already enforced at the source, and required "
-	    "for backends that do not support primary keys (such as DuckLake).");
+	    "When enabled, tables are created with an enforced PRIMARY KEY constraint. Consequently, an index "
+	    "has to be built and maintained on the target table. Turn this OFF to mark primary key columns NOT NULL "
+	    "without a uniqueness constraint. This is helpful if uniqueness is already enforced at the source, and "
+	    "required for backends that do not support primary keys (such as DuckLake). After a change, each existing "
+	    "table is converted on its next sync.");
 	strict_primary_keys_field.mutable_toggle_field();
 	strict_primary_keys_field.set_required(false);
-	strict_primary_keys_field.set_default_value("false");
+	strict_primary_keys_field.set_default_value("true");
 	response->add_fields()->CopyFrom(strict_primary_keys_field);
 
 	for (const auto& test_case : config_tester::get_test_cases()) {
@@ -334,6 +334,7 @@ grpc::Status DestinationSdkImpl::AlterTable(::grpc::ServerContext*,
 		table_def table_name {ctx->GetDBName(), get_schema_name(request), request->table().name()};
 
 		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
+		sql_generator->ensure_primary_key_mode(con, table_name, ctx->GetPrimaryKeyMode());
 		sql_generator->alter_table(con, table_name, get_duckdb_columns(request->table().columns()),
 		                           request->drop_columns(), ctx->GetPrimaryKeyMode());
 		response->set_success(true);
@@ -425,6 +426,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 		if (columns_pk.empty()) {
 			throw std::invalid_argument("No primary keys found");
 		}
+
+		sql_generator->ensure_primary_key_mode(con, table_name, ctx->GetPrimaryKeyMode());
 
 		for (auto& filename : request->replace_files()) {
 			logger.info("Processing replace file " + filename);
@@ -529,6 +532,8 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 		if (columns_pk.empty()) {
 			throw std::invalid_argument("No primary keys found");
 		}
+
+		sql_generator->ensure_primary_key_mode(con, table_name, ctx->GetPrimaryKeyMode());
 
 		/*
 		The latest_active_records (lar) table is used to process the update file
