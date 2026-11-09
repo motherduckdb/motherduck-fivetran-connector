@@ -149,22 +149,21 @@ TEST_CASE("CreateTable marks key columns NOT NULL and adds a PRIMARY KEY in stri
 	check_column(response, 2, "val", ::fivetran_sdk::v2::DataType::STRING, false);
 }
 
-TEST_CASE("WriteBatch converts a table to the configured primary key mode", "[integration][write-batch]") {
+TEST_CASE("Write and AlterTable requests convert a table to the configured primary key mode", "[integration]") {
 	DestinationSdkImpl service;
 	const bool is_strict_pk_mode = GENERATE(false, true);
 	CAPTURE(is_strict_pk_mode);
 
 	// The table was created before the user switched the mode.
 	const std::string table_name = "books" + std::to_string(randint());
-	create_table(service, table_name, TEST_COLUMNS, !is_strict_pk_mode);
+	create_table(service, table_name, HISTORY_TEST_COLUMNS, !is_strict_pk_mode);
 
-	{
+	// The requests carry no files and no column changes, so converting the table is all they do.
+	SECTION("WriteBatch") {
 		::fivetran_sdk::v2::WriteBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
 		set_strict_primary_keys(request, is_strict_pk_mode);
-		define_table(request, table_name, TEST_COLUMNS);
-		request.mutable_file_params()->set_null_string("magic-nullvalue");
-		request.add_replace_files(TEST_RESOURCES_DIR + "books_upsert.csv");
+		define_table(request, table_name, HISTORY_TEST_COLUMNS);
 
 		::fivetran_sdk::v2::WriteBatchResponse response;
 		auto status = service.WriteBatch(nullptr, &request, &response);
@@ -172,10 +171,36 @@ TEST_CASE("WriteBatch converts a table to the configured primary key mode", "[in
 		REQUIRE_FALSE(response.has_task());
 	}
 
-	// The batch wrote id 2, so another row with it duplicates the key.
+	SECTION("WriteHistoryBatch") {
+		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
+		define_table(request, table_name, HISTORY_TEST_COLUMNS);
+
+		::fivetran_sdk::v2::WriteBatchResponse response;
+		auto status = service.WriteHistoryBatch(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+		REQUIRE_FALSE(response.has_task());
+	}
+
+	SECTION("AlterTable") {
+		::fivetran_sdk::v2::AlterTableRequest request;
+		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		set_strict_primary_keys(request, is_strict_pk_mode);
+		define_table(request, table_name, HISTORY_TEST_COLUMNS);
+
+		::fivetran_sdk::v2::AlterTableResponse response;
+		auto status = service.AlterTable(nullptr, &request, &response);
+		REQUIRE_NO_FAIL(status);
+		REQUIRE_FALSE(response.has_task());
+	}
+
+	// Only a PRIMARY KEY rejects a duplicate key.
 	auto con = get_test_connection(MD_TOKEN);
-	auto dup = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + " (id) VALUES (2)");
-	REQUIRE(dup->HasError() == is_strict_pk_mode);
+	const std::string insert =
+	    "INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + " (id, _fivetran_start) VALUES (1, '2024-01-01')";
+	REQUIRE_NO_FAIL(con->Query(insert));
+	REQUIRE(con->Query(insert)->HasError() == is_strict_pk_mode);
 }
 
 TEST_CASE("WriteBatch", "[integration][write-batch]") {
