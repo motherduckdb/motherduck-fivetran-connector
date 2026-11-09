@@ -219,6 +219,44 @@ TEST_CASE("AlterTable changes the key in place for a NOT NULL table (no PRIMARY 
 	REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1, 'b', '')"));
 }
 
+TEST_CASE("AlterTable in NotNull mode adds a key column, changes a type and extends the key in one request",
+          "[alter]") {
+	// All statements run in place in one transaction. DuckDB rejects SET NOT NULL after an UPDATE on the same table in
+	// the same transaction ("Cannot create index with outstanding updates"), so none of them may turn into one.
+	duckdb::DuckDB db(nullptr);
+	duckdb::Connection con(db);
+	auto logger = mdlog::Logger::CreateNopLogger();
+	MdSqlGenerator generator(logger);
+
+	const table_def table {"memory", "main", "t"};
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE t (id INTEGER NOT NULL, v INTEGER, region VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1, 10, 'us'), (2, 20, 'eu')"));
+	auto table_oid_before = con.Query("SELECT table_oid FROM duckdb_tables() WHERE table_name = 't'");
+	REQUIRE_NO_FAIL(table_oid_before);
+
+	// v changes its type, region joins the key and k is a new key column.
+	std::vector requested = {column_def {.name = "id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true},
+	                         column_def {.name = "v", .type = duckdb::LogicalTypeId::BIGINT},
+	                         column_def {.name = "region", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true},
+	                         column_def {.name = "k", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true}};
+	const PrimaryKeyMode pk_mode = PrimaryKeyMode::NotNull;
+	generator.alter_table(con, table, requested, /*drop_columns=*/false, pk_mode);
+
+	const auto columns = generator.describe_table(con, table);
+	REQUIRE(primary_key_names(columns) == std::vector<std::string> {"id", "region", "k"});
+	REQUIRE(columns[1].type == duckdb::LogicalTypeId::BIGINT);
+	auto res = con.Query("SELECT id, v, region, k FROM t ORDER BY id");
+	REQUIRE_NO_FAIL(res);
+	REQUIRE(res->RowCount() == 2);
+	check_row(res, 0, {duckdb::Value::INTEGER(1), duckdb::Value::BIGINT(10), "us", ""});
+	check_row(res, 1, {duckdb::Value::INTEGER(2), duckdb::Value::BIGINT(20), "eu", ""});
+
+	// A recreated table would have a new oid.
+	auto table_oid_after = con.Query("SELECT table_oid FROM duckdb_tables() WHERE table_name = 't'");
+	REQUIRE_NO_FAIL(table_oid_after);
+	REQUIRE(table_oid_after->GetValue(0, 0) == table_oid_before->GetValue(0, 0));
+}
+
 TEST_CASE("AlterTable in strict mode rebuilds the PRIMARY KEY over the new key", "[alter]") {
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
