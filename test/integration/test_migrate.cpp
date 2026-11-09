@@ -1169,6 +1169,10 @@ TEST_CASE("Migrate - live to history", "[integration][migrate]") {
 TEST_CASE("Migrate - history to live", "[integration][migrate]") {
 	DestinationSdkImpl service;
 	const std::string table_name = "migrate_hist_live_" + std::to_string(randint());
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
+	// Only strict mode re-adds a PRIMARY KEY constraint, which DESCRIBE reports as "PRI".
+	const duckdb::Value pk_key = is_strict_pk_mode ? duckdb::Value("PRI") : duckdb::Value();
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -1199,6 +1203,7 @@ TEST_CASE("Migrate - history to live", "[integration][migrate]") {
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_type(::fivetran_sdk::v2::HISTORY_TO_LIVE);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_keep_deleted_rows(false);
 
@@ -1216,6 +1221,14 @@ TEST_CASE("Migrate - history to live", "[integration][migrate]") {
 		check_row(res, 0, {1, "current"});
 	}
 
+	// The key is id alone again
+	{
+		auto res = con->Query("SELECT key, \"null\" FROM (DESCRIBE " + TEST_SCHEMA_NAME + "." + table_name +
+		                      ") WHERE column_name = 'id'");
+		REQUIRE_NO_FAIL(res);
+		check_row(res, 0, {pk_key, "NO"});
+	}
+
 	// Verify history columns are gone
 	{
 		auto res = con->Query("SELECT _fivetran_start FROM " + TEST_SCHEMA_NAME + "." + table_name);
@@ -1229,6 +1242,10 @@ TEST_CASE("Migrate - history to live", "[integration][migrate]") {
 TEST_CASE("Migrate - history to soft delete", "[integration][migrate]") {
 	DestinationSdkImpl service;
 	const std::string table_name = "migrate_hist_soft_" + std::to_string(randint());
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
+	// Only strict mode re-adds a PRIMARY KEY constraint, which DESCRIBE reports as "PRI".
+	const duckdb::Value pk_key = is_strict_pk_mode ? duckdb::Value("PRI") : duckdb::Value();
 
 	auto con = get_test_connection(MD_TOKEN);
 
@@ -1259,6 +1276,7 @@ TEST_CASE("Migrate - history to soft delete", "[integration][migrate]") {
 	{
 		::fivetran_sdk::v2::MigrateRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_type(
 		    ::fivetran_sdk::v2::HISTORY_TO_SOFT_DELETE);
 		request.mutable_details()->mutable_table_sync_mode_migration()->set_soft_deleted_column("_fivetran_deleted");
@@ -1277,6 +1295,16 @@ TEST_CASE("Migrate - history to soft delete", "[integration][migrate]") {
 		REQUIRE(res->RowCount() == 2);
 		REQUIRE(res->GetValue(2, 0) == false); // id=1 was active, so not deleted
 		REQUIRE(res->GetValue(2, 1) == true);  // id=2 was inactive, so deleted
+	}
+
+	// The key is (id, id2) again
+	{
+		auto res = con->Query("SELECT key, \"null\" FROM (DESCRIBE " + TEST_SCHEMA_NAME + "." + table_name +
+		                      ") WHERE column_name IN ('id', 'id2') ORDER BY column_name");
+		REQUIRE_NO_FAIL(res);
+		REQUIRE(res->RowCount() == 2);
+		check_row(res, 0, {pk_key, "NO"});
+		check_row(res, 1, {pk_key, "NO"});
 	}
 
 	// Verify history columns are gone

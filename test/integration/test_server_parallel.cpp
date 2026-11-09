@@ -30,9 +30,10 @@ TEST_CASE("Parallel WriteBatch requests", "[integration][write-batch][parallel]"
 	std::vector<std::future<grpc::Status>> futures;
 
 	for (unsigned int i = 0; i < num_tables; i++) {
-		futures.push_back(std::async(std::launch::async, [&service, &table_names, i]() {
+		futures.push_back(std::async(std::launch::async, [&service, &table_names, is_strict_pk_mode, i]() {
 			::fivetran_sdk::v2::WriteBatchRequest request;
 			add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+			set_strict_primary_keys(request, is_strict_pk_mode);
 			define_table(request, table_names[i], TEST_COLUMNS);
 			request.mutable_file_params()->set_null_string("magic-nullvalue");
 			request.add_replace_files(TEST_RESOURCES_DIR + "books_upsert.csv");

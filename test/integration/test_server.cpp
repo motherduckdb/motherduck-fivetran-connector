@@ -248,6 +248,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 		// insert rows from encrypted / compressed file
 		::fivetran_sdk::v2::WriteBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		request.mutable_file_params()->set_encryption(::fivetran_sdk::v2::Encryption::AES);
 		request.mutable_file_params()->set_compression(::fivetran_sdk::v2::Compression::ZSTD);
 		define_table(request, table_name, TEST_COLUMNS);
@@ -281,6 +282,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 		// upsert
 		::fivetran_sdk::v2::WriteBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		define_table(request, table_name, TEST_COLUMNS);
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 		const std::string filename = "books_upsert.csv";
@@ -311,6 +313,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 		// delete
 		::fivetran_sdk::v2::WriteBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		define_table(request, table_name, TEST_COLUMNS);
 		const std::string filename = "books_delete.csv";
 		const std::string filepath = TEST_RESOURCES_DIR + filename;
@@ -338,6 +341,7 @@ TEST_CASE("WriteBatch", "[integration][write-batch]") {
 		// update
 		::fivetran_sdk::v2::WriteBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 		define_table(request, table_name, TEST_COLUMNS);
@@ -475,6 +479,7 @@ TEST_CASE("WriteBatch with blob and unmodified string", "[integration][write-bat
 		// update
 		::fivetran_sdk::v2::WriteBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 		define_table(request, table_name, columns);
@@ -534,6 +539,7 @@ TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
 		// insert rows
 		::fivetran_sdk::v2::WriteBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		define_test_multikey_table(request, table_name);
 		const std::string filename = "multikey_table_upsert.csv";
 		const std::string filepath = TEST_RESOURCES_DIR + filename;
@@ -560,6 +566,7 @@ TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
 		// update
 		::fivetran_sdk::v2::WriteBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		request.mutable_file_params()->set_unmodified_string("magic-unmodified-value");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 		define_test_multikey_table(request, table_name);
@@ -588,6 +595,7 @@ TEST_CASE("Table with multiple primary keys", "[integration][write-batch]") {
 		// delete
 		::fivetran_sdk::v2::WriteBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		define_test_multikey_table(request, table_name);
 		const std::string filename = "multikey_table_delete.csv";
 		const std::string filepath = TEST_RESOURCES_DIR + filename;
@@ -742,6 +750,7 @@ TEST_CASE("WriteBatch succeeds with empty max_record_size", "[integration][write
 		(*request.mutable_configuration())["motherduck_token"] = MD_TOKEN;
 		(*request.mutable_configuration())["motherduck_database"] = TEST_DATABASE_NAME;
 		(*request.mutable_configuration())["max_record_size"] = "";
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		define_table(request, table_name, TEST_COLUMNS);
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 		request.add_replace_files(TEST_RESOURCES_DIR + "books_upsert.csv");
@@ -841,18 +850,22 @@ TEST_CASE("Test that error is thrown for invalid DECIMAL width and scale") {
 
 TEST_CASE("AlterTable with constraints", "[integration]") {
 	DestinationSdkImpl service;
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
 
 	const std::string table_name = "some_table" + std::to_string(randint());
 
 	auto con = get_test_connection(MD_TOKEN);
 	create_table(service, table_name,
-	             std::array {ID_PK, column_def {.name = "name", .type = duckdb::LogicalTypeId::VARCHAR}});
+	             std::array {ID_PK, column_def {.name = "name", .type = duckdb::LogicalTypeId::VARCHAR}},
+	             is_strict_pk_mode);
 
 	{
 		// Alter Table to add a new primary key to an empty table
 		::fivetran_sdk::v2::AlterTableRequest request;
 
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
 		add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, false);
 		add_col(request, "id_new", ::fivetran_sdk::v2::DataType::INT, true);
@@ -888,6 +901,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 		::fivetran_sdk::v2::AlterTableRequest request;
 
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
 		// turn existing column into a primary key
 		add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, true);
@@ -928,6 +942,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 		::fivetran_sdk::v2::AlterTableRequest request;
 
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
 		add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, true);
 
@@ -964,6 +979,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 		::fivetran_sdk::v2::AlterTableRequest request;
 
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
 		add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, true);
 		// id_new is missing but will not be dropped
@@ -996,6 +1012,7 @@ TEST_CASE("AlterTable with constraints", "[integration]") {
 		::fivetran_sdk::v2::AlterTableRequest request;
 
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
 		add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, true);
 
@@ -1089,6 +1106,7 @@ TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
 		// upsert some data, so that delete-earliest has something to delete
 		::fivetran_sdk::v2::WriteBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		define_history_test_table(request, table_name);
 
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
@@ -1105,6 +1123,7 @@ TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
 		// idempotence in the next section)
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		define_history_test_table(request, table_name);
 
 		request.add_earliest_start_files(TEST_RESOURCES_DIR + "books_history_earliest.csv");
@@ -1145,6 +1164,7 @@ TEST_CASE("WriteHistoryBatch with update files", "[integration][write-batch]") {
 		// update files
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		// TBD: check what happens when unmodified string is not set - it seems to
 		// be blank but shoudl it fail instead?
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
@@ -1234,6 +1254,7 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 		// because there is no data), plus upsert file
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 
@@ -1267,6 +1288,7 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 		// would also be the earliest start file)
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 
@@ -1286,6 +1308,7 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 		// life
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 
@@ -1304,6 +1327,7 @@ TEST_CASE("WriteHistoryBatch upsert and delete", "[integration][write-batch]") {
 		// has only the _fivetran_end column and the primary key in it
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 
@@ -1345,6 +1369,7 @@ TEST_CASE("WriteHistoryBatch should delete overlapping records", "[integration][
 		// Initial batch
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 
@@ -1362,6 +1387,7 @@ TEST_CASE("WriteHistoryBatch should delete overlapping records", "[integration][
 		// Batch with overlapping value for id=2
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 
@@ -1407,6 +1433,7 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with reordered CSV columns", "[integ
 		// _fivetran_synced, _fivetran_start, _fivetran_deleted, id
 		::fivetran_sdk::v2::WriteBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		define_history_test_table_reordered(request, table_name);
 
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
@@ -1436,6 +1463,7 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with reordered CSV columns", "[integ
 		// use explicit column lists and don't rely on positional matching.
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		request.mutable_file_params()->set_unmodified_string("unmod-testmarker");
 		request.mutable_file_params()->set_null_string("magic-nullvalue");
 
@@ -1501,6 +1529,7 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with upsert", "[integration][write-b
 		// WriteBatch
 		::fivetran_sdk::v2::WriteBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP");
 
@@ -1518,6 +1547,7 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with upsert", "[integration][write-b
 		// because there is no data), plus upsert file
 		::fivetran_sdk::v2::WriteHistoryBatchRequest request;
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		request.mutable_file_params()->set_unmodified_string("unmod-NcK9NIjPUutCsz4mjOQQztbnwnE1sY3");
 		request.mutable_file_params()->set_null_string("null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP");
 
@@ -1586,6 +1616,8 @@ TEST_CASE("WriteBatch and WriteHistoryBatch with upsert", "[integration][write-b
 
 TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") {
 	DestinationSdkImpl service;
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
 
 	const std::string table_name = "some_table" + std::to_string(randint());
 
@@ -1595,7 +1627,8 @@ TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") 
 	             std::array {
 	                 column_def {.name = "id", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true},
 	                 column_def {.name = "name", .type = duckdb::LogicalTypeId::VARCHAR},
-	             });
+	             },
+	             is_strict_pk_mode);
 
 	{
 		// Alter Table to drop a regular column -- no-op because columns must not be
@@ -1603,6 +1636,7 @@ TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") 
 		::fivetran_sdk::v2::AlterTableRequest request;
 
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
 		request.set_drop_columns(false);
 		// the second column is missing, but it should be retained
@@ -1631,6 +1665,7 @@ TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") 
 		::fivetran_sdk::v2::AlterTableRequest request;
 
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		// the first column is missing, but it should be retained
 		add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, false);
 
@@ -1648,6 +1683,7 @@ TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") 
 		::fivetran_sdk::v2::AlterTableRequest request;
 
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING,
 		        false); // primary key to regular column
 		// the second column is missing, but it should be retained
@@ -1665,6 +1701,7 @@ TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") 
 		::fivetran_sdk::v2::AlterTableRequest request;
 
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		// one new column coming in before an existing column
 		add_col(request, "new_before", ::fivetran_sdk::v2::DataType::STRING, false);
 		// the first column is missing, but it should be retained
@@ -1696,6 +1733,7 @@ TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") 
 		::fivetran_sdk::v2::AlterTableRequest request;
 
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+		set_strict_primary_keys(request, is_strict_pk_mode);
 		// one new column coming in before an existing column
 		add_col(request, "new_before2", ::fivetran_sdk::v2::DataType::STRING, false);
 		// the first column is missing, but it should be retained
