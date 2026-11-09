@@ -10,6 +10,7 @@
 #include "scoped_transaction.hpp"
 #include "sql_generator.hpp"
 
+#include <array>
 #include <fstream>
 #include <functional>
 #include <limits>
@@ -90,32 +91,26 @@ void reset_file_cursor(const int file_descriptor) {
 	}
 }
 
-enum class CompressionType { None = 0, ZSTD = 1 };
-
-CompressionType determine_compression_type(const std::string& file_path) {
+void validate_zstd_magic_number(const std::string& file_path, const std::string& original_filename) {
 	std::ifstream ifs(file_path, std::ios::binary);
 	if (ifs.fail()) {
 		throw std::system_error(errno, std::generic_category(), "Failed to open file <" + file_path + ">");
 	}
 
-	constexpr int MAGIC_SIZE = 4;
-	uint8_t magic_bytes[MAGIC_SIZE];
-	ifs.read(reinterpret_cast<char*>(magic_bytes), sizeof(magic_bytes));
+	// 0xFD2FB528 in little-endian
+	constexpr std::array<char, 4> zstd_magic_number {'\x28', '\xB5', '\x2F', '\xFD'};
+	std::array<char, zstd_magic_number.size()> magic_bytes {};
+	ifs.read(magic_bytes.data(), static_cast<std::streamsize>(magic_bytes.size()));
 
-	if (ifs.fail() && !ifs.eof()) {
+	if (ifs.bad()) {
 		throw std::system_error(errno, std::generic_category(),
-		                        "Failed trying to read zstd magic bytes from file <" + file_path + ">");
+		                        "Failed trying to read zstd magic number from file <" + file_path + ">");
 	}
 
-	// File has fewer than 4 bytes, hence cannot be zstd-compressed
-	if (ifs.gcount() < MAGIC_SIZE) {
-		return CompressionType::None;
+	if (magic_bytes != zstd_magic_number) {
+		throw std::runtime_error("File <" + original_filename +
+		                         "> is declared as zstd-compressed but does not start with the zstd magic number");
 	}
-
-	// Check for ZSTD magic number (0x28B52FFD in little-endian)
-	const bool is_zstd_compressed =
-	    magic_bytes[0] == 0x28 && magic_bytes[1] == 0xB5 && magic_bytes[2] == 0x2F && magic_bytes[3] == 0xFD;
-	return is_zstd_compressed ? CompressionType::ZSTD : CompressionType::None;
 }
 
 /// Adds a SELECT clause with the specified columns to the query
@@ -207,7 +202,7 @@ void add_type_options(std::ostringstream& query, const std::vector<column_def>& 
 /// Generates a DuckDB SQL query string to read a CSV file with the specified
 /// properties
 std::string generate_read_csv_query(const std::string& filepath, const IngestProperties& props,
-                                    const CompressionType compression, const mdlog::Logger& logger) {
+                                    const mdlog::Logger& logger) {
 	std::ostringstream query;
 	query << "FROM read_csv(" << duckdb::KeywordHelper::WriteQuoted(filepath, '\'');
 	// We set auto_detect=true so that DuckDB can detect the dialect options that
@@ -236,7 +231,7 @@ std::string generate_read_csv_query(const std::string& filepath, const IngestPro
 
 	query << ", max_line_size=" << std::to_string(max_record_size_bytes);
 	query << ", buffer_size=" << std::to_string(buffer_size);
-	query << ", compression=" << (compression == CompressionType::ZSTD ? "'zstd'" : "'none'");
+	query << ", compression=" << (props.compression == CompressionType::ZSTD ? "'zstd'" : "'none'");
 
 	// We do not specify timestampformat because CSV files can contain two
 	// different formats:
@@ -281,11 +276,13 @@ void ProcessFile(duckdb::Connection& con, const IngestProperties& props, mdlog::
 		reset_file_cursor(temp_file.value().fd);
 	}
 
-	const auto compression = determine_compression_type(decrypted_file_path);
+	if (props.compression == CompressionType::ZSTD) {
+		validate_zstd_magic_number(decrypted_file_path, props.filename);
 
-	// The last function call read four bytes. Reset to the beginning again.
-	if (temp_file.has_value()) {
-		reset_file_cursor(temp_file.value().fd);
+		// The last function call read four bytes. Reset to the beginning again.
+		if (temp_file.has_value()) {
+			reset_file_cursor(temp_file.value().fd);
+		}
 	}
 
 	ScopedTransaction transaction(con, logger);
@@ -295,8 +292,8 @@ void ProcessFile(duckdb::Connection& con, const IngestProperties& props, mdlog::
 
 	// Create staging table in remote database. We upload all data anyway, and
 	// this way we make sure that all processing happens remotely.
-	const auto final_query = "CREATE TABLE " + staging_table_name + " AS " +
-	                         generate_read_csv_query(decrypted_file_path, props, compression, logger);
+	const auto final_query =
+	    "CREATE TABLE " + staging_table_name + " AS " + generate_read_csv_query(decrypted_file_path, props, logger);
 	logger.info("    creating staging table: " + final_query);
 	const auto create_staging_table_res = con.Query(final_query);
 	if (create_staging_table_res->HasError() &&
