@@ -1262,14 +1262,12 @@ void MdSqlGenerator::set_not_null(duckdb::Connection& con, const table_def& tabl
 		return;
 	}
 
-	const std::string& error_msg = result->GetError();
-
-	if (not_null && error_msg.find("NOT NULL constraint failed") != std::string::npos) {
+	if (not_null && result->GetError().find("NOT NULL constraint failed") != std::string::npos) {
 		throw null_in_primary_key_error(table, column_name);
 	}
 
-	throw std::runtime_error("Could not " + std::string(not_null ? "set" : "drop") + " NOT NULL on column <" +
-	                         column_name + "> of table <" + table.to_escaped_string() + ">: " + error_msg);
+	throw_if_query_error(*result, "Could not " + std::string(not_null ? "set" : "drop") + " NOT NULL on column <" +
+	                                  column_name + "> of table <" + table.to_escaped_string() + ">");
 }
 
 void MdSqlGenerator::copy_column(duckdb::Connection& con, const table_def& table, const std::string& from_column_name,
