@@ -9,6 +9,7 @@
 #include "sql_generator.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <string>
 #include <vector>
 
@@ -63,42 +64,33 @@ TEST_CASE("MERGE upsert is idempotent when the same batch is retried", "[merge]"
 	}
 }
 
-TEST_CASE("Without a constraint, a duplicate key within one MERGE batch is inserted twice", "[merge]") {
+TEST_CASE("MERGE inserts a duplicate key within one batch twice unless a PRIMARY KEY rejects it", "[merge]") {
+	// Two source rows with the same key that the target does not have yet both take the INSERT branch. This is the
+	// only way MERGE can introduce a duplicate. Fivetran de-duplicates within a batch, so this should not occur in
+	// practice.
+	const bool has_primary_key = GENERATE(false, true);
+	CAPTURE(has_primary_key);
+
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
 
-	// NOT NULL only, no key constraint
-	REQUIRE_NO_FAIL(con.Query("CREATE TABLE target (id INTEGER NOT NULL, v VARCHAR)"));
-	REQUIRE_NO_FAIL(con.Query("CREATE TABLE source (id INTEGER, v VARCHAR)"));
-	REQUIRE_NO_FAIL(con.Query("INSERT INTO source VALUES (1, 'x'), (1, 'y')")); // duplicate key, both new
-
-	REQUIRE_NO_FAIL(con.Query("MERGE INTO target USING source ON target.id = source.id "
-	                          "WHEN MATCHED THEN UPDATE SET v = source.v "
-	                          "WHEN NOT MATCHED THEN INSERT (id, v) VALUES (source.id, source.v)"));
-
-	// Both source rows land under the same key: the target had no row for id=1,
-	// so neither source row matched, and each took the INSERT branch.
-	// This is the only way MERGE can introduce a duplicate.
-	// Fivetran de-duplicates  within a batch, so this should not occur in practice.
-	REQUIRE(row_count(con, "target") == 2);
-	REQUIRE(scalar(con, "SELECT count(*) FROM target WHERE id = 1") == "2");
-	REQUIRE(scalar(con, "SELECT string_agg(v, ',' ORDER BY v) FROM target WHERE id = 1") == "x,y");
-}
-
-TEST_CASE("A PRIMARY KEY constraint rejects a duplicate key within one MERGE batch", "[merge]") {
-	duckdb::DuckDB db(nullptr);
-	duckdb::Connection con(db);
-
-	// Strict primary key mode enforces uniqueness
-	REQUIRE_NO_FAIL(con.Query("CREATE TABLE target (id INTEGER PRIMARY KEY, v VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query(has_primary_key ? "CREATE TABLE target (id INTEGER PRIMARY KEY, v VARCHAR)"
+	                                          : "CREATE TABLE target (id INTEGER NOT NULL, v VARCHAR)"));
 	REQUIRE_NO_FAIL(con.Query("CREATE TABLE source (id INTEGER, v VARCHAR)"));
 	REQUIRE_NO_FAIL(con.Query("INSERT INTO source VALUES (1, 'x'), (1, 'y')"));
 
-	auto res = con.Query("MERGE INTO target USING source ON target.id = source.id "
-	                     "WHEN MATCHED THEN UPDATE SET v = source.v "
-	                     "WHEN NOT MATCHED THEN INSERT (id, v) VALUES (source.id, source.v)");
-	REQUIRE(res->HasError()); // PRIMARY KEY / UNIQUE constraint violation
-	REQUIRE(row_count(con, "target") == 0);
+	const auto res = con.Query("MERGE INTO target USING source ON target.id = source.id "
+	                           "WHEN MATCHED THEN UPDATE SET v = source.v "
+	                           "WHEN NOT MATCHED THEN INSERT (id, v) VALUES (source.id, source.v)");
+	if (has_primary_key) {
+		// Rejected by the constraint and rolled back.
+		REQUIRE(res->HasError());
+		REQUIRE(row_count(con, "target") == 0);
+	} else {
+		REQUIRE_NO_FAIL(res);
+		REQUIRE(row_count(con, "target") == 2);
+		REQUIRE(scalar(con, "SELECT string_agg(v, ',' ORDER BY v) FROM target WHERE id = 1") == "x,y");
+	}
 }
 
 TEST_CASE("MERGE does not error when several source rows match one target row", "[merge]") {

@@ -110,46 +110,10 @@ TEST_CASE("CreateTable, DescribeTable for existing table, AlterTable", "[integra
 	}
 }
 
-TEST_CASE("CreateTable in NotNull mode uses NOT NULL without a PRIMARY KEY constraint", "[integration]") {
-	DestinationSdkImpl service;
-	const std::string table_name = "some_table" + std::to_string(randint());
-	auto con = get_test_connection(MD_TOKEN);
+TEST_CASE("CreateTable marks key columns NOT NULL and adds a PRIMARY KEY in strict mode", "[integration]") {
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
 
-	create_table(service, table_name,
-	             std::array {
-	                 column_def {.name = "id", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true},
-	                 column_def {.name = "name", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true},
-	                 column_def {.name = "val", .type = duckdb::LogicalTypeId::VARCHAR},
-	             });
-
-	// No uniqueness is enforced in the NotNull mode: the same key can be inserted
-	// twice. (Checked behaviourally rather than through duckdb_constraints(), which
-	// this connection does not necessarily see for a just-created table.)
-	const std::string insert_dup =
-	    "INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + "(id, name) VALUES ('1', 'a')";
-	REQUIRE_NO_FAIL(con->Query(insert_dup));
-	REQUIRE_NO_FAIL(con->Query(insert_dup));
-	auto count = con->Query("SELECT COUNT(*) FROM " + TEST_SCHEMA_NAME + "." + table_name);
-	REQUIRE_NO_FAIL(count);
-	REQUIRE(count->GetValue(0, 0).GetValue<int64_t>() == 2);
-
-	// The key columns are marked NOT NULL; the non-key column stays nullable.
-	auto not_null = con->Query("SELECT column_name FROM duckdb_columns() WHERE table_name = '" + table_name +
-	                           "' AND NOT is_nullable ORDER BY column_name");
-	REQUIRE_NO_FAIL(not_null);
-	REQUIRE(not_null->RowCount() == 2);
-	REQUIRE(not_null->GetValue(0, 0).ToString() == "id");
-	REQUIRE(not_null->GetValue(0, 1).ToString() == "name");
-
-	// DescribeTable still round-trips the key columns as primary keys.
-	auto response = describe_table(service, table_name);
-	REQUIRE(!response.not_found());
-	check_column(response, 0, "id", ::fivetran_sdk::v2::DataType::STRING, true);
-	check_column(response, 1, "name", ::fivetran_sdk::v2::DataType::STRING, true);
-	check_column(response, 2, "val", ::fivetran_sdk::v2::DataType::STRING, false);
-}
-
-TEST_CASE("CreateTable in strict mode adds an enforced PRIMARY KEY constraint", "[integration]") {
 	DestinationSdkImpl service;
 	const std::string table_name = "some_table" + std::to_string(randint());
 	auto con = get_test_connection(MD_TOKEN);
@@ -160,49 +124,29 @@ TEST_CASE("CreateTable in strict mode adds an enforced PRIMARY KEY constraint", 
 	                 column_def {.name = "name", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true},
 	                 column_def {.name = "val", .type = duckdb::LogicalTypeId::VARCHAR},
 	             },
-	             /*strict_primary_keys=*/true);
+	             is_strict_pk_mode);
 
-	// Uniqueness is enforced by the PRIMARY KEY: inserting a duplicate composite
-	// key fails.
-	auto ins1 = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + "(id, name) VALUES ('1', 'a')");
-	REQUIRE_NO_FAIL(ins1);
-	auto ins2 = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + "(id, name) VALUES ('1', 'a')");
-	REQUIRE(ins2->HasError());
+	// Only a PRIMARY KEY rejects a duplicate key. (Checked behaviourally rather than through duckdb_constraints(),
+	// which this connection does not necessarily see for a just-created table.)
+	const std::string insert_dup =
+	    "INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + "(id, name) VALUES ('1', 'a')";
+	REQUIRE_NO_FAIL(con->Query(insert_dup));
+	REQUIRE(con->Query(insert_dup)->HasError() == is_strict_pk_mode);
 
+	// The key columns are marked NOT NULL; the non-key column stays nullable.
+	auto not_null = con->Query("SELECT column_name FROM duckdb_columns() WHERE table_name = '" + table_name +
+	                           "' AND NOT is_nullable ORDER BY column_name");
+	REQUIRE_NO_FAIL(not_null);
+	REQUIRE(not_null->RowCount() == 2);
+	REQUIRE(not_null->GetValue(0, 0).ToString() == "id");
+	REQUIRE(not_null->GetValue(0, 1).ToString() == "name");
+
+	// DescribeTable round-trips the key columns as primary keys in either mode.
 	auto response = describe_table(service, table_name);
 	REQUIRE(!response.not_found());
 	check_column(response, 0, "id", ::fivetran_sdk::v2::DataType::STRING, true);
 	check_column(response, 1, "name", ::fivetran_sdk::v2::DataType::STRING, true);
 	check_column(response, 2, "val", ::fivetran_sdk::v2::DataType::STRING, false);
-}
-
-TEST_CASE("CreateTable without the strict primary keys property adds an enforced PRIMARY KEY constraint",
-          "[integration]") {
-	DestinationSdkImpl service;
-	const std::string table_name = "some_table" + std::to_string(randint());
-	auto con = get_test_connection(MD_TOKEN);
-
-	{
-		// Connections created before the toggle existed do not send the property.
-		::fivetran_sdk::v2::CreateTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-		request.mutable_configuration()->erase(config::PROP_STRICT_PRIMARY_KEYS);
-		define_table(request, table_name,
-		             std::array {
-		                 column_def {.name = "id", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true},
-		                 column_def {.name = "val", .type = duckdb::LogicalTypeId::VARCHAR},
-		             });
-
-		::fivetran_sdk::v2::CreateTableResponse response;
-		auto status = service.CreateTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-		REQUIRE(response.success());
-	}
-
-	auto ins1 = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + "(id) VALUES ('1')");
-	REQUIRE_NO_FAIL(ins1);
-	auto ins2 = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + "(id) VALUES ('1')");
-	REQUIRE(ins2->HasError());
 }
 
 TEST_CASE("WriteBatch converts a table to the configured primary key mode", "[integration][write-batch]") {
@@ -1762,122 +1706,12 @@ TEST_CASE("AlterTable must not drop columns unless specified", "[integration]") 
 	}
 }
 
-TEST_CASE("AlterTable in strict pk mode rejects a non-unique primary key change", "[integration]") {
-	DestinationSdkImpl service;
-
-	const std::string table_name = "some_table" + std::to_string(randint());
-
-	auto con = get_test_connection(MD_TOKEN);
-	constexpr bool is_strict_pk_mode = true;
-	create_table(service, table_name,
-	             std::array {
-	                 column_def {.name = "id", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true},
-	                 column_def {.name = "name", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true},
-	             },
-	             is_strict_pk_mode);
-
-	{
-		// Two rows that share an "id" but differ on "name". The composite PK
-		// (id, name) is unique, but "id" alone is not.
-		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name +
-		                      "(id, name) VALUES ('1', 'a'), ('1', 'b')");
-		REQUIRE_NO_FAIL(res);
-	}
-
-	{
-		// Change the PK to (id, name2), where name2 is a new column, while "id" is not unique.
-		// In strict mode the enforced PRIMARY KEY must stay unique, so this is rejected as a task.
-		::fivetran_sdk::v2::AlterTableRequest request;
-
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-		set_strict_primary_keys(request, true);
-		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
-		add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, false);
-		add_col(request, "name2", ::fivetran_sdk::v2::DataType::STRING, true);
-
-		::fivetran_sdk::v2::AlterTableResponse response;
-		auto status = service.AlterTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-		REQUIRE(response.has_task());
-		REQUIRE_THAT(response.task().message(), Catch::Matchers::ContainsSubstring("would create duplicate rows"));
-	}
-
-	{
-		// The table must be untouched
-		auto response = describe_table(service, table_name);
-		REQUIRE(!response.not_found());
-		REQUIRE(response.table().columns_size() == 2);
-		check_column(response, 0, "id", ::fivetran_sdk::v2::DataType::STRING, true);
-		check_column(response, 1, "name", ::fivetran_sdk::v2::DataType::STRING, true);
-
-		auto res = con->Query("SELECT COUNT(*) FROM " + TEST_SCHEMA_NAME + "." + table_name);
-		REQUIRE_NO_FAIL(res);
-		REQUIRE(res->GetValue(0, 0).GetValue<int64_t>() == 2);
-	}
-}
-
-TEST_CASE("AlterTable in NotNull pk mode allows a non-unique primary key change", "[integration]") {
-	// NotNull mode: no uniqueness constraint, so re-keying (id, name) -> (id, name2) succeeds in place even
-	// though "id" is not unique.
-	DestinationSdkImpl service;
-
-	const std::string table_name = "some_table" + std::to_string(randint());
-
-	auto con = get_test_connection(MD_TOKEN);
-	constexpr bool is_strict_pk_mode = false;
-	create_table(service, table_name,
-	             std::array {
-	                 column_def {.name = "id", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true},
-	                 column_def {.name = "name", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true},
-	             },
-	             is_strict_pk_mode);
-
-	{
-		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name +
-		                      "(id, name) VALUES ('1', 'a'), ('1', 'b')");
-		REQUIRE_NO_FAIL(res);
-	}
-
-	{
-		::fivetran_sdk::v2::AlterTableRequest request;
-		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
-		set_strict_primary_keys(request, false);
-		add_col(request, "id", ::fivetran_sdk::v2::DataType::STRING, true);
-		add_col(request, "name", ::fivetran_sdk::v2::DataType::STRING, false);
-		add_col(request, "name2", ::fivetran_sdk::v2::DataType::STRING, true);
-
-		::fivetran_sdk::v2::AlterTableResponse response;
-		auto status = service.AlterTable(nullptr, &request, &response);
-		REQUIRE_NO_FAIL(status);
-		REQUIRE(response.success());
-		REQUIRE(!response.has_task());
-	}
-
-	{
-		// Key set is now {id, name2}; both original rows are kept, name2 defaulted.
-		auto response = describe_table(service, table_name);
-		REQUIRE(!response.not_found());
-		REQUIRE(response.table().columns_size() == 3);
-		check_column(response, 0, "id", ::fivetran_sdk::v2::DataType::STRING, true);
-		check_column(response, 1, "name", ::fivetran_sdk::v2::DataType::STRING, false);
-		check_column(response, 2, "name2", ::fivetran_sdk::v2::DataType::STRING, true);
-
-		auto res = con->Query("SELECT COUNT(*) FROM " + TEST_SCHEMA_NAME + "." + table_name);
-		REQUIRE_NO_FAIL(res);
-		REQUIRE(res->GetValue(0, 0).GetValue<int64_t>() == 2);
-
-		// name2 is a NOT NULL key column with the default empty-string value.
-		const std::string null_query =
-		    "SELECT COUNT(*) FROM " + TEST_SCHEMA_NAME + "." + table_name + " WHERE name2 IS NULL";
-		auto null_res = con->Query(null_query);
-		REQUIRE_NO_FAIL(null_res);
-		REQUIRE(null_res->GetValue(0, 0).GetValue<int64_t>() == 0);
-	}
-}
-
-TEST_CASE("AlterTable changes the primary key when the new key stays unique", "[integration]") {
+TEST_CASE("AlterTable changes the primary key unless strict mode finds duplicates under the new key", "[integration]") {
 	const bool is_strict_pk_mode = GENERATE(false, true);
-	CAPTURE(is_strict_pk_mode);
+	// The new key (id, name2) is unique exactly when the ids are, because name2 gets the same default in every row.
+	const bool has_duplicate_ids = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode, has_duplicate_ids);
+	const bool expects_task = is_strict_pk_mode && has_duplicate_ids;
 
 	DestinationSdkImpl service;
 
@@ -1890,17 +1724,11 @@ TEST_CASE("AlterTable changes the primary key when the new key stays unique", "[
 	                 column_def {.name = "name", .type = duckdb::LogicalTypeId::VARCHAR, .primary_key = true},
 	             },
 	             is_strict_pk_mode);
+	REQUIRE_NO_FAIL(con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name + "(id, name) VALUES " +
+	                           (has_duplicate_ids ? "('1', 'a'), ('1', 'b')" : "('1', 'a'), ('2', 'b')")));
 
 	{
-		// Distinct "id" values, so dropping "name" from the PK is still unique.
-		auto res = con->Query("INSERT INTO " + TEST_SCHEMA_NAME + "." + table_name +
-		                      "(id, name) VALUES ('1', 'a'), ('2', 'b')");
-		REQUIRE_NO_FAIL(res);
-	}
-
-	{
-		// Same PK change as the duplicate test, but the existing data keeps the new
-		// key unique, so the change succeeds in both modes.
+		// Change the key from (id, name) to (id, name2), where name2 is a new column.
 		::fivetran_sdk::v2::AlterTableRequest request;
 
 		add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
@@ -1912,18 +1740,28 @@ TEST_CASE("AlterTable changes the primary key when the new key stays unique", "[
 		::fivetran_sdk::v2::AlterTableResponse response;
 		auto status = service.AlterTable(nullptr, &request, &response);
 		REQUIRE_NO_FAIL(status);
-		REQUIRE(!response.has_task());
+		REQUIRE(response.has_task() == expects_task);
+		if (expects_task) {
+			REQUIRE_THAT(response.task().message(), Catch::Matchers::ContainsSubstring("would create duplicate rows"));
+		}
 	}
 
 	{
 		auto response = describe_table(service, table_name);
 		REQUIRE(!response.not_found());
-		REQUIRE(response.table().columns_size() == 3);
-		check_column(response, 0, "id", ::fivetran_sdk::v2::DataType::STRING, true);
-		check_column(response, 1, "name", ::fivetran_sdk::v2::DataType::STRING, false);
-		check_column(response, 2, "name2", ::fivetran_sdk::v2::DataType::STRING, true);
+		if (expects_task) {
+			// The table is untouched.
+			REQUIRE(response.table().columns_size() == 2);
+			check_column(response, 0, "id", ::fivetran_sdk::v2::DataType::STRING, true);
+			check_column(response, 1, "name", ::fivetran_sdk::v2::DataType::STRING, true);
+		} else {
+			REQUIRE(response.table().columns_size() == 3);
+			check_column(response, 0, "id", ::fivetran_sdk::v2::DataType::STRING, true);
+			check_column(response, 1, "name", ::fivetran_sdk::v2::DataType::STRING, false);
+			check_column(response, 2, "name2", ::fivetran_sdk::v2::DataType::STRING, true);
+		}
 
-		// The original data is preserved through the key change.
+		// Both rows survive either way.
 		auto res = con->Query("SELECT COUNT(*) FROM " + TEST_SCHEMA_NAME + "." + table_name);
 		REQUIRE_NO_FAIL(res);
 		REQUIRE(res->GetValue(0, 0).GetValue<int64_t>() == 2);
