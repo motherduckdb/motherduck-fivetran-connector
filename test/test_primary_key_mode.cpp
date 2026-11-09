@@ -46,7 +46,7 @@ std::vector<std::string> primary_key_names(const std::vector<column_def>& column
 
 } // namespace
 
-TEST_CASE("ensure_primary_key_mode recreates a table without its PRIMARY KEY in NotNull mode", "[alter]") {
+TEST_CASE("ensure_primary_key_mode recreates a table without its PRIMARY KEY in NotNull mode", "[pk-mode]") {
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
 	auto logger = mdlog::Logger::CreateNopLogger();
@@ -74,7 +74,7 @@ TEST_CASE("ensure_primary_key_mode recreates a table without its PRIMARY KEY in 
 	REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1, 'us', 'b')"));
 }
 
-TEST_CASE("ensure_primary_key_mode adds the PRIMARY KEY in place in strict mode", "[alter]") {
+TEST_CASE("ensure_primary_key_mode adds the PRIMARY KEY in place in strict mode", "[pk-mode]") {
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
 	auto logger = mdlog::Logger::CreateNopLogger();
@@ -98,7 +98,7 @@ TEST_CASE("ensure_primary_key_mode adds the PRIMARY KEY in place in strict mode"
 	             Catch::Matchers::ContainsSubstring("Duplicate key \"id: 1\" violates primary key constraint"));
 }
 
-TEST_CASE("ensure_primary_key_mode raises a task in strict mode when the table contains duplicate keys", "[alter]") {
+TEST_CASE("ensure_primary_key_mode raises a task in strict mode when the table contains duplicate keys", "[pk-mode]") {
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
 	auto logger = mdlog::Logger::CreateNopLogger();
@@ -122,7 +122,7 @@ TEST_CASE("ensure_primary_key_mode raises a task in strict mode when the table c
 	REQUIRE(row_count(con, "t") == 2);
 }
 
-TEST_CASE("ensure_primary_key_mode leaves tables that match the mode untouched", "[alter]") {
+TEST_CASE("ensure_primary_key_mode leaves tables that match the mode untouched", "[pk-mode]") {
 	const bool strict = GENERATE(false, true);
 	CAPTURE(strict);
 	const PrimaryKeyMode pk_mode = strict ? PrimaryKeyMode::Strict : PrimaryKeyMode::NotNull;

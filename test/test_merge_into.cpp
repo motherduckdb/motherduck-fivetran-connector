@@ -4,14 +4,10 @@
 
 #include "duckdb.hpp"
 #include "integration/common.hpp"
-#include "md_logging.hpp"
-#include "schema_types.hpp"
-#include "sql_generator.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <string>
-#include <vector>
 
 namespace {
 
