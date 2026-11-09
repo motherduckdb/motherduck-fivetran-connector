@@ -88,8 +88,8 @@ TEST_CASE("AlterTable recreate drops the columns the request drops if drop_colum
 }
 
 TEST_CASE("AlterTable removes the constraints of columns the request omits if drop_columns=false", "[alter]") {
-	// A column the request no longer contains must not stay part of the primary
-	// key, or WriteBatch's ON CONFLICT would no longer match it.
+	// A column the request no longer contains must not stay part of the primary key. WriteBatch no longer writes it,
+	// so its NOT NULL would reject every new row.
 	duckdb::DuckDB db(nullptr);
 	duckdb::Connection con(db);
 	auto logger = mdlog::Logger::CreateNopLogger();
@@ -121,11 +121,11 @@ TEST_CASE("AlterTable removes the constraints of columns the request omits if dr
 
 TEST_CASE("AlterTable defaults a new key column of every Fivetran type", "[alter]") {
 	// Adding a key column to a populated table needs a default the column type accepts. Check that there is a usable
-	// default for each column type, both when the table is recreated (it has a PRIMARY KEY) and when the column is
-	// added in place and set NOT NULL in the same transaction (it has none).
-	const bool table_has_pk = GENERATE(false, true);
-	CAPTURE(table_has_pk);
-	const PrimaryKeyMode pk_mode = table_has_pk ? PrimaryKeyMode::Strict : PrimaryKeyMode::NotNull;
+	// default for each column type, both in strict mode, where the table is recreated, and in NotNull mode, where the
+	// column is added in place and set NOT NULL in the same transaction.
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
+	const PrimaryKeyMode pk_mode = is_strict_pk_mode ? PrimaryKeyMode::Strict : PrimaryKeyMode::NotNull;
 
 	const auto* fivetran_types = fivetran_sdk::v2::DataType_descriptor();
 	for (int i = 0; i < fivetran_types->value_count(); i++) {
@@ -144,8 +144,8 @@ TEST_CASE("AlterTable defaults a new key column of every Fivetran type", "[alter
 		MdSqlGenerator generator(logger);
 
 		const table_def table {"memory", "main", "t"};
-		REQUIRE_NO_FAIL(con.Query(table_has_pk ? "CREATE TABLE t (id INTEGER PRIMARY KEY)"
-		                                       : "CREATE TABLE t (id INTEGER NOT NULL)"));
+		REQUIRE_NO_FAIL(con.Query(is_strict_pk_mode ? "CREATE TABLE t (id INTEGER PRIMARY KEY)"
+		                                            : "CREATE TABLE t (id INTEGER NOT NULL)"));
 		REQUIRE_NO_FAIL(con.Query("INSERT INTO t VALUES (1)"));
 
 		column_def new_key {.name = "new_key", .type = duckdb_type, .primary_key = true};

@@ -10,8 +10,8 @@
 
 namespace {
 PrimaryKeyMode get_pk_mode(const google::protobuf::Map<std::string, std::string>& request_config) {
-	// Only connections created before the toggle existed lack the property. Back then, the default mode (because it was
-	// the only mode) was "strict", which is why we default to true here.
+	// Strict is the default. Connections created before the toggle existed lack the property, and strict was the only
+	// mode back then.
 	const bool strict = config::find_bool_property(request_config, config::PROP_STRICT_PRIMARY_KEYS, true);
 	return strict ? PrimaryKeyMode::Strict : PrimaryKeyMode::NotNull;
 }

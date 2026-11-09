@@ -307,8 +307,8 @@ void MdSqlGenerator::create_table(duckdb::Connection& con, const table_def& tabl
 }
 
 std::vector<column_def> MdSqlGenerator::describe_table(duckdb::Connection& con, const table_def& table) {
-	// TBD is_identity is never set, used is_nullable=no temporarily but really
-	// should use duckdb_constraints table.
+	// Key columns are exactly the NOT NULL columns (see find_primary_keys). In NotNull mode, there is no PRIMARY KEY
+	// constraint to read them from.
 
 	const std::string query = "SELECT "
 	                          "column_name, "
@@ -1216,7 +1216,7 @@ void MdSqlGenerator::apply_primary_key_constraint(duckdb::Connection& con,
                                                   const table_def& table, const std::string& log_prefix,
                                                   const PrimaryKeyMode pk_mode) const {
 	if (columns_pk.empty()) {
-		// All modes require a primary key to be present, because we cannot switch
+		// All sync modes require a primary key to be present, because we cannot switch
 		// to history mode without a primary key. Fivetran has confirmed that the
 		// partner sdk assures existence of a primary key, and else adds a primary
 		// key itself.
