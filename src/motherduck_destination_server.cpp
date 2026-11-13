@@ -122,6 +122,19 @@ std::string get_decryption_key(const std::string& filename, const google::protob
 	return encryption_key_it->second;
 }
 
+CompressionType get_compression_type(const ::fivetran_sdk::v2::Compression compression) {
+	switch (compression) {
+	case ::fivetran_sdk::v2::Compression::OFF:
+		return CompressionType::None;
+	case ::fivetran_sdk::v2::Compression::ZSTD:
+		return CompressionType::ZSTD;
+	case ::fivetran_sdk::v2::Compression::GZIP:
+		throw std::invalid_argument("GZIP-compressed batch files are not supported");
+	default:
+		throw std::invalid_argument("Unknown batch file compression " + std::to_string(compression));
+	}
+}
+
 std::uint32_t get_max_record_size(const google::protobuf::Map<std::string, std::string>& configuration,
                                   mdlog::Logger& logger) {
 	const auto value = config::find_optional_property(configuration, config::PROP_MAX_RECORD_SIZE);
@@ -413,6 +426,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 		auto schema_name = get_schema_name(request);
 
 		const auto max_record_size = get_max_record_size(request->configuration(), logger);
+		const auto compression = get_compression_type(request->file_params().compression());
 
 		table_def table_name {ctx->GetDBName(), get_schema_name(request), request->table().name()};
 		auto sql_generator = std::make_unique<MdSqlGenerator>(logger);
@@ -432,6 +446,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 			    get_decryption_key(filename, request->keys(), request->file_params().encryption());
 			IngestProperties props {.filename = filename,
 			                        .decryption_key = decryption_key,
+			                        .compression = compression,
 			                        .columns = cols,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = false,
@@ -447,6 +462,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 			auto decryption_key = get_decryption_key(filename, request->keys(), request->file_params().encryption());
 			IngestProperties props {.filename = filename,
 			                        .decryption_key = decryption_key,
+			                        .compression = compression,
 			                        .columns = cols,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = true,
@@ -467,6 +483,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 			auto decryption_key = get_decryption_key(filename, request->keys(), request->file_params().encryption());
 			IngestProperties props {.filename = filename,
 			                        .decryption_key = decryption_key,
+			                        .compression = compression,
 			                        .columns = cols_to_read,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = false,
@@ -519,6 +536,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 		auto schema_name = get_schema_name(request);
 
 		const auto max_record_size = get_max_record_size(request->configuration(), logger);
+		const auto compression = get_compression_type(request->file_params().compression());
 
 		table_def table_name {ctx->GetDBName(), get_schema_name(request), request->table().name()};
 
@@ -557,6 +575,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 			    get_decryption_key(filename, request->keys(), request->file_params().encryption());
 			IngestProperties props {.filename = filename,
 			                        .decryption_key = decryption_key,
+			                        .compression = compression,
 			                        .columns = earliest_start_cols,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = false,
@@ -574,6 +593,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 			    get_decryption_key(filename, request->keys(), request->file_params().encryption());
 			IngestProperties props {.filename = filename,
 			                        .decryption_key = decryption_key,
+			                        .compression = compression,
 			                        .columns = cols,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = true,
@@ -596,6 +616,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 			    get_decryption_key(filename, request->keys(), request->file_params().encryption());
 			IngestProperties props {.filename = filename,
 			                        .decryption_key = decryption_key,
+			                        .compression = compression,
 			                        .columns = cols,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = false,
@@ -624,6 +645,7 @@ grpc::Status DestinationSdkImpl::WriteBatch(::grpc::ServerContext*,
 			    get_decryption_key(filename, request->keys(), request->file_params().encryption());
 			IngestProperties props {.filename = filename,
 			                        .decryption_key = decryption_key,
+			                        .compression = compression,
 			                        .columns = cols_to_read,
 			                        .null_value = request->file_params().null_string(),
 			                        .allow_unmodified_string = false,
