@@ -365,12 +365,12 @@ void MdSqlGenerator::check_no_duplicate_primary_keys(duckdb::Connection& con, co
                                                      const std::set<std::string>& existing_columns_in_new_table) const {
 	// When the primary key changes, we only need to check that the existing columns that are part of it are unique.
 	std::vector<std::string> new_pk_cols;
-	std::vector<std::string> existing_pk_columns_in_new_table;
+	std::vector<const column_def*> existing_pk_columns_in_new_table;
 	for (const auto& col : all_new_columns) {
 		if (col.primary_key) {
 			new_pk_cols.push_back(col.name);
 			if (existing_columns_in_new_table.find(col.name) != existing_columns_in_new_table.end()) {
-				existing_pk_columns_in_new_table.push_back(col.name);
+				existing_pk_columns_in_new_table.push_back(&col);
 			}
 		}
 	}
@@ -386,8 +386,10 @@ void MdSqlGenerator::check_no_duplicate_primary_keys(duckdb::Connection& con, co
 	if (!existing_pk_columns_in_new_table.empty()) {
 		std::ostringstream sql;
 		sql << "SELECT 1 FROM " << absolute_table_name << " GROUP BY ";
-		join(sql, existing_pk_columns_in_new_table,
-		     [](std::ostream& out, const std::string& col) { out << KeywordHelper::WriteQuoted(col, '"'); });
+		// Cast to the new type: a key type change can map distinct values to the same one (e.g. '1' and '01' to 1).
+		join(sql, existing_pk_columns_in_new_table, [](std::ostream& out, const column_def* col) {
+			out << "CAST(" << KeywordHelper::WriteQuoted(col->name, '"') << " AS " << format_type(*col) << ")";
+		});
 		sql << " HAVING COUNT(*) > 1 LIMIT 1";
 
 		const auto query = sql.str();
@@ -553,7 +555,13 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 		} else if (new_col_it->second.type != col.type ||
 		           (new_col_it->second.type == duckdb::LogicalTypeId::DECIMAL &&
 		            (new_col_it->second.scale != col.scale || new_col_it->second.width != col.width))) {
-			alter_types.emplace(col.name);
+			if (col.primary_key) {
+				// DuckDB cannot change the type of a column in a PRIMARY KEY, nor drop the constraint.
+				logger.info("Changing type of primary key column <" + col.name + "> requires recreating the table");
+				recreate_table = true;
+			} else {
+				alter_types.emplace(col.name);
+			}
 		}
 	}
 	logger.info("    inventoried columns; recreate_table = " + std::to_string(recreate_table) +

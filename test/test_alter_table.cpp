@@ -1,10 +1,12 @@
 #include "duckdb.hpp"
 #include "integration/common.hpp"
+#include "md_error.hpp"
 #include "md_logging.hpp"
 #include "schema_types.hpp"
 #include "sql_generator.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <string>
 #include <vector>
 
@@ -113,6 +115,65 @@ TEST_CASE("AlterTable removes the constraints of columns the request omits if dr
 
 	// ... but it no longer rejects NULL.
 	REQUIRE_NO_FAIL(con.Query("INSERT INTO t (id, v) VALUES (3, 'c')"));
+}
+
+TEST_CASE("AlterTable changes the type of a primary key column", "[alter]") {
+	// DuckDB rejects ALTER COLUMN TYPE on a column that is part of a PRIMARY KEY or UNIQUE constraint.
+	duckdb::DuckDB db(nullptr);
+	duckdb::Connection con(db);
+	auto logger = mdlog::Logger::CreateNopLogger();
+	MdSqlGenerator generator(logger);
+
+	const table_def table {"memory", "main", "orders"};
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE orders (order_id INTEGER PRIMARY KEY, v VARCHAR)"));
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO orders VALUES (1, 'a'), (2, 'b')"));
+
+	// Same key, same columns; only the type of the key column changes.
+	const std::vector<column_def> requested = {
+	    column_def {.name = "order_id", .type = duckdb::LogicalTypeId::BIGINT, .primary_key = true},
+	    column_def {.name = "v", .type = duckdb::LogicalTypeId::VARCHAR}};
+	generator.alter_table(con, table, requested, /*drop_columns=*/false);
+
+	const auto columns = generator.describe_table(con, table);
+	REQUIRE(columns.size() == 2);
+	REQUIRE(columns[0].name == "order_id");
+	REQUIRE(columns[0].type == duckdb::LogicalTypeId::BIGINT);
+	REQUIRE(primary_key_names(columns) == std::vector<std::string> {"order_id"});
+
+	auto res = con.Query("SELECT order_id, v FROM orders ORDER BY order_id");
+	REQUIRE_NO_FAIL(res);
+	REQUIRE(res->RowCount() == 2);
+	check_row(res, 0, {duckdb::Value::BIGINT(1), "a"});
+	check_row(res, 1, {duckdb::Value::BIGINT(2), "b"});
+
+	// The key is still enforced, so WriteBatch's ON CONFLICT keeps working.
+	REQUIRE(con.Query("INSERT INTO orders VALUES (1, 'dup')")->HasError());
+}
+
+TEST_CASE("AlterTable raises a task if a primary key type change would create duplicates", "[alter]") {
+	duckdb::DuckDB db(nullptr);
+	duckdb::Connection con(db);
+	auto logger = mdlog::Logger::CreateNopLogger();
+	MdSqlGenerator generator(logger);
+
+	const table_def table {"memory", "main", "orders"};
+	REQUIRE_NO_FAIL(con.Query("CREATE TABLE orders (order_id VARCHAR PRIMARY KEY)"));
+	// Distinct as strings, but both become 1 as integers.
+	REQUIRE_NO_FAIL(con.Query("INSERT INTO orders VALUES ('1'), ('01')"));
+
+	const std::vector<column_def> requested = {
+	    column_def {.name = "order_id", .type = duckdb::LogicalTypeId::INTEGER, .primary_key = true}};
+	REQUIRE_THROWS_AS(generator.alter_table(con, table, requested, /*drop_columns=*/false), md_error::RecoverableError);
+	REQUIRE_THROWS_WITH(generator.alter_table(con, table, requested, /*drop_columns=*/false),
+	                    Catch::Matchers::ContainsSubstring("would create duplicate rows"));
+
+	// The table is untouched.
+	const auto columns = generator.describe_table(con, table);
+	REQUIRE(columns.size() == 1);
+	REQUIRE(columns[0].type == duckdb::LogicalTypeId::VARCHAR);
+	auto res = con.Query("SELECT COUNT(*) FROM orders");
+	REQUIRE_NO_FAIL(res);
+	REQUIRE(res->GetValue(0, 0).GetValue<int64_t>() == 2);
 }
 
 TEST_CASE("AlterTable recreate defaults a new key column of every Fivetran type", "[alter]") {
