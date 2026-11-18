@@ -2,6 +2,7 @@
 #include "common.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <future>
 #include <string>
 #include <vector>
@@ -10,24 +11,29 @@ using namespace test::constants;
 
 TEST_CASE("Parallel WriteBatch requests", "[integration][write-batch][parallel]") {
 	DestinationSdkImpl service;
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
 
 	constexpr unsigned int num_tables = 5;
 	std::vector<std::string> table_names;
 
 	for (unsigned int i = 0; i < num_tables; i++) {
-		const std::string table_name = "parallel_books_" + std::to_string(i);
+		// The mode is part of the name because both GENERATE runs share the test database.
+		const std::string table_name =
+		    std::string("parallel_books_") + (is_strict_pk_mode ? "strict_" : "") + std::to_string(i);
 		table_names.push_back(table_name);
 
-		create_table(service, table_name, TEST_COLUMNS);
+		create_table(service, table_name, TEST_COLUMNS, is_strict_pk_mode);
 	}
 
 	// Launch parallel WriteBatch requests that each write to their own table
 	std::vector<std::future<grpc::Status>> futures;
 
 	for (unsigned int i = 0; i < num_tables; i++) {
-		futures.push_back(std::async(std::launch::async, [&service, &table_names, i]() {
+		futures.push_back(std::async(std::launch::async, [&service, &table_names, is_strict_pk_mode, i]() {
 			::fivetran_sdk::v2::WriteBatchRequest request;
 			add_config(request, MD_TOKEN, TEST_DATABASE_NAME);
+			set_strict_primary_keys(request, is_strict_pk_mode);
 			define_table(request, table_names[i], TEST_COLUMNS);
 			request.mutable_file_params()->set_null_string("magic-nullvalue");
 			request.add_replace_files(TEST_RESOURCES_DIR + "books_upsert.csv");
@@ -88,6 +94,8 @@ TEST_CASE("Parallel DescribeTable requests", "[integration][describe-table][para
 
 TEST_CASE("Parallel CreateTable requests into the same schema", "[integration][create-table][parallel]") {
 	DestinationSdkImpl service;
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
 
 	constexpr unsigned int num_tables = 10;
 	const std::string SCHEMA_NAME = "parallel_schema";
@@ -102,11 +110,12 @@ TEST_CASE("Parallel CreateTable requests into the same schema", "[integration][c
 
 	std::vector<std::future<grpc::Status>> futures;
 	for (unsigned int i = 0; i < num_tables; i++) {
-		futures.push_back(std::async(std::launch::async, [&service, &SCHEMA_NAME, i]() {
+		futures.push_back(std::async(std::launch::async, [&service, &SCHEMA_NAME, is_strict_pk_mode, i]() {
 			// Cannot use create_table function here because Catch2 assertions have to run on main thread
 			const std::string table_name = "parallel_table_" + std::to_string(i);
 			::fivetran_sdk::v2::CreateTableRequest request;
 			add_config(request, MD_TOKEN, TEST_DATABASE_NAME, table_name);
+			set_strict_primary_keys(request, is_strict_pk_mode);
 			request.set_schema_name(SCHEMA_NAME);
 			define_table(request, table_name, TEST_COLUMNS);
 
@@ -129,6 +138,8 @@ TEST_CASE("Parallel CreateTable requests into the same schema", "[integration][c
 
 TEST_CASE("Parallel CreateTable requests into different schemas", "[integration][create-table][parallel]") {
 	DestinationSdkImpl service;
+	const bool is_strict_pk_mode = GENERATE(false, true);
+	CAPTURE(is_strict_pk_mode);
 
 	constexpr unsigned int num_schemas = 10;
 	const std::string SCHEMA_BASE = "parallel_schema_";
@@ -146,10 +157,11 @@ TEST_CASE("Parallel CreateTable requests into different schemas", "[integration]
 
 	std::vector<std::future<grpc::Status>> futures;
 	for (unsigned int i = 0; i < num_schemas; i++) {
-		futures.push_back(std::async(std::launch::async, [&service, &SCHEMA_BASE, &TABLE_NAME, i]() {
+		futures.push_back(std::async(std::launch::async, [&service, &SCHEMA_BASE, &TABLE_NAME, is_strict_pk_mode, i]() {
 			const std::string schema_name = SCHEMA_BASE + std::to_string(i);
 			::fivetran_sdk::v2::CreateTableRequest request;
 			add_config(request, MD_TOKEN, TEST_DATABASE_NAME, TABLE_NAME);
+			set_strict_primary_keys(request, is_strict_pk_mode);
 			request.set_schema_name(schema_name);
 			define_table(request, TABLE_NAME, TEST_COLUMNS);
 
