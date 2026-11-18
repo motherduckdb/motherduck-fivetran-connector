@@ -399,12 +399,12 @@ void MdSqlGenerator::check_no_duplicate_primary_keys(duckdb::Connection& con, co
                                                      const std::set<std::string>& existing_columns_in_new_table) const {
 	// When the primary key changes, we only need to check that the existing columns that are part of it are unique.
 	std::vector<std::string> new_pk_cols;
-	std::vector<std::string> existing_pk_columns_in_new_table;
+	std::vector<const column_def*> existing_pk_columns_in_new_table;
 	for (const auto& col : all_new_columns) {
 		if (col.primary_key) {
 			new_pk_cols.push_back(col.name);
 			if (existing_columns_in_new_table.find(col.name) != existing_columns_in_new_table.end()) {
-				existing_pk_columns_in_new_table.push_back(col.name);
+				existing_pk_columns_in_new_table.push_back(&col);
 			}
 		}
 	}
@@ -420,8 +420,10 @@ void MdSqlGenerator::check_no_duplicate_primary_keys(duckdb::Connection& con, co
 	if (!existing_pk_columns_in_new_table.empty()) {
 		std::ostringstream sql;
 		sql << "SELECT 1 FROM " << absolute_table_name << " GROUP BY ";
-		join(sql, existing_pk_columns_in_new_table,
-		     [](std::ostream& out, const std::string& col) { out << KeywordHelper::WriteQuoted(col, '"'); });
+		// Cast to the new type: a key type change can map distinct values to the same one (e.g. '1' and '01' to 1).
+		join(sql, existing_pk_columns_in_new_table, [](std::ostream& out, const column_def* col) {
+			out << "CAST(" << KeywordHelper::WriteQuoted(col->name, '"') << " AS " << format_type(*col) << ")";
+		});
 		sql << " HAVING COUNT(*) > 1 LIMIT 1";
 
 		const auto query = sql.str();
@@ -615,6 +617,8 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 	// True if the key set changes at all (a key column added, removed, or
 	// dropped). In strict mode, the table is recreated.
 	bool pk_changed = false;
+	// True if the type of an existing key column changes. In strict mode, the table is recreated.
+	bool pk_type_changed = false;
 
 	ScopedTransaction transaction(con, logger);
 
@@ -678,6 +682,10 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 			if (new_col_it->second.type != col.type ||
 			    (new_col_it->second.type == duckdb::LogicalTypeId::DECIMAL &&
 			     (new_col_it->second.scale != col.scale || new_col_it->second.width != col.width))) {
+				if (col.primary_key) {
+					logger.info("Changing type of primary key column <" + col.name + ">");
+					pk_type_changed = true;
+				}
 				alter_types.emplace(col.name);
 			}
 		}
@@ -695,9 +703,10 @@ void MdSqlGenerator::alter_table(duckdb::Connection& con, const table_def& table
 		pk_changed = true;
 	}
 
-	// A PRIMARY KEY constraint cannot be altered or dropped in place, hence a key change in strict mode recreates the
-	// table. In NotNull mode, the key change only toggles NOT NULL in place.
-	const bool recreate_table = pk_changed && pk_mode == PrimaryKeyMode::Strict;
+	// DuckDB cannot alter or drop a PRIMARY KEY constraint in place, nor change the type of a column in it. Hence, in
+	// strict mode, a key change or a type change of a key column recreates the table. In NotNull mode, both happen in
+	// place.
+	const bool recreate_table = (pk_changed || pk_type_changed) && pk_mode == PrimaryKeyMode::Strict;
 	logger.info("    inventoried columns; recreate_table = " + std::to_string(recreate_table) +
 	            "; num alter_types = " + std::to_string(alter_types.size()));
 

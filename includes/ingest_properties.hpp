@@ -17,11 +17,16 @@ inline constexpr std::uint32_t MAX_PARALLEL_REQUESTS = 8;
 inline constexpr std::uint32_t MAX_RECORD_SIZE_DEFAULT = 768 / MAX_PARALLEL_REQUESTS / 4; // 24 MiB
 inline constexpr std::uint32_t MAX_RECORD_SIZE_MAX = 1024;
 
+enum class CompressionType { None, ZSTD };
+
 struct IngestProperties {
 	const std::string filename;
 	/// Binary key used to decrypt the CSV file. Empty if the file is not
 	/// encrypted.
 	const std::string decryption_key;
+	/// Compression of the CSV file as declared by Fivetran. If the file is
+	/// encrypted, this applies to the decrypted content.
+	const CompressionType compression = CompressionType::None;
 	/// Columns of the table that is being ingested into. Columns must be in the
 	/// same order as they appear in the table.
 	const std::vector<column_def> columns;
